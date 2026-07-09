@@ -7,5 +7,5 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  base: '/kojlux-study-hub',
+  base: '/kojlux-study-hub/',
 });
