@@ -1,0 +1,6 @@
+{
+  "name": "Learn With Kojlux",
+  "description": "Scan study materials, customize elegant quizzes with Difficulty Levels, print blank worksheets before answering to solve offline with a pencil, toggle Dark Mode, auto-save progress, and receive AI tutor focus advice.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
