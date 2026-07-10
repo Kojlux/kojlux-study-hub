@@ -54,33 +54,7 @@ export function ReelPlayer({ video, isActive, onOpenSummary, onOpenLink, onDelet
   const [isMuted, setIsMuted] = useState(false);
   const [expandedSummary, setExpandedSummary] = useState(false);
 
-  useEffect(() => {
-    if (!isActive) return;
-    let accumulatedTime = 0;
-    const interval = setInterval(() => {
-      accumulatedTime += 5;
-      fetch('/api/videos/engagement', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoId: video.id, watchTimeSeconds: 5 })
-      }).catch(err => console.error("Failed to report watch time", err));
-    }, 5000);
-    const startTime = Date.now();
-    return () => {
-      clearInterval(interval);
-      const sessionElapsedMs = Date.now() - startTime;
-      const sessionElapsedSec = Math.floor(sessionElapsedMs / 1000);
-      const remainingSec = sessionElapsedSec - accumulatedTime;
-      if (remainingSec >= 1) {
-        fetch('/api/videos/engagement', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ videoId: video.id, watchTimeSeconds: remainingSec })
-        }).catch(err => console.error("Failed to report watch time", err));
-      }
-    };
-  }, [isActive, video.id]);
-
+  // Sync background study beats audio playback with player state
   useEffect(() => {
     const activeAudioTrack = video.audioTrack ? (CURATED_AUDIO_TRACKS.find((t) => t.id === video.audioTrack.id) || video.audioTrack) : null;
     if (isActive && playing && activeAudioTrack?.url) {
@@ -162,7 +136,7 @@ export function ReelPlayer({ video, isActive, onOpenSummary, onOpenLink, onDelet
   const loading = false;
   const loadingMessage = "";
   const quizData = null;
-    return (
+  return (
     <div className="w-full h-full relative bg-black flex items-center justify-center overflow-hidden">
       {video.isStaticImage ? (
         <div onClick={togglePlay} className="w-full h-full cursor-pointer flex items-center justify-center bg-slate-950">
@@ -246,4 +220,3 @@ export default function App() {
     </div>
   );
 }
-
