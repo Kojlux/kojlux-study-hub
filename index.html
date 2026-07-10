@@ -40,12 +40,13 @@
   <body>
     <div id="root"></div>
     <script type="module" src="./src/main.tsx"></script>
-    <script>
+   <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js')
+    navigator.serviceWorker.register('./sw.js') // Added the dot before /sw.js
       .then(() => console.log('Service Worker Registered'));
   }
 </script>
+
 
 
   </body>
