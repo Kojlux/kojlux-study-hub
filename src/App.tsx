@@ -1,3 +1,6 @@
+import { onAuthStateChanged, type User } from "firebase/auth";
+import { auth, uploadBase64File, createVideoPost } from "./firebase"; // Makes sure this matches the path to your firebase.ts file
+
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Upload, Camera, Trash, Sparkles, Printer, Award, FileText, 
@@ -14,8 +17,7 @@ import {
   QuestionEvaluation, EvaluationResult, HistoryItem, VisualizationResponse 
 } from './types';
 import VisualizerScreen from './components/VisualizerScreen';
-import { auth, uploadBase64File, createVideoPost } from './firebase';
-import { onAuthStateChanged, User } from 'firebase/auth';
+
 import Auth from './components/Auth';
 
 const formatDisplayUsername = (video: any, currentEmail?: string, currentUsername?: string) => {
@@ -61,7 +63,7 @@ function ReelPlayer({ video, isActive, onOpenSummary, onOpenLink, onDelete, prof
     let accumulatedTime = 0;
     const interval = setInterval(() => {
       accumulatedTime += 5;
-      fetch('/api/videos/engagement', {
+      fetch('api/videos/engagement', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ videoId: video.id, watchTimeSeconds: 5 })
@@ -76,7 +78,7 @@ function ReelPlayer({ video, isActive, onOpenSummary, onOpenLink, onDelete, prof
       const sessionElapsedSec = Math.floor(sessionElapsedMs / 1000);
       const remainingSec = sessionElapsedSec - accumulatedTime;
       if (remainingSec >= 1) {
-        fetch('/api/videos/engagement', {
+        fetch('api/videos/engagement', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ videoId: video.id, watchTimeSeconds: remainingSec })
@@ -486,7 +488,7 @@ export default function App() {
   });
 
   // bottom navigation bar state: 'home' | 'create' | 'visualizer' | 'watch' | 'profile'
-  const [activeNavTab, setActiveNavTab] = useState<'home' | 'create' | 'visualizer' | 'watch' | 'profile'>('create');
+  const [activeNavTab, setActiveNavTab] = useState<'home' | 'create' | 'visualizer' | 'watch' | 'profile'>('home');
 
   // Interactive mobile video editing states
   const [trimStart, setTrimStart] = useState<number>(0);
@@ -552,7 +554,7 @@ export default function App() {
     // If logged in, sync with server profile database
     if (isLoggedIn && profileEmail) {
       try {
-        await fetch('/api/auth/profile/update', {
+        await fetch('api/auth/profile/update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: profileEmail, gradeLevel: newLevel })
@@ -598,6 +600,19 @@ export default function App() {
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [saveToast, setSaveToast] = useState<string | null>(null);
+
+  const parseJsonOrText = async (res: Response) => {
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      return res.json();
+    }
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { error: text || res.statusText || 'Unexpected response from server.' };
+    }
+  };
 
   // Print state mode: 'blank' | 'evaluated'
   const [printMode, setPrintMode] = useState<'blank' | 'evaluated'>('blank');
@@ -734,7 +749,7 @@ export default function App() {
   const fetchSavedVideoIds = async () => {
     if (!profileEmail) return;
     try {
-      const res = await fetch(`/api/videos/saved?email=${encodeURIComponent(profileEmail)}`);
+      const res = await fetch(`api/videos/saved?email=${encodeURIComponent(profileEmail)}`);
       if (res.ok) {
         const data = await res.json();
         if (data.savedIds) {
@@ -757,7 +772,7 @@ export default function App() {
 
     if (isLoggedIn && profileEmail) {
       try {
-        const res = await fetch('/api/videos/save', {
+        const res = await fetch('api/videos/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: profileEmail, videoId, saved: !isSaved })
@@ -785,7 +800,7 @@ export default function App() {
       const activeSess = forceSessionId || sessionId;
       const activeEmail = forceEmail !== undefined ? forceEmail : profileEmail;
       const activeGrade = forceGradeLevel !== undefined ? forceGradeLevel : gradeLevel;
-      const res = await fetch(`/api/videos/feed?sessionId=${activeSess}&email=${encodeURIComponent(activeEmail)}&gradeLevel=${encodeURIComponent(activeGrade)}&_t=${Date.now()}`);
+      const res = await fetch(`api/videos/feed?sessionId=${activeSess}&email=${encodeURIComponent(activeEmail)}&gradeLevel=${encodeURIComponent(activeGrade)}&_t=${Date.now()}`);
       const data = await res.json();
       if (res.ok && data.videos) {
         if (append) {
@@ -813,7 +828,7 @@ export default function App() {
     setSessionId(newSessionId);
     setLoadingVideos(true);
     try {
-      const res = await fetch(`/api/videos/feed?sessionId=${newSessionId}&email=${encodeURIComponent(profileEmail)}&gradeLevel=${encodeURIComponent(gradeLevel)}&_t=${Date.now()}`);
+      const res = await fetch(`api/videos/feed?sessionId=${newSessionId}&email=${encodeURIComponent(profileEmail)}&gradeLevel=${encodeURIComponent(gradeLevel)}&_t=${Date.now()}`);
       const data = await res.json();
       if (res.ok && data.videos) {
         setVideos(data.videos);
@@ -830,7 +845,7 @@ export default function App() {
 
   const handleDeleteVideo = async (videoId: string) => {
     try {
-      const res = await fetch('/api/videos/delete', {
+      const res = await fetch('api/videos/delete', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1176,7 +1191,7 @@ export default function App() {
     }, 2000);
 
     try {
-      const res = await fetch('/api/generate-quiz', {
+      const res = await fetch('api/generate-quiz', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1190,7 +1205,7 @@ export default function App() {
         }),
       });
 
-      const data = await res.json();
+      const data = await parseJsonOrText(res);
       if (!res.ok) {
         throw new Error(data.error || "The server could not produce the quiz questions.");
       }
@@ -1240,7 +1255,7 @@ export default function App() {
     setErrorMsg(null);
 
     try {
-      const res = await fetch('/api/evaluate-quiz', {
+      const res = await fetch('api/evaluate-quiz', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1251,7 +1266,7 @@ export default function App() {
         })
       });
 
-      const data = await res.json();
+      const data = await parseJsonOrText(res);
       if (!res.ok) {
         throw new Error(data.error || " grading calculation service failed.");
       }
@@ -1286,7 +1301,7 @@ export default function App() {
   const syncHistoryToCloud = async (items: HistoryItem[], userEmail: string) => {
     if (!userEmail) return;
     try {
-      await fetch('/api/history/sync', {
+      await fetch('api/history/sync', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1356,7 +1371,7 @@ export default function App() {
     }
     setSyncingProfile(true);
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch('api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -1364,7 +1379,7 @@ export default function App() {
           password: authPassword 
         })
       });
-      const data = await res.json();
+      const data = await parseJsonOrText(res);
       if (res.ok) {
         setIsLoggedIn(true);
         setProfileEmail(data.email);
@@ -1428,7 +1443,7 @@ export default function App() {
     }
     setSyncingProfile(true);
     try {
-      const res = await fetch('/api/auth/register', {
+      const res = await fetch('api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -1438,7 +1453,7 @@ export default function App() {
           gradeLevel: registerGradeLevel
         })
       });
-      const data = await res.json();
+      const data = await parseJsonOrText(res);
       if (res.ok) {
         setIsLoggedIn(true);
         setProfileEmail(data.email);
@@ -1865,7 +1880,7 @@ export default function App() {
     }, 2000);
 
     try {
-      const res = await fetch('/api/generate-summary', {
+      const res = await fetch('api/generate-summary', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1945,6 +1960,23 @@ export default function App() {
     }`}>
       
       {/* ================= PRINT WINDOW CHASSIS (HIDDEN IN SECURE WEB VIEW) ================= */}
+      <div className="sticky top-2 z-30 mb-3 flex justify-end">
+        <div className="flex items-center gap-2 rounded-full border border-slate-200/70 bg-white/90 px-3 py-1.5 text-[10px] font-semibold text-slate-700 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-200">
+          <span className="uppercase tracking-[0.2em] text-slate-400">Grade</span>
+          <select
+            value={gradeLevel}
+            onChange={(e) => handleUpdateGradeLevel(e.target.value)}
+            className="rounded-full bg-transparent px-1 py-0.5 text-[11px] font-bold outline-none"
+          >
+            <option value="Elementary School">Elementary</option>
+            <option value="Middle School">Middle</option>
+            <option value="High School">High School</option>
+            <option value="College">College</option>
+            <option value="Lifelong Learner">Lifelong</option>
+          </select>
+        </div>
+      </div>
+
       {quizData && (
         <div className="hidden print:block print-only-wrapper w-full bg-white p-8 text-black my-0 mx-auto">
           <div className="flex justify-between items-start border-b-2 border-slate-300 pb-4 mb-5">
@@ -2632,6 +2664,8 @@ export default function App() {
                   <div className="flex-1 flex flex-col gap-3 animate-fade-in">
                     <VisualizerScreen
                       darkMode={darkMode}
+                      gradeLevel={gradeLevel}
+                      onGradeLevelChange={handleUpdateGradeLevel}
                       loadedVisualization={activeLoadedVisualization}
                       onSaveHistory={handleSaveVisualizationHistory}
                     />
@@ -2885,11 +2919,11 @@ export default function App() {
                               onClick={() => {
                                 setActiveNavTab('home');
                               }}
-                              className="p-2.5 rounded-full bg-black/50 backdrop-blur-md text-white hover:bg-black/85 border border-white/10 shadow-lg hover:scale-105 active:scale-95 transition flex items-center gap-1.5"
+                              className="p-2 rounded-full bg-transparent text-white hover:bg-white/10 active:scale-95 transition flex items-center justify-center"
                               title="Return to home view"
+                              aria-label="Return to home view"
                             >
-                              <ArrowLeft className="w-4 h-4 text-white" />
-                              <span className="text-[11px] font-semibold tracking-wide pr-1">Back</span>
+                              <ArrowLeft className="w-5 h-5 text-white" />
                             </button>
                           </div>
 
@@ -4636,9 +4670,9 @@ export default function App() {
                     </div>
                   </div>
                 )}
+
                 {/* Bottom Navigation Bar */}
-                {!(activeNavTab === 'watch' && !showDiscoverPage) && (
-                  <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-3 py-1.5 rounded-full shadow-2xl border border-slate-200/80 dark:border-slate-800/80 flex items-center gap-2 md:gap-4 max-w-[95vw]">
+                <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-3 py-3 sm:px-4 sm:py-3 shadow-2xl border-t border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-2 md:gap-4 w-full">
                     <button
                       type="button"
                       onClick={() => {
@@ -4763,7 +4797,6 @@ export default function App() {
                       )}
                     </button>
                   </div>
-                )}
 
               </div>
 

@@ -31,6 +31,7 @@ export default function VisualizerScreen({
   onGradeLevelChange
 }: VisualizerProps) {
   const [query, setQuery] = useState<string>('');
+  const [followUpQuestion, setFollowUpQuestion] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -76,7 +77,7 @@ export default function VisualizerScreen({
     setCurrentStep(0);
 
     try {
-      const res = await fetch('/api/generate-visualization', {
+      const res = await fetch('api/generate-visualization', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: searchPrompt, gradeLevel })
@@ -538,6 +539,43 @@ export default function VisualizerScreen({
             </div>
           )}
 
+          <div className="rounded-2xl border border-indigo-100/80 bg-indigo-50/70 p-3 dark:border-indigo-900/50 dark:bg-indigo-950/20">
+            <div className="mb-2 flex items-center gap-2">
+              <Lightbulb className="h-4 w-4 text-amber-500" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                Ask a follow-up question
+              </span>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!followUpQuestion.trim()) return;
+                handleGenerate(`Explain this concept in simpler, student-friendly language. Follow-up: ${followUpQuestion}`);
+                setFollowUpQuestion('');
+              }}
+              className="flex items-center gap-2"
+            >
+              <input
+                type="text"
+                value={followUpQuestion}
+                onChange={(e) => setFollowUpQuestion(e.target.value)}
+                placeholder="Why does this happen? What should I notice?"
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                disabled={loading}
+              />
+              <button
+                type="submit"
+                disabled={loading || !followUpQuestion.trim()}
+                className="rounded-xl bg-indigo-600 px-3 py-2 text-[11px] font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-40"
+              >
+                Ask
+              </button>
+            </form>
+            <p className="mt-2 text-[10px] text-slate-500 dark:text-slate-400">
+              Use this after a visualization appears to get a simpler explanation, next step, or real-world example.
+            </p>
+          </div>
+
           {/* Simulation player timeline controls bar */}
           <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-850 p-2.5 rounded-2xl border border-slate-200/20 dark:border-slate-800">
             <button
@@ -665,6 +703,9 @@ export default function VisualizerScreen({
                 <span>{error}</span>
               </div>
             )}
+            <div className="mt-2 px-3 py-2 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-800 text-[10px] text-slate-600 dark:text-slate-300">
+              Ask a follow-up question after your visualization appears so the concept is explained clearly in plain language.
+            </div>
           </div>
 
           {/* Suggested Presets Section (The Grid) */}
