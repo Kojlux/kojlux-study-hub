@@ -7,6 +7,10 @@ interface ImportMetaEnv {
   VITE_FIREBASE_MESSAGING_SENDER_ID: string;
   VITE_FIREBASE_APP_ID: string;
   VITE_FIREBASE_MEASUREMENT_ID?: string;
+  VITE_VISUALIZER_KEY?: string;
+  VITE_QUIZ_GENERATOR_KEY?: string;
+  VITE_CHAT_KEY?: string;
+  VITE_SUMMARIZER_KEY?: string;
 }
 
 declare global {
