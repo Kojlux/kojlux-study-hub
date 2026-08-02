@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StudyFlow AI - Scan, Quiz, and Print Study Sheets</title>
+    <link rel="apple-touch-icon" href="./icon.png" />
+
+    <style>
+      @media print {
+        /* Hide entire web layout frame */
+        body {
+          background: white !important;
+          color: black !important;
+        }
+        #root > div:not(.print-only-wrapper) {
+          display: none !important;
+        }
+        /* Ensure the print sheet container spans full width */
+        .print-only-wrapper {
+          display: block !important;
+          width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          box-shadow: none !important;
+          border: none !important;
+        }
+        /* Prevent break inside question blocks */
+        .avoid-break {
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+        
+      }
+    </style>
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png">
+   <link rel="manifest" href="./manifest.json" />
+
+    <script type="module" crossorigin src="/kojlux-study-hub/assets/index-EAnWuLC4.js"></script>
+    <link rel="stylesheet" crossorigin href="/kojlux-study-hub/assets/index-Dq5zzRWa.css">
+  </head>
+  <body>
+    <div id="root"></div>
+   <script>
+  if ('serviceWorker' in navigator) {
+   navigator.serviceWorker.register('/kojlux-study-hub/sw.js') // Added the dot before /sw.js
+      .then(() => console.log('Service Worker Registered'));
+  }
+</script>
+
+
+
+  </body>
+</html>
+
