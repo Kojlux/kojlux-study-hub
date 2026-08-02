@@ -1960,23 +1960,7 @@ export default function App() {
     }`}>
       
       {/* ================= PRINT WINDOW CHASSIS (HIDDEN IN SECURE WEB VIEW) ================= */}
-      <div className="sticky top-2 z-30 mb-3 flex justify-end">
-        <div className="flex items-center gap-2 rounded-full border border-slate-200/70 bg-white/90 px-3 py-1.5 text-[10px] font-semibold text-slate-700 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-200">
-          <span className="uppercase tracking-[0.2em] text-slate-400">Grade</span>
-          <select
-            value={gradeLevel}
-            onChange={(e) => handleUpdateGradeLevel(e.target.value)}
-            className="rounded-full bg-transparent px-1 py-0.5 text-[11px] font-bold outline-none"
-          >
-            <option value="Elementary School">Elementary</option>
-            <option value="Middle School">Middle</option>
-            <option value="High School">High School</option>
-            <option value="College">College</option>
-            <option value="Lifelong Learner">Lifelong</option>
-          </select>
-        </div>
-      </div>
-
+      
       {quizData && (
         <div className="hidden print:block print-only-wrapper w-full bg-white p-8 text-black my-0 mx-auto">
           <div className="flex justify-between items-start border-b-2 border-slate-300 pb-4 mb-5">
@@ -2303,17 +2287,7 @@ export default function App() {
 
                 {/* Active Quiz Utility header */}
                 {quizData && (
-                  <header className="flex justify-end items-center mb-4 border-b border-slate-100 dark:border-slate-850 pb-3">
-                    <div className="flex gap-1.5 ml-auto">
-                      <button 
-                        type="button"
-                        onClick={clearInputs}
-                        className="p-1 px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-red-500 text-[10px] font-bold transition flex items-center gap-1.5"
-                      >
-                        <RefreshCcw className="w-3 h-3" /> Create New Quiz
-                      </button>
-                    </div>
-                  </header>
+                  
                 )}
 
                 {/* APPLICATION SCREENS INTERACTIVE ROUTER */}

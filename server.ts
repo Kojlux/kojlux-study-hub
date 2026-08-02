@@ -15,10 +15,17 @@ const __dirname = path.dirname(__filename);
 let aiClient: GoogleGenAI | null = null;
 function getGeminiClient() {
   if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error('GEMINI_API_KEY is not defined. Please add it to Settings > Secrets in AI Studio.');
-    }
+   const apiKey = 
+  process.env.GEMINI_API_KEY || 
+  process.env.VITE_VISUALIZER_KEY || 
+  process.env.VITE_QUIZ_GENERATOR_KEY || 
+  process.env.VITE_CHAT_KEY || 
+  process.env.VITE_SUMMARIZER_KEY;
+
+if (!apiKey) {
+  console.warn("⚠️ Warning: No Gemini API Key detected in environment variables.");
+}
+
     aiClient = new GoogleGenAI({
       apiKey,
       httpOptions: {

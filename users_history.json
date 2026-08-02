@@ -1,0 +1,637 @@
+{
+  "hmnp@fresnou.org": [
+    {
+      "id": "1785647131369",
+      "itemType": "quiz",
+      "title": "TypeScript Singleton Client Initialization",
+      "subject": "Web Development & Software Architecture",
+      "savedAt": "8/1/2026 10:05 PM",
+      "difficulty": "medium",
+      "quizType": "multiple-choice",
+      "questions": [
+        {
+          "id": 1,
+          "question": "What software design pattern is being implemented by checking 'if (!aiClient)' and caching the GoogleGenAI instance?",
+          "type": "multiple-choice",
+          "correctAnswer": "B",
+          "explanation": "This is a classic implementation of the Singleton pattern. It ensures that only a single, shared instance of the GoogleGenAI client is created and reused across subsequent calls to 'getGeminiClient()'.",
+          "options": [
+            "A) Prototype Pattern",
+            "B) Singleton Pattern",
+            "C) Factory Method Pattern",
+            "D) Observer Pattern"
+          ]
+        },
+        {
+          "id": 2,
+          "question": "Where is the 'apiKey' retrieved from in this code, and what happens if it is missing?",
+          "type": "multiple-choice",
+          "correctAnswer": "B",
+          "explanation": "On lines 18-20, the API key is retrieved from Node's 'process.env.GEMINI_API_KEY'. If it evaluates to a falsy value, the application throws an Error immediately, halting further execution of this initialization path.",
+          "options": [
+            "A) It is read from a local .json file, and the function returns null if missing.",
+            "B) It is read from the system's environment variables (process.env), and the application throws an Error if missing.",
+            "C) It is fetched dynamically from an external auth server, and it falls back to a trial key if missing.",
+            "D) It is passed as an argument to getGeminiClient(), and it generates a mock client if missing."
+          ]
+        },
+        {
+          "id": 3,
+          "question": "What custom HTTP request modification is configured for the GoogleGenAI client instance?",
+          "type": "multiple-choice",
+          "correctAnswer": "B",
+          "explanation": "In lines 24-27, custom HTTP options are provided. Specifically, the 'User-Agent' header is overridden and set to 'aistudio-build' to identify the origin of the API calls made by this client.",
+          "options": [
+            "A) It overrides the default base URL to point to a local proxy server.",
+            "B) It sets a custom 'User-Agent' header with the value 'aistudio-build'.",
+            "C) It specifies an authorization Bearer token inside the HTTP headers block.",
+            "D) It sets up custom retry rules for failing network requests."
+          ]
+        },
+        {
+          "id": 4,
+          "question": "According to the TypeScript type declaration on line 15, what are the permissible types for the 'aiClient' variable?",
+          "type": "multiple-choice",
+          "correctAnswer": "C",
+          "explanation": "The declaration 'let aiClient: GoogleGenAI | null = null;' defines a union type. This means the variable can strictly only hold an instance of the 'GoogleGenAI' class or 'null', initializing to 'null'.",
+          "options": [
+            "A) GoogleGenAI only, initializing with an empty object.",
+            "B) string or null, initializing with an empty string.",
+            "C) GoogleGenAI or null, initializing with null.",
+            "D) any, allowing dynamic reassignment to any type of AI provider."
+          ]
+        },
+        {
+          "id": 5,
+          "question": "If 'getGeminiClient()' is called multiple times throughout the lifecycle of the running application, how many times is 'new GoogleGenAI' invoked?",
+          "type": "multiple-choice",
+          "correctAnswer": "B",
+          "explanation": "Because 'aiClient' is declared in the outer scope of the module, its value persists between calls. The block inside 'if (!aiClient)' only executes the very first time 'getGeminiClient()' is called. Subsequent calls find the existing client and return it instantly.",
+          "options": [
+            "A) Every single time getGeminiClient() is invoked.",
+            "B) Exactly once on the first call, and then cached for subsequent calls.",
+            "C) Twice: once when the server boots, and once when the client sends its first request.",
+            "D) It depends on whether the client session has timed out."
+          ]
+        }
+      ],
+      "userAnswers": {},
+      "evaluation": null
+    },
+    {
+      "id": "1785616361573",
+      "itemType": "quiz",
+      "title": "Elementary Science: States of Matter",
+      "subject": "Science",
+      "savedAt": "8/1/2026 01:32 PM",
+      "difficulty": "medium",
+      "quizType": "multiple-choice",
+      "questions": [
+        {
+          "id": 1,
+          "question": "What happens to water molecules when liquid water freezes into ice?",
+          "type": "multiple-choice",
+          "correctAnswer": "B",
+          "explanation": "When liquid water loses heat, its molecules move slower and eventually lock into a fixed, orderly structure to form solid ice.",
+          "options": [
+            "They move faster and spread further apart.",
+            "They slow down and lock into a fixed, orderly structure.",
+            "They break apart into hydrogen and oxygen gases.",
+            "They disappear completely."
+          ]
+        },
+        {
+          "id": 2,
+          "question": "Why can you compress a gas into a smaller container, but you cannot easily compress a solid?",
+          "type": "multiple-choice",
+          "correctAnswer": "B",
+          "explanation": "Gas particles have lots of empty space between them, allowing them to be pushed closer together. Solid particles are already packed tightly together.",
+          "options": [
+            "Gas particles are much larger than solid particles.",
+            "Gas particles have a lot of empty space between them, while solid particles are tightly packed.",
+            "Solids do not have any particles at all.",
+            "Gas particles are always cold and solid particles are always hot."
+          ]
+        },
+        {
+          "id": 3,
+          "question": "On a hot summer day, a puddle of water on the sidewalk disappears after a few hours. What is this process called?",
+          "type": "multiple-choice",
+          "correctAnswer": "C",
+          "explanation": "Evaporation is the process where liquid water absorbs heat energy and changes into an invisible gas called water vapor.",
+          "options": [
+            "Condensation",
+            "Melting",
+            "Evaporation",
+            "Freezing"
+          ]
+        },
+        {
+          "id": 4,
+          "question": "If you pour 100 mL of juice from a tall, thin glass into a wide, shallow bowl, what happens to the juice's properties?",
+          "type": "multiple-choice",
+          "correctAnswer": "D",
+          "explanation": "Liquids have a definite volume but take the shape of their container. The shape changes to fit the bowl, but the volume remains exactly 100 mL.",
+          "options": [
+            "Both its volume and its shape change.",
+            "Neither its volume nor its shape changes.",
+            "Its volume changes, but its shape stays the same.",
+            "Its shape changes, but its volume stays the same."
+          ]
+        },
+        {
+          "id": 5,
+          "question": "When you see water droplets forming on the outside of a cold cup of water, where did that water come from?",
+          "type": "multiple-choice",
+          "correctAnswer": "B",
+          "explanation": "This is condensation. Invisible water vapor in the surrounding warm air cools down when it touches the cold cup, turning back into liquid water droplets.",
+          "options": [
+            "Liquid water seeped through tiny, invisible holes in the cup.",
+            "Water vapor in the surrounding air cooled down and turned into liquid water on the cold surface.",
+            "The ice inside the cup evaporated and jumped over the rim.",
+            "The cup itself is melting from the outdoor heat."
+          ]
+        }
+      ],
+      "userAnswers": {},
+      "evaluation": null
+    },
+    {
+      "id": "1785616261691",
+      "itemType": "visualization",
+      "title": "Learning to Draw a Straight Line: y = -2x + 4",
+      "subject": "Interactive Plotter",
+      "savedAt": "8/1/2026 01:31 PM",
+      "vizPrompt": "Graph: y = -2x + 4",
+      "vizResponse": {
+        "title": "Learning to Draw a Straight Line: y = -2x + 4",
+        "type": "graph",
+        "steps": [
+          {
+            "label": "Meet the Number Machine!",
+            "explanation": "Hi there! Today we are playing with a math machine: y = -2x + 4. It takes any number we choose for 'x', multiplies it by -2, and then adds 4 to find its partner 'y'. The '+4' at the end is super special because it is our starting base camp on the tall vertical wall called the Y-axis!",
+            "visualElements": {
+              "mathHighlight": {
+                "expression": "y = -2x + 4",
+                "note": "The +4 is where we start on the vertical line!",
+                "highlight": "+ 4"
+              },
+              "shapes": [
+                {
+                  "type": "rect",
+                  "color": "#f0fdf4",
+                  "x": 0,
+                  "y": 0,
+                  "y1": 0,
+                  "y2": 0
+                },
+                {
+                  "type": "line",
+                  "color": "#94a3b8",
+                  "x1": 30,
+                  "y1": 100,
+                  "y2": 100
+                },
+                {
+                  "type": "line",
+                  "color": "#94a3b8",
+                  "x1": 150,
+                  "y1": 20,
+                  "y2": 180
+                },
+                {
+                  "type": "circle",
+                  "color": "#ef4444",
+                  "cx": 150,
+                  "cy": 60,
+                  "r": 6
+                }
+              ]
+            }
+          },
+          {
+            "label": "Going Down the Slide!",
+            "explanation": "See the -2 next to the x? That is our sliding speed! It tells us that every time we take 1 step to the right, we must slide DOWN exactly 2 floors. Let's make our first slide from our start point down to the next level!",
+            "visualElements": {
+              "mathHighlight": {
+                "expression": "y = -2x + 4",
+                "note": "The -2 tells us to go DOWN 2 floors for every 1 step to the right",
+                "highlight": "-2"
+              },
+              "shapes": [
+                {
+                  "type": "line",
+                  "color": "#94a3b8",
+                  "x1": 30,
+                  "y1": 100,
+                  "y2": 100
+                },
+                {
+                  "type": "line",
+                  "color": "#94a3b8",
+                  "x1": 150,
+                  "y1": 20,
+                  "y2": 180
+                },
+                {
+                  "type": "circle",
+                  "color": "#94a3b8",
+                  "cx": 150,
+                  "cy": 60,
+                  "r": 4
+                },
+                {
+                  "type": "circle",
+                  "color": "#f59e0b",
+                  "cx": 170,
+                  "cy": 80,
+                  "r": 6
+                },
+                {
+                  "type": "arrow",
+                  "color": "#ef4444",
+                  "x1": 150,
+                  "y1": 60,
+                  "y2": 80
+                }
+              ]
+            }
+          },
+          {
+            "label": "Crossing the Ground Floor!",
+            "explanation": "If we slide down another 2 floors, we land exactly on the flat ground floor (the X-axis)! Let's mark this spot at 2 steps to the right and 0 steps up. This is our second anchor point!",
+            "visualElements": {
+              "mathHighlight": {
+                "expression": "y = -2(2) + 4 = 0",
+                "note": "We reached 0 on the ground floor!",
+                "highlight": "0"
+              },
+              "shapes": [
+                {
+                  "type": "line",
+                  "color": "#94a3b8",
+                  "x1": 30,
+                  "y1": 100,
+                  "y2": 100
+                },
+                {
+                  "type": "line",
+                  "color": "#94a3b8",
+                  "x1": 150,
+                  "y1": 20,
+                  "y2": 180
+                },
+                {
+                  "type": "circle",
+                  "color": "#94a3b8",
+                  "cx": 150,
+                  "cy": 60,
+                  "r": 4
+                },
+                {
+                  "type": "circle",
+                  "color": "#94a3b8",
+                  "cx": 170,
+                  "cy": 80,
+                  "r": 4
+                },
+                {
+                  "type": "circle",
+                  "color": "#10b981",
+                  "cx": 190,
+                  "cy": 100,
+                  "r": 6
+                }
+              ]
+            }
+          },
+          {
+            "label": "Connecting the Dots!",
+            "explanation": "Now we lay a straight ruler across all of our colorful anchor points and draw a long line. Look at that perfect sliding slope! You have successfully graphed your very first linear equation!",
+            "visualElements": {
+              "mathHighlight": {
+                "expression": "y = -2x + 4",
+                "note": "Connect the points to draw your line!",
+                "highlight": "y = -2x + 4"
+              },
+              "shapes": [
+                {
+                  "type": "line",
+                  "color": "#94a3b8",
+                  "x1": 30,
+                  "y1": 100,
+                  "y2": 100
+                },
+                {
+                  "type": "line",
+                  "color": "#94a3b8",
+                  "x1": 150,
+                  "y1": 20,
+                  "y2": 180
+                },
+                {
+                  "type": "line",
+                  "color": "#3b82f6",
+                  "x1": 110,
+                  "y1": 20,
+                  "y2": 180
+                },
+                {
+                  "type": "circle",
+                  "color": "#3b82f6",
+                  "cx": 150,
+                  "cy": 60,
+                  "r": 5
+                },
+                {
+                  "type": "circle",
+                  "color": "#3b82f6",
+                  "cx": 190,
+                  "cy": 100,
+                  "r": 5
+                }
+              ]
+            }
+          }
+        ],
+        "graphConfig": {
+          "equation": "y = -2x + 4",
+          "points": [
+            {
+              "x": -3,
+              "y": 10
+            },
+            {
+              "x": -2,
+              "y": 8
+            },
+            {
+              "x": -1,
+              "y": 6
+            },
+            {
+              "x": 0,
+              "y": 4,
+              "label": "Start Here (Y-Intercept)"
+            },
+            {
+              "x": 1,
+              "y": 2
+            },
+            {
+              "x": 2,
+              "y": 0,
+              "label": "Ground (X-Intercept)"
+            },
+            {
+              "x": 3,
+              "y": -2
+            },
+            {
+              "x": 4,
+              "y": -4
+            },
+            {
+              "x": 5,
+              "y": -6
+            },
+            {
+              "x": 6,
+              "y": -8
+            }
+          ],
+          "xMax": 7,
+          "xMin": -5,
+          "yMax": 12,
+          "yMin": -10
+        }
+      }
+    },
+    {
+      "id": "1785616228323",
+      "itemType": "visualization",
+      "title": "Fun with Lines: Let's Graph y = -2x + 4!",
+      "subject": "Interactive Plotter",
+      "savedAt": "8/1/2026 01:30 PM",
+      "vizPrompt": "Graph: y = -2x + 4",
+      "vizResponse": {
+        "title": "Fun with Lines: Let's Graph y = -2x + 4!",
+        "type": "graph",
+        "steps": [
+          {
+            "label": "Finding the Starting Point",
+            "explanation": "Every line has a special starting point on the upright wall, which we call the Y-axis. If we put a 0 in place of x, our math rule gives us 4. This means we start our line at the point (0, 4) on our grid!",
+            "visualElements": {
+              "mathHighlight": {
+                "expression": "y = -2(0) + 4 = 4",
+                "note": "When x is 0, y is 4. This is our starting spot!",
+                "highlight": "4"
+              },
+              "shapes": [
+                {
+                  "type": "circle",
+                  "color": "#ef4444",
+                  "cx": 150,
+                  "cy": 60,
+                  "r": 8,
+                  "y": 60,
+                  "y1": 60,
+                  "y2": 60
+                },
+                {
+                  "type": "text",
+                  "color": "#ef4444",
+                  "x": 165,
+                  "y": 65,
+                  "y1": 65,
+                  "y2": 65
+                }
+              ]
+            }
+          },
+          {
+            "label": "The Downward Slide",
+            "explanation": "The number in front of x is -2. In line-land, this is like a playground slide! It tells us that for every 1 step we walk to the right, we must slide DOWN by 2 steps. Let's slide from (0, 4) to our next landing spot at (1, 2)!",
+            "visualElements": {
+              "mathHighlight": {
+                "expression": "y = -2(1) + 4 = 2",
+                "note": "Move 1 step right and slide 2 steps down to reach (1, 2)!",
+                "highlight": "-2"
+              },
+              "shapes": [
+                {
+                  "type": "circle",
+                  "color": "#ef4444",
+                  "cx": 150,
+                  "cy": 60,
+                  "r": 5,
+                  "y": 60,
+                  "y1": 60,
+                  "y2": 60
+                },
+                {
+                  "type": "arrow",
+                  "color": "#f59e0b",
+                  "x1": 150,
+                  "y1": 60,
+                  "y2": 80
+                },
+                {
+                  "type": "circle",
+                  "color": "#10b981",
+                  "cx": 165,
+                  "cy": 80,
+                  "r": 8,
+                  "y": 80,
+                  "y1": 80,
+                  "y2": 80
+                }
+              ]
+            }
+          },
+          {
+            "label": "Drawing the Full Path",
+            "explanation": "Now we connect our dots with a long, straight line! By drawing a straight path through both of our points, we show all the places our math rule can go. Look at how beautifully it slides down!",
+            "visualElements": {
+              "mathHighlight": {
+                "expression": "y = -2x + 4",
+                "note": "A straight line sliding down from left to right!",
+                "highlight": "-2x + 4"
+              },
+              "shapes": [
+                {
+                  "type": "line",
+                  "color": "#3b82f6",
+                  "x1": 105,
+                  "y1": 0,
+                  "y2": 160
+                },
+                {
+                  "type": "circle",
+                  "color": "#ef4444",
+                  "cx": 150,
+                  "cy": 60,
+                  "r": 6,
+                  "y": 60,
+                  "y1": 60,
+                  "y2": 60
+                },
+                {
+                  "type": "circle",
+                  "color": "#10b981",
+                  "cx": 165,
+                  "cy": 80,
+                  "r": 6,
+                  "y": 80,
+                  "y1": 80,
+                  "y2": 80
+                }
+              ]
+            }
+          }
+        ],
+        "graphConfig": {
+          "equation": "y = -2x + 4",
+          "points": [
+            {
+              "x": -3,
+              "y": 10
+            },
+            {
+              "x": -2,
+              "y": 8
+            },
+            {
+              "x": -1,
+              "y": 6
+            },
+            {
+              "x": 0,
+              "y": 4
+            },
+            {
+              "x": 1,
+              "y": 2
+            },
+            {
+              "x": 2,
+              "y": 0
+            },
+            {
+              "x": 3,
+              "y": -2
+            },
+            {
+              "x": 4,
+              "y": -4
+            },
+            {
+              "x": 5,
+              "y": -6
+            },
+            {
+              "x": 6,
+              "y": -8
+            }
+          ],
+          "xMax": 8,
+          "xMin": -4,
+          "yMax": 12,
+          "yMin": -10
+        }
+      }
+    },
+    {
+      "id": "1785615426355",
+      "itemType": "quiz",
+      "title": "Google AI Studio: API Key Management",
+      "subject": "Cloud Computing & API Management",
+      "savedAt": "8/1/2026 01:17 PM",
+      "difficulty": "medium",
+      "quizType": "multiple-choice",
+      "questions": [
+        {
+          "id": 1,
+          "question": "Based on the provided interface, which of the following is true regarding the project association of the listed Generative Language API keys?",
+          "type": "multiple-choice",
+          "correctAnswer": "B",
+          "explanation": "Looking closely at the 'Project' column, every single API key listed is associated with the exact same project ID: 'gen-lang-client-0584778092' under the 'Default Gemini Project'.",
+          "options": [
+            "Each API key belongs to a completely different, custom-named project.",
+            "All listed API keys are associated with the same default project ID 'gen-lang-client-0584778092'.",
+            "The API keys are automatically shared across multiple distinct billing accounts.",
+            "Only the oldest key is associated with the default Gemini project."
+          ]
+        },
+        {
+          "id": 2,
+          "question": "What is the current billing status and tier for all the API keys shown in the console?",
+          "type": "multiple-choice",
+          "correctAnswer": "C",
+          "explanation": "Under the 'Billing Tier' column, all keys display 'Free tier' along with a prompt to 'Set up billing', indicating that billing has not yet been configured for this project.",
+          "options": [
+            "They are on a paid premium tier with automatic billing configured.",
+            "They are on an enterprise tier with custom usage limits.",
+            "They are on the 'Free tier', and billing has not yet been set up for them.",
+            "They are on a restricted tier that has been temporarily suspended."
+          ]
+        },
+        {
+          "id": 3,
+          "question": "Based on the 'Created' column, what is the timespan over which these API keys were generated, and which key is the oldest?",
+          "type": "multiple-choice",
+          "correctAnswer": "B",
+          "explanation": "The creation dates range from June 5, 2026, to July 9, 2026. The key created on June 5, 2026, is '..._LBA', making it the oldest key in the list.",
+          "options": [
+            "They were all created on the same day in July, with key '...0ubQ' being the oldest.",
+            "They span from June 5, 2026, to July 9, 2026, with key '..._LBA' being the oldest.",
+            "They span from July 6, 2026, to July 9, 2026, with key '...wU7w' being the oldest.",
+            "They span from June 5, 2026, to July 9, 2026, with key '...0ubQ' being the oldest."
+          ]
+        }
+      ],
+      "userAnswers": {},
+      "evaluation": null
+    }
+  ]
+}
