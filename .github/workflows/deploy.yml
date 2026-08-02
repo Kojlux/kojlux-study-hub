@@ -34,7 +34,31 @@ jobs:
         run: npm ci
 
       - name: Build project
-        run: npm run build
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_MEASUREMENT_ID: ${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}
+          VITE_VISUALIZER_KEY: ${{ secrets.VITE_VISUALIZER_KEY }}
+          VITE_QUIZ_GENERATOR_KEY: ${{ secrets.VITE_QUIZ_GENERATOR_KEY }}
+          VITE_CHAT_KEY: ${{ secrets.VITE_CHAT_KEY }}
+          VITE_SUMMARIZER_KEY: ${{ secrets.VITE_SUMMARIZER_KEY }}
+        run: |
+          echo "VITE_FIREBASE_API_KEY=${{ env.VITE_FIREBASE_API_KEY }}" >> .env
+          echo "VITE_FIREBASE_AUTH_DOMAIN=${{ env.VITE_FIREBASE_AUTH_DOMAIN }}" >> .env
+          echo "VITE_FIREBASE_PROJECT_ID=${{ env.VITE_FIREBASE_PROJECT_ID }}" >> .env
+          echo "VITE_FIREBASE_STORAGE_BUCKET=${{ env.VITE_FIREBASE_STORAGE_BUCKET }}" >> .env
+          echo "VITE_FIREBASE_MESSAGING_SENDER_ID=${{ env.VITE_FIREBASE_MESSAGING_SENDER_ID }}" >> .env
+          echo "VITE_FIREBASE_APP_ID=${{ env.VITE_FIREBASE_APP_ID }}" >> .env
+          echo "VITE_FIREBASE_MEASUREMENT_ID=${{ env.VITE_FIREBASE_MEASUREMENT_ID }}" >> .env
+          echo "VITE_VISUALIZER_KEY=${{ env.VITE_VISUALIZER_KEY }}" >> .env
+          echo "VITE_QUIZ_GENERATOR_KEY=${{ env.VITE_QUIZ_GENERATOR_KEY }}" >> .env
+          echo "VITE_CHAT_KEY=${{ env.VITE_CHAT_KEY }}" >> .env
+          echo "VITE_SUMMARIZER_KEY=${{ env.VITE_SUMMARIZER_KEY }}" >> .env
+          npm run build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
