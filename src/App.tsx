@@ -2285,10 +2285,7 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Active Quiz Utility header */}
-                {quizData && (
-                  
-                )}
+               
 
                 {/* APPLICATION SCREENS INTERACTIVE ROUTER */}
 
