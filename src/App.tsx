@@ -1232,7 +1232,7 @@ ${textInput}` });
 
       // 3. Direct browser-to-Gemini call
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.0-flash',
         contents: [{ role: 'user', parts: quizParts }],
         config: {
           responseMimeType: 'application/json'
@@ -1305,7 +1305,7 @@ Student's submitted answers, keyed by question id:
 ${JSON.stringify(userAnswers)}`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.0-flash',
         contents: [{ role: 'user', parts: [{ text: evalPrompt }] }],
         config: {
           responseMimeType: 'application/json'
@@ -1963,7 +1963,7 @@ ${summaryTextInput}` });
       }
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.0-flash',
         contents: [{ role: 'user', parts: summaryParts }],
         config: {
           responseMimeType: 'application/json'
