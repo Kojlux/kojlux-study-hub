@@ -1,3 +1,5 @@
+import { GoogleGenAI } from '@google/genai';
+
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth, uploadBase64File, createVideoPost } from "./firebase"; // Makes sure this matches the path to your firebase.ts file
 
@@ -1163,18 +1165,13 @@ export default function App() {
   };
 
   // Fetch / Generate quiz from Gemini API proxy
-  const handleGenerateQuiz = async () => {
-    if (!image && !textInput.trim()) {
-      setErrorMsg("Please upload an image snapshot, snap with camera, or paste notes text first!");
-      return;
-    }
-
+   const handleGenerateQuiz = async () => {
     setLoading(true);
     setErrorMsg(null);
     setEvaluation(null);
 
     const messages = [
-      "Analyzing note structure with Gemini computer vision...",
+      "Analyzing note structure with Gemini computer...",
       "Extracting study diagrams & central concepts...",
       "Structuring requested question density...",
       "Translating formulas and key terms...",
@@ -1184,62 +1181,85 @@ export default function App() {
 
     let currentMsgIndex = 0;
     setLoadingMessage(messages[0]);
-    
+
     const msgInterval = setInterval(() => {
       currentMsgIndex = (currentMsgIndex + 1) % messages.length;
       setLoadingMessage(messages[currentMsgIndex]);
     }, 2000);
 
     try {
-      const res = await fetch('api/generate-quiz', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          image,
-          text: textInput,
-          count: questionCount,
-          type: quizType,
-          difficulty: difficulty
-        }),
+      // 1. Initialize the Google Gen AI client using your Vite key
+      const ai = new GoogleGenAI({ 
+        apiKey: import.meta.env.VITE_QUIZ_GENERATOR_KEY 
       });
 
-      const data = await parseJsonOrText(res);
-      if (!res.ok) {
-        throw new Error(data.error || "The server could not produce the quiz questions.");
+      // 2. Build the multimodal prompt from the user's REAL uploaded note data
+      const quizPrompt = `You are Kojlux's AI study assistant. Based on the study notes provided (image and/or text below), generate a ${quizType} quiz with exactly ${questionCount} questions at ${difficulty} difficulty.
+Return ONLY valid JSON (no markdown fences, no commentary) matching exactly this structure:
+{
+  "title": string,
+  "subject": string,
+  "questions": [
+    {
+      "id": number,
+      "type": "multiple-choice" | "short-answer",
+      "question": string,
+      "options": string[] (exactly 4 options, only when type is "multiple-choice"),
+      "correctAnswer": string ("A" | "B" | "C" | "D", only when type is "multiple-choice"),
+      "explanation": string (brief explanation of the correct answer, only when type is "multiple-choice")
+    }
+  ]
+}`;
+
+      const quizParts: any[] = [{ text: quizPrompt }];
+
+      if (textInput && textInput.trim()) {
+        quizParts.push({ text: `Study notes text:
+${textInput}` });
       }
 
-      setQuizData(data);
-      
-      // Auto-save generated quiz immediately to Kojlux Study History
-      const newQuizRecord: HistoryItem = {
-        id: Date.now().toString(),
-        itemType: 'quiz',
-        title: data.title,
-        subject: data.subject,
-        savedAt: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        difficulty: difficulty,
-        quizType: quizType,
-        questions: data.questions,
-        userAnswers: {},
-        evaluation: null
-      };
+      if (image) {
+        const imageMatch = image.match(/^data:(.+);base64,(.+)$/);
+        if (imageMatch) {
+          quizParts.push({
+            inlineData: {
+              mimeType: imageMatch[1],
+              data: imageMatch[2]
+            }
+          });
+        }
+      }
 
-      setHistoryItems(prev => {
-        const updated = [newQuizRecord, ...prev];
-        syncHistoryToCloud(updated, profileEmail);
-        return updated;
+      // 3. Direct browser-to-Gemini call
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: quizParts }],
+        config: {
+          responseMimeType: 'application/json'
+        }
       });
 
-    } catch (err: any) {
-      console.error(err);
-      setErrorMsg(err.message || "Failed to generate your quiz schema. Try another photo or write simpler text notes.");
+         // 4. Extract the text safely (handles string or method types depending on SDK version)
+    const resultText = typeof response.text === 'function' ? response.text() : response.text;
+    
+    if (!resultText) {
+      throw new Error("Gemini returned an empty response");
+    }
+
+    // 5. Parse the verified text structure into your app state
+    const data = JSON.parse(resultText);
+    setQuizData(data);
+
+
+    } catch (error) {
+      console.error("Gemini direct quiz generation error:", error);
+      setErrorMsg("Something went wrong while generating the quiz.");
     } finally {
-      clearInterval(msgInterval);
       setLoading(false);
+      clearInterval(msgInterval);
     }
   };
+
 
   // Score answers via Gemini evaluation proxy
   const handleEvaluateQuiz = async () => {
@@ -1255,21 +1275,49 @@ export default function App() {
     setErrorMsg(null);
 
     try {
-      const res = await fetch('api/evaluate-quiz', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          questions: quizData.questions,
-          userAnswers
-        })
+      const ai = new GoogleGenAI({ 
+        apiKey: import.meta.env.VITE_QUIZ_GENERATOR_KEY 
       });
 
-      const data = await parseJsonOrText(res);
-      if (!res.ok) {
-        throw new Error(data.error || " grading calculation service failed.");
+      const evalPrompt = `You are Kojlux's AI grading tutor. Grade the student's submitted answers against the quiz questions below.
+Return ONLY valid JSON (no markdown fences, no commentary) matching exactly this structure:
+{
+  "questionEvaluations": [
+    {
+      "id": number,
+      "isCorrect": boolean,
+      "score": number (0-100; use 100 or 0 for multiple-choice, partial credit allowed for short-answer),
+      "feedback": string (brief feedback on this specific answer),
+      "modelAnswer": string (the ideal/correct answer, especially important for short-answer questions)
+    }
+  ],
+  "summary": {
+    "overallPercentage": number (0-100 overall score across all questions),
+    "tutorAdvice": string (encouraging, constructive overall feedback),
+    "focusTopics": string[] (topics/concepts the student should review)
+  }
+}
+
+Quiz questions (with correct answers where applicable):
+${JSON.stringify(quizData.questions)}
+
+Student's submitted answers, keyed by question id:
+${JSON.stringify(userAnswers)}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [{ text: evalPrompt }] }],
+        config: {
+          responseMimeType: 'application/json'
+        }
+      });
+
+      const resultText = typeof response.text === 'function' ? response.text() : response.text;
+      if (!resultText) {
+        throw new Error("Gemini returned an empty grading response");
       }
+
+      const data = JSON.parse(resultText);
 
       setEvaluation(data);
       
@@ -1880,22 +1928,54 @@ export default function App() {
     }, 2000);
 
     try {
-      const res = await fetch('api/generate-summary', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          image: summaryImage,
-          text: summaryTextInput,
-          detailLevel: detailLevel
-        }),
+      const ai = new GoogleGenAI({ 
+        apiKey: import.meta.env.VITE_QUIZ_GENERATOR_KEY 
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "The server summary service was unable to process the notes.");
+      const summaryPrompt = `You are Kojlux's AI study assistant. Create a ${detailLevel} study summary sheet from the notes provided (image and/or text below).
+Return ONLY valid JSON (no markdown fences, no commentary) matching exactly this structure:
+{
+  "title": string,
+  "subject": string,
+  "mainIdea": string (a one to two sentence central thesis),
+  "keyTakeaways": string[] (bullet point list of key takeaways),
+  "glossary": [{ "term": string, "definition": string }] (key terms and their definitions),
+  "comprehensiveSummary": string (a longer form written summary, can be several paragraphs)
+}`;
+
+      const summaryParts: any[] = [{ text: summaryPrompt }];
+
+      if (summaryTextInput && summaryTextInput.trim()) {
+        summaryParts.push({ text: `Study notes text:
+${summaryTextInput}` });
       }
+
+      if (summaryImage) {
+        const summaryImageMatch = summaryImage.match(/^data:(.+);base64,(.+)$/);
+        if (summaryImageMatch) {
+          summaryParts.push({
+            inlineData: {
+              mimeType: summaryImageMatch[1],
+              data: summaryImageMatch[2]
+            }
+          });
+        }
+      }
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: summaryParts }],
+        config: {
+          responseMimeType: 'application/json'
+        }
+      });
+
+      const resultText = typeof response.text === 'function' ? response.text() : response.text;
+      if (!resultText) {
+        throw new Error("Gemini returned an empty summary response");
+      }
+
+      const data = JSON.parse(resultText);
 
       setSummaryData(data);
 
