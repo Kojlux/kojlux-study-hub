@@ -1,6 +1,431 @@
 {
   "hmnp@fresnou.org": [
     {
+      "id": "1785719980806",
+      "itemType": "visualization",
+      "title": "How Plants 'Cook' Their Own Food: Photosynthesis!",
+      "subject": "Interactive Animation",
+      "savedAt": "8/2/2026 06:19 PM",
+      "vizPrompt": "Explain this concept in simpler, student-friendly language. Follow-up: Do plants realy coock though",
+      "vizResponse": {
+        "title": "How Plants 'Cook' Their Own Food: Photosynthesis!",
+        "type": "animation",
+        "steps": [
+          {
+            "label": "Gathering the Ingredients",
+            "explanation": "Did you know plants are tiny chefs? Instead of going to the grocery store, they gather three raw ingredients right where they are: warm Sunlight from the sky, Water from the damp soil beneath their roots, and Carbon Dioxide gas from the air we breathe out!",
+            "visualElements": {
+              "mathHighlight": {
+                "expression": "Water + Carbon Dioxide (Gas) + Sunlight",
+                "note": "Gathering the raw ingredients for the plant kitchen",
+                "highlight": "Water + Carbon Dioxide"
+              },
+              "shapes": [
+                {
+                  "type": "circle",
+                  "color": "#10b981",
+                  "cx": 150,
+                  "cy": 120,
+                  "r": 40,
+                  "width": 80,
+                  "x": 110,
+                  "y": 80,
+                  "y1": 0,
+                  "y2": 0
+                },
+                {
+                  "type": "circle",
+                  "color": "#3b82f6",
+                  "cx": 70,
+                  "cy": 160,
+                  "r": 12,
+                  "text": "Water",
+                  "x": 60,
+                  "y": 155
+                },
+                {
+                  "type": "circle",
+                  "color": "#f59e0b",
+                  "cx": 250,
+                  "cy": 40,
+                  "r": 18,
+                  "text": "Sunlight"
+                },
+                {
+                  "type": "circle",
+                  "color": "#9ca3af",
+                  "cx": 60,
+                  "cy": 60,
+                  "r": 15,
+                  "text": "CO2 Air"
+                },
+                {
+                  "type": "text",
+                  "color": "#1f2937",
+                  "x": 125,
+                  "y": 125,
+                  "y1": 0,
+                  "y2": 0
+                }
+              ]
+            }
+          },
+          {
+            "label": "Mixing in the Leaf Kitchen",
+            "explanation": "Now the magic happens! Inside the green leaf, there are tiny kitchens called chloroplasts. They act like little solar-powered ovens, using the Sunlight's energy to break down the water and air, mixing them all up together to cook something delicious!",
+            "visualElements": {
+              "mathHighlight": {
+                "expression": "Ingredients + Sunlight (Energy)",
+                "note": "Sunlight acts like the oven's heat, mixing the recipe together",
+                "highlight": "Sunlight (Energy)"
+              },
+              "shapes": [
+                {
+                  "type": "circle",
+                  "color": "#059669",
+                  "cx": 150,
+                  "cy": 120,
+                  "r": 40,
+                  "text": "Active Leaf Kitchen"
+                },
+                {
+                  "type": "arrow",
+                  "color": "#f59e0b",
+                  "x1": 230,
+                  "y1": 55,
+                  "y2": 100
+                },
+                {
+                  "type": "circle",
+                  "color": "#3b82f6",
+                  "cx": 135,
+                  "cy": 120,
+                  "r": 8,
+                  "text": "Water mixing"
+                },
+                {
+                  "type": "circle",
+                  "color": "#9ca3af",
+                  "cx": 165,
+                  "cy": 120,
+                  "r": 8,
+                  "text": "CO2 mixing"
+                }
+              ]
+            }
+          },
+          {
+            "label": "Serving Sweet Food & Fresh Air",
+            "explanation": "Ding! The timer went off and the food is ready! The plant has successfully 'cooked' glucose, a sweet sugary juice that gives it strength to grow. As a wonderful gift, it also creates fresh Oxygen gas, which it pumps out into the world for humans and animals to breathe!",
+            "visualElements": {
+              "mathHighlight": {
+                "expression": "Sugar (Glucose) + Oxygen (Gas)",
+                "note": "The delicious food is eaten, and oxygen is released for us!",
+                "highlight": "Sugar (Glucose) + Oxygen"
+              },
+              "shapes": [
+                {
+                  "type": "circle",
+                  "color": "#10b981",
+                  "cx": 150,
+                  "cy": 120,
+                  "r": 40,
+                  "text": "Full Leaf"
+                },
+                {
+                  "type": "circle",
+                  "color": "#fbbf24",
+                  "cx": 150,
+                  "cy": 120,
+                  "r": 15,
+                  "text": "Sugar!"
+                },
+                {
+                  "type": "circle",
+                  "color": "#60a5fa",
+                  "cx": 230,
+                  "cy": 110,
+                  "r": 12,
+                  "text": "Oxygen Out"
+                },
+                {
+                  "type": "arrow",
+                  "color": "#34d399",
+                  "x1": 190,
+                  "y1": 120,
+                  "y2": 115
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "1785719919298",
+      "itemType": "visualization",
+      "title": "How Plants Make Food: The Magic of Photosynthesis",
+      "subject": "Interactive Animation",
+      "savedAt": "8/2/2026 06:18 PM",
+      "vizPrompt": "How does photosynthesis happen",
+      "vizResponse": {
+        "title": "How Plants Make Food: The Magic of Photosynthesis",
+        "type": "animation",
+        "steps": [
+          {
+            "label": "Step 1: Catching Sunlight and Water",
+            "explanation": "Did you know plants cook their own food? To start, a plant acts like a solar panel! The green leaves capture warm energy from the Sun, while the plant's roots drink up refreshing water from the soil deep below.",
+            "visualElements": {
+              "mathHighlight": {
+                "expression": "Sunlight + Water",
+                "note": "Plants gather these two main ingredients first!",
+                "highlight": "Sunlight + Water"
+              },
+              "shapes": [
+                {
+                  "type": "circle",
+                  "color": "#f59e0b",
+                  "cx": 40,
+                  "cy": 40,
+                  "r": 20,
+                  "width": 0,
+                  "x": 0,
+                  "y": 0,
+                  "y1": 0,
+                  "y2": 0
+                },
+                {
+                  "type": "line",
+                  "color": "#f59e0b",
+                  "x1": 60,
+                  "y1": 60,
+                  "y2": 100
+                },
+                {
+                  "type": "circle",
+                  "color": "#10b981",
+                  "cx": 180,
+                  "cy": 110,
+                  "r": 45,
+                  "width": 0,
+                  "x": 0,
+                  "y": 0,
+                  "y1": 0,
+                  "y2": 0
+                },
+                {
+                  "type": "circle",
+                  "color": "#3b82f6",
+                  "cx": 130,
+                  "cy": 170,
+                  "r": 8,
+                  "width": 0,
+                  "x": 0,
+                  "y": 0,
+                  "y1": 0,
+                  "y2": 0
+                },
+                {
+                  "type": "arrow",
+                  "color": "#3b82f6",
+                  "x1": 135,
+                  "y1": 160,
+                  "y2": 130
+                }
+              ]
+            }
+          },
+          {
+            "label": "Step 2: Breathing Carbon Dioxide",
+            "explanation": "Next, the plant 'breathes' in a gas from the air called Carbon Dioxide (CO2) through tiny, invisible mouth-like openings on its leaves. It works just like we breathe air in, but plants love CO2!",
+            "visualElements": {
+              "mathHighlight": {
+                "expression": "Sunlight + Water + Carbon Dioxide",
+                "note": "The plant now has all three recipe ingredients ready.",
+                "highlight": "Carbon Dioxide"
+              },
+              "shapes": [
+                {
+                  "type": "circle",
+                  "color": "#f59e0b",
+                  "cx": 40,
+                  "cy": 40,
+                  "r": 20,
+                  "width": 0,
+                  "x": 0,
+                  "y": 0,
+                  "y1": 0,
+                  "y2": 0
+                },
+                {
+                  "type": "circle",
+                  "color": "#10b981",
+                  "cx": 180,
+                  "cy": 110,
+                  "r": 45,
+                  "width": 0,
+                  "x": 0,
+                  "y": 0,
+                  "y1": 0,
+                  "y2": 0
+                },
+                {
+                  "type": "circle",
+                  "color": "#9ca3af",
+                  "cx": 100,
+                  "cy": 100,
+                  "r": 10,
+                  "width": 0,
+                  "x": 0,
+                  "y": 0,
+                  "y1": 0,
+                  "y2": 0
+                },
+                {
+                  "type": "arrow",
+                  "color": "#4b5563",
+                  "x1": 115,
+                  "y1": 100,
+                  "y2": 105
+                }
+              ]
+            }
+          },
+          {
+            "label": "Step 3: Cooking Sweet Sugar Food",
+            "explanation": "Inside the leaf cells, tiny green kitchens called chloroplasts use the captured sunlight to stir the water and Carbon Dioxide together. This magical chemical reaction bakes delicious plant food called glucose (a type of sugar) that helps the plant grow big and strong!",
+            "visualElements": {
+              "mathHighlight": {
+                "expression": "Ingredients -> Glucose (Sugar Food)",
+                "note": "The plant turns light, water, and gas into solid energy!",
+                "highlight": "Glucose (Sugar Food)"
+              },
+              "shapes": [
+                {
+                  "type": "circle",
+                  "color": "#f59e0b",
+                  "cx": 40,
+                  "cy": 40,
+                  "r": 20,
+                  "width": 0,
+                  "x": 0,
+                  "y": 0,
+                  "y1": 0,
+                  "y2": 0
+                },
+                {
+                  "type": "circle",
+                  "color": "#10b981",
+                  "cx": 180,
+                  "cy": 110,
+                  "r": 45,
+                  "width": 0,
+                  "x": 0,
+                  "y": 0,
+                  "y1": 0,
+                  "y2": 0
+                },
+                {
+                  "type": "circle",
+                  "color": "#f59e0b",
+                  "cx": 170,
+                  "cy": 100,
+                  "r": 6,
+                  "width": 0,
+                  "x": 0,
+                  "y": 0,
+                  "y1": 0,
+                  "y2": 0
+                },
+                {
+                  "type": "circle",
+                  "color": "#f59e0b",
+                  "cx": 190,
+                  "cy": 120,
+                  "r": 6,
+                  "width": 0,
+                  "x": 0,
+                  "y": 0,
+                  "y1": 0,
+                  "y2": 0
+                },
+                {
+                  "type": "text",
+                  "color": "#047857",
+                  "cx": 0,
+                  "cy": 0,
+                  "height": 0,
+                  "r": 0,
+                  "text": "Making food!",
+                  "width": 0,
+                  "x": 150,
+                  "y": 155,
+                  "y1": 0,
+                  "y2": 0
+                }
+              ]
+            }
+          },
+          {
+            "label": "Step 4: Releasing Fresh Oxygen",
+            "explanation": "While making food, the plant creates a super helpful leftover product: Oxygen! The leaf releases this fresh oxygen back out into the air, which is exactly what you and I need to breathe every day. Thank you, plants!",
+            "visualElements": {
+              "mathHighlight": {
+                "expression": "Glucose + Oxygen",
+                "note": "Oxygen is released as a happy gift for us to breathe!",
+                "highlight": "Oxygen"
+              },
+              "shapes": [
+                {
+                  "type": "circle",
+                  "color": "#10b981",
+                  "cx": 180,
+                  "cy": 110,
+                  "r": 45,
+                  "width": 0,
+                  "x": 0,
+                  "y": 0,
+                  "y1": 0,
+                  "y2": 0
+                },
+                {
+                  "type": "circle",
+                  "color": "#60a5fa",
+                  "cx": 240,
+                  "cy": 90,
+                  "r": 8,
+                  "width": 0,
+                  "x": 0,
+                  "y": 0,
+                  "y1": 0,
+                  "y2": 0
+                },
+                {
+                  "type": "circle",
+                  "color": "#60a5fa",
+                  "cx": 260,
+                  "cy": 110,
+                  "r": 8,
+                  "width": 0,
+                  "x": 0,
+                  "y": 0,
+                  "y1": 0,
+                  "y2": 0
+                },
+                {
+                  "type": "arrow",
+                  "color": "#3b82f6",
+                  "x1": 210,
+                  "y1": 110,
+                  "y2": 100
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
       "id": "1785647131369",
       "itemType": "quiz",
       "title": "TypeScript Singleton Client Initialization",

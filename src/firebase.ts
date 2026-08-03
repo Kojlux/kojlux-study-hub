@@ -24,7 +24,7 @@ import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { ref, uploadString, getDownloadURL } from "firebase/storage";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 // This securely pulls your secret keys from the hidden .env file above
 const firebaseConfig = {
@@ -54,9 +54,16 @@ export async function uploadBase64File(dataUrl: string, destinationPath: string)
   return url;
 }
 
-// Create a video/document entry in Firestore 'videos' collection and return the new doc id
-export async function createVideoPost(metadata: any) {
+// Create a video/document entry in Firestore 'videos' collection and return the new doc id.
+// `gradeLevel` is required so the feed can filter videos by grade level, and `createdAt`
+// is always stamped server-side via serverTimestamp() so ordering is reliable and can't
+// be spoofed by a client's local clock.
+export async function createVideoPost(metadata: any, gradeLevel: string) {
   const postsCol = collection(db, 'videos');
-  const docRef = await addDoc(postsCol, metadata);
+  const docRef = await addDoc(postsCol, {
+    ...metadata,
+    gradeLevel,
+    createdAt: serverTimestamp()
+  });
   return docRef.id;
 }
