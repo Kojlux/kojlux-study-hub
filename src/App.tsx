@@ -1,7 +1,8 @@
 import { GoogleGenAI } from '@google/genai';
 
-import { onAuthStateChanged, type User } from "firebase/auth";
-import { auth, uploadBase64File, createVideoPost } from "./firebase"; // Makes sure this matches the path to your firebase.ts file
+import { onAuthStateChanged, type User, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { doc, setDoc, getDoc, updateDoc, deleteDoc, increment, collection, getDocs, query, where, orderBy, limit } from "firebase/firestore";
+import { auth, db, uploadBase64File, createVideoPost } from "./firebase"; // Makes sure this matches the path to your firebase.ts file
 
 import React, { useState, useRef, useEffect } from 'react';
 import { 
@@ -21,6 +22,30 @@ import {
 import VisualizerScreen from './components/VisualizerScreen';
 
 import Auth from './components/Auth';
+
+// Daily cap on AI tool calls (Quiz, Quiz grading, Summarizer) per signed-in user
+const AI_DAILY_LIMIT = 4;
+
+// Renders a video's createdAt field for display, supporting Firestore Timestamps
+// (current format, via serverTimestamp()), plain JS Dates (optimistic local UI),
+// and legacy locale-string dates from videos posted before this format changed.
+const formatVideoDate = (createdAt: any): string => {
+  if (!createdAt) return 'Just Now';
+  try {
+    if (typeof createdAt === 'object' && typeof createdAt.toDate === 'function') {
+      return createdAt.toDate().toLocaleDateString();
+    }
+    if (createdAt instanceof Date) {
+      return createdAt.toLocaleDateString();
+    }
+    if (typeof createdAt === 'string') {
+      return createdAt.split(' ')[0];
+    }
+    return 'Just Now';
+  } catch {
+    return 'Just Now';
+  }
+};
 
 const formatDisplayUsername = (video: any, currentEmail?: string, currentUsername?: string) => {
   if (!video) return 'Mentor';
@@ -65,10 +90,8 @@ function ReelPlayer({ video, isActive, onOpenSummary, onOpenLink, onDelete, prof
     let accumulatedTime = 0;
     const interval = setInterval(() => {
       accumulatedTime += 5;
-      fetch('api/videos/engagement', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoId: video.id, watchTimeSeconds: 5 })
+      updateDoc(doc(db, 'videos', video.id), {
+        totalWatchSeconds: increment(5)
       }).catch(err => console.error("Failed to report watch time", err));
     }, 5000);
 
@@ -80,10 +103,8 @@ function ReelPlayer({ video, isActive, onOpenSummary, onOpenLink, onDelete, prof
       const sessionElapsedSec = Math.floor(sessionElapsedMs / 1000);
       const remainingSec = sessionElapsedSec - accumulatedTime;
       if (remainingSec >= 1) {
-        fetch('api/videos/engagement', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ videoId: video.id, watchTimeSeconds: remainingSec })
+        updateDoc(doc(db, 'videos', video.id), {
+          totalWatchSeconds: increment(remainingSec)
         }).catch(err => console.error("Failed to report watch time", err));
       }
     };
@@ -425,7 +446,7 @@ function ReelPlayer({ video, isActive, onOpenSummary, onOpenLink, onDelete, prof
         )}
 
         <span className="text-[9px] text-slate-400 block tracking-wider uppercase font-extrabold mt-1">
-          {video.createdAt ? video.createdAt.split(' ')[0] : 'Just Now'}
+          {formatVideoDate(video.createdAt)}
         </span>
 
         {/* Interactive seeker track line for direct file videos */}
@@ -553,16 +574,17 @@ export default function App() {
     setGradeLevel(newLevel);
     localStorage.setItem('kojlux_grade_level', newLevel);
     
-    // If logged in, sync with server profile database
-    if (isLoggedIn && profileEmail) {
+    // If logged in, sync with Firestore profile document
+    if (isLoggedIn && profileEmail && auth.currentUser) {
       try {
-        await fetch('api/auth/profile/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: profileEmail, gradeLevel: newLevel })
-        });
+        await setDoc(
+          doc(db, 'users', auth.currentUser.uid),
+          { email: profileEmail, gradeLevel: newLevel },
+          { merge: true }
+        );
       } catch (err) {
         console.error('Failed to sync profile grade level:', err);
+        setErrorMsg("Something went wrong.");
       }
     }
   };
@@ -602,6 +624,47 @@ export default function App() {
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [saveToast, setSaveToast] = useState<string | null>(null);
+
+  // Enforces a per-user daily cap of AI tool calls (Quiz generation, Quiz grading,
+  // Summarizer) by reading/writing a counter on the user's Firestore profile doc.
+  // Returns true if this call is allowed to proceed (and reserves the slot by
+  // incrementing the counter), false if the user is out of prompts for today.
+  //
+  // NOTE: this is a client-enforced soft cap for UX purposes only. Because this is a
+  // statically-hosted app, a technically inclined user could bypass it by writing to
+  // their own Firestore document directly. Real enforcement requires Firestore
+  // Security Rules (or a server-side proxy) that independently validate this counter.
+  const canUseAiToday = async (): Promise<boolean> => {
+    if (!auth.currentUser) {
+      setErrorMsg("Something went wrong.");
+      return false;
+    }
+    const todayStr = new Date().toISOString().split('T')[0];
+    const userRef = doc(db, 'users', auth.currentUser.uid);
+    try {
+      const snap = await getDoc(userRef);
+      const data = snap.exists() ? snap.data() : {};
+      const lastDate = data?.lastAiDate;
+      const currentCount = typeof data?.dailyAiCount === 'number' ? data.dailyAiCount : 0;
+
+      if (lastDate === todayStr && currentCount >= AI_DAILY_LIMIT) {
+        setErrorMsg("Something went wrong.");
+        return false;
+      }
+
+      const nextCount = lastDate === todayStr ? currentCount + 1 : 1;
+      await setDoc(
+        userRef,
+        { lastAiDate: todayStr, dailyAiCount: nextCount },
+        { merge: true }
+      );
+      return true;
+    } catch (err) {
+      console.error("Failed to verify daily AI usage limit:", err);
+      setErrorMsg("Something went wrong.");
+      return false;
+    }
+  };
 
   const parseJsonOrText = async (res: Response) => {
     const contentType = res.headers.get('content-type') || '';
@@ -749,20 +812,17 @@ export default function App() {
   }, [selectedAudioTrack]);
 
   const fetchSavedVideoIds = async () => {
-    if (!profileEmail) return;
+    if (!profileEmail || !auth.currentUser) return;
     try {
-      const res = await fetch(`api/videos/saved?email=${encodeURIComponent(profileEmail)}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.savedIds) {
-          const map: Record<string, boolean> = {};
-          data.savedIds.forEach((id: string) => { map[id] = true; });
-          setSavedVideoIds(map);
-          localStorage.setItem('kojlux_saved_videos', JSON.stringify(map));
-        }
+      const snap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      const data = snap.exists() ? snap.data() : null;
+      if (data?.savedVideoIds) {
+        setSavedVideoIds(data.savedVideoIds);
+        localStorage.setItem('kojlux_saved_videos', JSON.stringify(data.savedVideoIds));
       }
     } catch (err) {
       console.error("Failed to load saved videos:", err);
+      setErrorMsg("Something went wrong.");
     }
   };
 
@@ -772,24 +832,16 @@ export default function App() {
     setSavedVideoIds(updated);
     localStorage.setItem('kojlux_saved_videos', JSON.stringify(updated));
 
-    if (isLoggedIn && profileEmail) {
+    if (isLoggedIn && profileEmail && auth.currentUser) {
       try {
-        const res = await fetch('api/videos/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: profileEmail, videoId, saved: !isSaved })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.savedVideoIds) {
-            const map: Record<string, boolean> = {};
-            data.savedVideoIds.forEach((id: string) => { map[id] = true; });
-            setSavedVideoIds(map);
-            localStorage.setItem('kojlux_saved_videos', JSON.stringify(map));
-          }
-        }
+        await setDoc(
+          doc(db, 'users', auth.currentUser.uid),
+          { email: profileEmail, savedVideoIds: updated },
+          { merge: true }
+        );
       } catch (err) {
          console.error("Failed to sync bookmark:", err);
+         setErrorMsg("Something went wrong.");
       }
     }
   };
@@ -799,27 +851,33 @@ export default function App() {
       setLoadingVideos(true);
     }
     try {
-      const activeSess = forceSessionId || sessionId;
-      const activeEmail = forceEmail !== undefined ? forceEmail : profileEmail;
-      const activeGrade = forceGradeLevel !== undefined ? forceGradeLevel : gradeLevel;
-      const res = await fetch(`api/videos/feed?sessionId=${activeSess}&email=${encodeURIComponent(activeEmail)}&gradeLevel=${encodeURIComponent(activeGrade)}&_t=${Date.now()}`);
-      const data = await res.json();
-      if (res.ok && data.videos) {
-        if (append) {
-          setVideos(prev => {
-            const existingIds = new Set(prev.map(v => v.id));
-            const uniqueNew = data.videos.filter((v: any) => !existingIds.has(v.id));
-            return [...prev, ...uniqueNew];
-          });
-        } else {
-          setVideos(data.videos);
-          if (data.videos.length > 0 && !activePlayingVideoId) {
-            setActivePlayingVideoId(data.videos[0].id);
-          }
+      // Query only videos matching this student's grade level, newest first (via the
+      // server-stamped createdAt timestamp), capped to 20 per page as a safety boundary.
+      const activeGradeLevel = forceGradeLevel || gradeLevel;
+      const videosQuery = query(
+        collection(db, 'videos'),
+        where('gradeLevel', '==', activeGradeLevel),
+        orderBy('createdAt', 'desc'),
+        limit(20)
+      );
+      const snap = await getDocs(videosQuery);
+      const allVideos = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+
+      if (append) {
+        setVideos(prev => {
+          const existingIds = new Set(prev.map(v => v.id));
+          const uniqueNew = allVideos.filter((v: any) => !existingIds.has(v.id));
+          return [...prev, ...uniqueNew];
+        });
+      } else {
+        setVideos(allVideos);
+        if (allVideos.length > 0 && !activePlayingVideoId) {
+          setActivePlayingVideoId(allVideos[0].id);
         }
       }
     } catch (err) {
       console.error('Failed to load videos:', err);
+      setErrorMsg("Something went wrong.");
     } finally {
       setLoadingVideos(false);
     }
@@ -830,16 +888,21 @@ export default function App() {
     setSessionId(newSessionId);
     setLoadingVideos(true);
     try {
-      const res = await fetch(`api/videos/feed?sessionId=${newSessionId}&email=${encodeURIComponent(profileEmail)}&gradeLevel=${encodeURIComponent(gradeLevel)}&_t=${Date.now()}`);
-      const data = await res.json();
-      if (res.ok && data.videos) {
-        setVideos(data.videos);
-        if (data.videos.length > 0) {
-          setActivePlayingVideoId(data.videos[0].id);
-        }
+      const videosQuery = query(
+        collection(db, 'videos'),
+        where('gradeLevel', '==', gradeLevel),
+        orderBy('createdAt', 'desc'),
+        limit(20)
+      );
+      const snap = await getDocs(videosQuery);
+      const allVideos = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      setVideos(allVideos);
+      if (allVideos.length > 0) {
+        setActivePlayingVideoId(allVideos[0].id);
       }
     } catch (err) {
       console.error('Failed to refresh feed:', err);
+      setErrorMsg("Something went wrong.");
     } finally {
       setLoadingVideos(false);
     }
@@ -847,36 +910,23 @@ export default function App() {
 
   const handleDeleteVideo = async (videoId: string) => {
     try {
-      const res = await fetch('api/videos/delete', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          videoId
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setVideos(prev => {
-          const updated = prev.filter(v => v.id !== videoId);
-          if (activePlayingVideoId === videoId) {
-            if (updated.length > 0) {
-              setActivePlayingVideoId(updated[0].id);
-            } else {
-              setActivePlayingVideoId(null);
-            }
+      await deleteDoc(doc(db, 'videos', videoId));
+      setVideos(prev => {
+        const updated = prev.filter(v => v.id !== videoId);
+        if (activePlayingVideoId === videoId) {
+          if (updated.length > 0) {
+            setActivePlayingVideoId(updated[0].id);
+          } else {
+            setActivePlayingVideoId(null);
           }
-          return updated;
-        });
-        setSaveToast("Video permanently deleted!");
-        setTimeout(() => setSaveToast(null), 3000);
-      } else {
-        setErrorMsg(data.error || "Failed to delete video.");
-      }
+        }
+        return updated;
+      });
+      setSaveToast("Video permanently deleted!");
+      setTimeout(() => setSaveToast(null), 3000);
     } catch (err) {
       console.error(err);
-      setErrorMsg("An error occurred while deleting your video.");
+      setErrorMsg("Something went wrong.");
     }
   };
 
@@ -960,7 +1010,7 @@ export default function App() {
           uploadedUrl = await uploadBase64File(newVideoBase64, dest);
         } catch (err) {
           console.error(err);
-          setErrorMsg("Upload to Firebase Storage failed.");
+          setErrorMsg("Something went wrong.");
           setPostingVideo(false);
           return;
         }
@@ -976,12 +1026,14 @@ export default function App() {
         externalLink: newVideoExtLink,
         isStaticImage: isStaticImageMode,
         staticDuration: staticDuration,
-        audioTrack: selectedAudioTrack,
-        createdAt: new Date().toLocaleString()
+        audioTrack: selectedAudioTrack
       } as any;
 
-      const docId = await createVideoPost(postMeta);
-      const videoObj = { id: docId, ...postMeta };
+      const docId = await createVideoPost(postMeta, gradeLevel);
+      // createdAt here is a local placeholder for immediate UI display only — the
+      // document actually stored in Firestore uses serverTimestamp() (set inside
+      // createVideoPost), which is what future feed queries will sort/filter by.
+      const videoObj = { id: docId, ...postMeta, gradeLevel, createdAt: new Date() };
 
       setVideos(prev => [videoObj, ...prev]);
       setNewVideoTitle('');
@@ -999,7 +1051,7 @@ export default function App() {
       setTimeout(() => setSaveToast(null), 3500);
     } catch (err) {
       console.error(err);
-      setErrorMsg("Could not save video to Firebase.");
+      setErrorMsg("Something went wrong.");
     } finally {
       setPostingVideo(false);
     }
@@ -1128,7 +1180,7 @@ export default function App() {
       }
     } catch (err: any) {
       console.error("Camera access failed:", err);
-      setCameraError("Camera access was not granted or is unavailable on this system.");
+      setCameraError("Something went wrong.");
     }
   };
 
@@ -1169,6 +1221,12 @@ export default function App() {
     setLoading(true);
     setErrorMsg(null);
     setEvaluation(null);
+
+    const allowed = await canUseAiToday();
+    if (!allowed) {
+      setLoading(false);
+      return;
+    }
 
     const messages = [
       "Analyzing note structure with Gemini computer...",
@@ -1232,7 +1290,7 @@ ${textInput}` });
 
       // 3. Direct browser-to-Gemini call
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.5-flash',
         contents: [{ role: 'user', parts: quizParts }],
         config: {
           responseMimeType: 'application/json'
@@ -1253,7 +1311,7 @@ ${textInput}` });
 
     } catch (error) {
       console.error("Gemini direct quiz generation error:", error);
-      setErrorMsg("Something went wrong while generating the quiz.");
+      setErrorMsg("Something went wrong.");
     } finally {
       setLoading(false);
       clearInterval(msgInterval);
@@ -1273,6 +1331,12 @@ ${textInput}` });
 
     setIsEvaluating(true);
     setErrorMsg(null);
+
+    const canEvaluate = await canUseAiToday();
+    if (!canEvaluate) {
+      setIsEvaluating(false);
+      return;
+    }
 
     try {
       const ai = new GoogleGenAI({ 
@@ -1305,7 +1369,7 @@ Student's submitted answers, keyed by question id:
 ${JSON.stringify(userAnswers)}`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.5-flash',
         contents: [{ role: 'user', parts: [{ text: evalPrompt }] }],
         config: {
           responseMimeType: 'application/json'
@@ -1339,7 +1403,7 @@ ${JSON.stringify(userAnswers)}`;
 
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || "Unable to score your assessment online right now.");
+      setErrorMsg("Something went wrong.");
     } finally {
       setIsEvaluating(false);
     }
@@ -1347,20 +1411,16 @@ ${JSON.stringify(userAnswers)}`;
 
   // Cloud multi-device synchronizer helper
   const syncHistoryToCloud = async (items: HistoryItem[], userEmail: string) => {
-    if (!userEmail) return;
+    if (!userEmail || !auth.currentUser) return;
     try {
-      await fetch('api/history/sync', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: userEmail,
-          history: items
-        })
-      });
+      await setDoc(
+        doc(db, 'users', auth.currentUser.uid),
+        { email: userEmail, history: items },
+        { merge: true }
+      );
     } catch (err) {
       console.error('Failed to back up progress:', err);
+      setErrorMsg("Something went wrong.");
     }
   };
 
@@ -1419,56 +1479,31 @@ ${JSON.stringify(userAnswers)}`;
     }
     setSyncingProfile(true);
     try {
-      const res = await fetch('api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          loginIdentifier: loginIdentifier.trim(), 
-          password: authPassword 
-        })
-      });
-      const data = await parseJsonOrText(res);
-      if (res.ok) {
-        setIsLoggedIn(true);
-        setProfileEmail(data.email);
-        setProfileUsername(data.username);
-        localStorage.setItem('kojlux_user_email', data.email);
-        localStorage.setItem('kojlux_user_username', data.username);
-        
-        const newSess = 'sess-' + Math.random().toString(36).substring(2, 15);
-        setSessionId(newSess);
-        fetchVideos(false, newSess, data.email, data.gradeLevel || gradeLevel);
-        
-        if (data.gradeLevel) {
-          setGradeLevel(data.gradeLevel);
-          localStorage.setItem('kojlux_grade_level', data.gradeLevel);
-        }
-        
-        if (data.history && data.history.length > 0) {
-          setHistoryItems(prev => {
-            const merged = [...data.history];
-            prev.forEach(localItem => {
-              if (!merged.some(m => m.id === localItem.id)) {
-                merged.push(localItem);
-              }
-            });
-            syncHistoryToCloud(merged, data.email);
-            return merged;
-          });
-          setSaveToast("Logged in and synced data!");
-        } else {
-          syncHistoryToCloud(historyItems, data.email);
-          setSaveToast("Welcome back! Device backed up.");
-        }
-        // clear login fields
-        setLoginIdentifier('');
-        setAuthPassword('');
-      } else {
-        alert(data.error || "Failed to sign in. Verify credentials.");
-      }
+      // Sign in directly against Firebase Auth in the browser (email/password)
+      const userCredential = await signInWithEmailAndPassword(auth, loginIdentifier.trim(), authPassword);
+      const firebaseUser = userCredential.user;
+      const resolvedEmail = firebaseUser.email || loginIdentifier.trim();
+      const resolvedUsername = firebaseUser.displayName || resolvedEmail.split('@')[0];
+
+      setIsLoggedIn(true);
+      setProfileEmail(resolvedEmail);
+      setProfileUsername(resolvedUsername);
+      localStorage.setItem('kojlux_user_email', resolvedEmail);
+      localStorage.setItem('kojlux_user_username', resolvedUsername);
+
+      const newSess = 'sess-' + Math.random().toString(36).substring(2, 15);
+      setSessionId(newSess);
+      fetchVideos(false, newSess, resolvedEmail, gradeLevel);
+
+      syncHistoryToCloud(historyItems, resolvedEmail);
+      setSaveToast("Welcome back! Device backed up.");
+
+      // clear login fields
+      setLoginIdentifier('');
+      setAuthPassword('');
     } catch (err) {
       console.error(err);
-      alert("Failed to sync your profile online. Kindly check server endpoints.");
+      alert("Something went wrong.");
     } finally {
       setSyncingProfile(false);
       setTimeout(() => setSaveToast(null), 3000);
@@ -1491,46 +1526,38 @@ ${JSON.stringify(userAnswers)}`;
     }
     setSyncingProfile(true);
     try {
-      const res = await fetch('api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          username: authUsername.trim(),
-          email: authEmail.trim(),
-          password: authPassword,
-          gradeLevel: registerGradeLevel
-        })
-      });
-      const data = await parseJsonOrText(res);
-      if (res.ok) {
-        setIsLoggedIn(true);
-        setProfileEmail(data.email);
-        setProfileUsername(data.username);
-        localStorage.setItem('kojlux_user_email', data.email);
-        localStorage.setItem('kojlux_user_username', data.username);
-        
-        const newSess = 'sess-' + Math.random().toString(36).substring(2, 15);
-        setSessionId(newSess);
-        fetchVideos(false, newSess, data.email, data.gradeLevel || gradeLevel);
-        
-        if (data.gradeLevel) {
-          setGradeLevel(data.gradeLevel);
-          localStorage.setItem('kojlux_grade_level', data.gradeLevel);
-        }
-        
-        // Sync any offline items created
-        syncHistoryToCloud(historyItems, data.email);
-        setSaveToast("Account created successfully!");
-        setIsRegisterMode(false);
-        setAuthUsername('');
-        setAuthEmail('');
-        setAuthPassword('');
-      } else {
-        alert(data.error || "Failed to register account.");
+      // Create the account directly in Firebase Auth in the browser (email/password)
+      const userCredential = await createUserWithEmailAndPassword(auth, authEmail.trim(), authPassword);
+      await updateProfile(userCredential.user, { displayName: authUsername.trim() });
+
+      const resolvedEmail = userCredential.user.email || authEmail.trim();
+      const resolvedUsername = authUsername.trim();
+
+      setIsLoggedIn(true);
+      setProfileEmail(resolvedEmail);
+      setProfileUsername(resolvedUsername);
+      localStorage.setItem('kojlux_user_email', resolvedEmail);
+      localStorage.setItem('kojlux_user_username', resolvedUsername);
+
+      const newSess = 'sess-' + Math.random().toString(36).substring(2, 15);
+      setSessionId(newSess);
+      fetchVideos(false, newSess, resolvedEmail, registerGradeLevel || gradeLevel);
+
+      if (registerGradeLevel) {
+        setGradeLevel(registerGradeLevel);
+        localStorage.setItem('kojlux_grade_level', registerGradeLevel);
       }
+
+      // Sync any offline items created
+      syncHistoryToCloud(historyItems, resolvedEmail);
+      setSaveToast("Account created successfully!");
+      setIsRegisterMode(false);
+      setAuthUsername('');
+      setAuthEmail('');
+      setAuthPassword('');
     } catch (err) {
       console.error(err);
-      alert("Failed to register. Kindly check server endpoints.");
+      alert("Something went wrong.");
     } finally {
       setSyncingProfile(false);
       setTimeout(() => setSaveToast(null), 3000);
@@ -1911,6 +1938,12 @@ ${JSON.stringify(userAnswers)}`;
     setIsSummarizing(true);
     setErrorMsg(null);
 
+    const canSummarize = await canUseAiToday();
+    if (!canSummarize) {
+      setIsSummarizing(false);
+      return;
+    }
+
     const messages = [
       "Gemini analyzing study notes formatting...",
       "Extracting critical dates, names, and formulas...",
@@ -1963,7 +1996,7 @@ ${summaryTextInput}` });
       }
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.5-flash',
         contents: [{ role: 'user', parts: summaryParts }],
         config: {
           responseMimeType: 'application/json'
@@ -1998,7 +2031,7 @@ ${summaryTextInput}` });
 
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || "Failed to generate your study summary sheet. Try another notes snapshot.");
+      setErrorMsg("Something went wrong.");
     } finally {
       clearInterval(msgInterval);
       setIsSummarizing(false);
@@ -3547,7 +3580,7 @@ ${summaryTextInput}` });
                             </div>
 
                             <div className="text-[9.5px] text-slate-400 dark:text-slate-500 font-bold pl-1">
-                              Posted by @{formatDisplayUsername(activeSummarizedVideo, profileEmail, profileUsername)} on {activeSummarizedVideo.createdAt}
+                              Posted by @{formatDisplayUsername(activeSummarizedVideo, profileEmail, profileUsername)} on {formatVideoDate(activeSummarizedVideo.createdAt)}
                             </div>
 
                             <button
@@ -3904,7 +3937,7 @@ ${summaryTextInput}` });
                                 <div key={video.id} className="p-2.5 bg-white dark:bg-slate-900 rounded-xl flex items-center justify-between shadow-xs border border-slate-100 dark:border-slate-800 animate-fade-in">
                                   <div className="flex-1 min-w-0 pr-3 text-left">
                                     <h4 className="text-xs font-bold text-slate-850 dark:text-slate-200 truncate leading-snug">{video.title}</h4>
-                                    <span className="text-[9px] font-medium text-slate-400 block mt-0.5">{video.createdAt || 'Shared lesson'}</span>
+                                    <span className="text-[9px] font-medium text-slate-400 block mt-0.5">{video.createdAt ? formatVideoDate(video.createdAt) : 'Shared lesson'}</span>
                                   </div>
                                   <button
                                     onClick={() => handleDeleteVideo(video.id)}
