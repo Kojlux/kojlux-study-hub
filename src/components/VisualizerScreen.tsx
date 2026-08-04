@@ -173,7 +173,7 @@ Rules:
 - Never invent extra top-level fields beyond title, type, steps, and graphConfig.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3.5-flash',
         contents: [{ role: 'user', parts: [{ text: visualizerPrompt }] }],
         config: {
           responseMimeType: 'application/json'
@@ -243,7 +243,7 @@ Rules:
       ];
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3.5-flash',
         contents
       });
 
