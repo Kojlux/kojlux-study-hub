@@ -26,6 +26,16 @@ import Auth from './components/Auth';
 // Daily cap on AI tool calls (Quiz, Quiz grading, Summarizer) per signed-in user
 const AI_DAILY_LIMIT = 4;
 
+// Shared grade-level options used across registration, post-creation, the
+// visualizer, and the feed grade-level filter picker so they always stay in sync.
+const GRADE_LEVEL_OPTIONS = [
+  'Elementary School',
+  'Middle School',
+  'High School',
+  'College',
+  'Lifelong Learner'
+];
+
 // Renders a video's createdAt field for display, supporting Firestore Timestamps
 // (current format, via serverTimestamp()), plain JS Dates (optimistic local UI),
 // and legacy locale-string dates from videos posted before this format changed.
@@ -494,6 +504,10 @@ export default function App() {
         setCurrentEmail(firebaseUser.email || '');
         // Turns clement@gmail.com into a clean username like 'clement'
         setCurrentUsername(firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User');
+        // Pull this user's canonical profile (grade level, history, saved videos)
+        // straight from Firestore so a second device or a fresh login always shows
+        // the same state instead of whatever happens to be cached in localStorage.
+        hydrateUserProfile(firebaseUser.uid);
       } else {
         setCurrentUserSession(null);
         setCurrentEmail('');
@@ -735,6 +749,9 @@ export default function App() {
   const [showSummaryForVideoId, setShowSummaryForVideoId] = useState<string | null>(null);
   const [activePlayingVideoId, setActivePlayingVideoId] = useState<string | null>(null);
   const [showDiscoverPage, setShowDiscoverPage] = useState<boolean>(false);
+  // Controls the small bottom-sheet picker that lets a student choose which grade
+  // level's feed to refresh into, instead of instantly reloading the current one.
+  const [showFeedGradeLevelPicker, setShowFeedGradeLevelPicker] = useState<boolean>(false);
 
   // Video Search Bar toggle
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
@@ -742,6 +759,9 @@ export default function App() {
   // Custom input states to post a video
   const [showPostModal, setShowPostModal] = useState<boolean>(false);
   const [newVideoTitle, setNewVideoTitle] = useState<string>('');
+  // Required per-post grade-level tag, chosen explicitly by the poster rather than
+  // silently inherited from their own profile — this is what the feed filter matches on.
+  const [newVideoGradeLevel, setNewVideoGradeLevel] = useState<string>('');
   const [newVideoSummary, setNewVideoSummary] = useState<string>('');
   const [newVideoUrl, setNewVideoUrl] = useState<string>('');
   const [newVideoExtLink, setNewVideoExtLink] = useState<string>('');
@@ -846,6 +866,43 @@ export default function App() {
     }
   };
 
+  // Fetches this user's canonical profile document from the central Firestore
+  // 'users' collection and hydrates local state (grade level, saved-video IDs,
+  // quiz/summarizer history) from it. This is the single source of truth for
+  // cross-device sync — localStorage is only used as an offline/logged-out cache.
+  const hydrateUserProfile = async (uid: string) => {
+    if (!uid) return;
+    try {
+      const snap = await getDoc(doc(db, 'users', uid));
+      if (!snap.exists()) return;
+      const data = snap.data() as any;
+
+      if (data.gradeLevel && typeof data.gradeLevel === 'string') {
+        setGradeLevel(data.gradeLevel);
+        localStorage.setItem('kojlux_grade_level', data.gradeLevel);
+      }
+
+      if (Array.isArray(data.history)) {
+        setHistoryItems(data.history);
+        localStorage.setItem('kojlux_saved_work', JSON.stringify(data.history));
+      }
+
+      if (data.savedVideoIds && typeof data.savedVideoIds === 'object') {
+        setSavedVideoIds(data.savedVideoIds);
+        localStorage.setItem('kojlux_saved_videos', JSON.stringify(data.savedVideoIds));
+      }
+
+      // Re-pull the feed against the freshly-hydrated grade level so a device
+      // switch never keeps showing the previous device's grade-level feed.
+      const newSess = 'sess-' + Math.random().toString(36).substring(2, 15);
+      setSessionId(newSess);
+      fetchVideos(false, newSess, data.email || profileEmail, data.gradeLevel || gradeLevel);
+    } catch (err) {
+      console.error('Failed to hydrate user profile from Firestore:', err);
+      setErrorMsg("We couldn't sync your profile from the cloud. Some information on this device may be out of date.");
+    }
+  };
+
   const fetchVideos = async (append = false, forceSessionId?: string, forceEmail?: string, forceGradeLevel?: string) => {
     if (!append) {
       setLoadingVideos(true);
@@ -883,14 +940,17 @@ export default function App() {
     }
   };
 
-  const handleRefreshFeed = async () => {
+  // Optionally accepts a grade level chosen from the feed's grade-level picker
+  // modal; falls back to the student's own profile grade level when omitted.
+  const handleRefreshFeed = async (targetGradeLevel?: string) => {
+    const activeGradeLevel = targetGradeLevel || gradeLevel;
     const newSessionId = 'sess-' + Math.random().toString(36).substring(2, 15);
     setSessionId(newSessionId);
     setLoadingVideos(true);
     try {
       const videosQuery = query(
         collection(db, 'videos'),
-        where('gradeLevel', '==', gradeLevel),
+        where('gradeLevel', '==', activeGradeLevel),
         orderBy('createdAt', 'desc'),
         limit(20)
       );
@@ -979,6 +1039,10 @@ export default function App() {
       setErrorMsg("Please provide a short summary explaining the video.");
       return;
     }
+    if (!newVideoGradeLevel) {
+      setErrorMsg("Please select which grade level this video is intended for.");
+      return;
+    }
 
     let finalVideoUrl = '';
     if (newVideoMode === 'file') {
@@ -1022,6 +1086,9 @@ export default function App() {
         videoUrl: uploadedUrl,
         postedBy: profileEmail || 'Anonymous Mentor',
         postedByUsername: profileUsername || '',
+        // Global uid of the poster — lets any device resolve authorship/ownership
+        // reliably instead of relying on a locally-cached email string.
+        postedByUid: auth.currentUser?.uid || null,
         agreed: newVideoAgreed,
         externalLink: newVideoExtLink,
         isStaticImage: isStaticImageMode,
@@ -1029,14 +1096,18 @@ export default function App() {
         audioTrack: selectedAudioTrack
       } as any;
 
-      const docId = await createVideoPost(postMeta, gradeLevel);
+      // Writes straight into the global Firestore 'videos' collection (see
+      // createVideoPost in firebase.ts) tagged with the poster-selected grade
+      // level, so it's immediately visible to every device, not just this one.
+      const docId = await createVideoPost(postMeta, newVideoGradeLevel);
       // createdAt here is a local placeholder for immediate UI display only — the
       // document actually stored in Firestore uses serverTimestamp() (set inside
       // createVideoPost), which is what future feed queries will sort/filter by.
-      const videoObj = { id: docId, ...postMeta, gradeLevel, createdAt: new Date() };
+      const videoObj = { id: docId, ...postMeta, gradeLevel: newVideoGradeLevel, createdAt: new Date() };
 
       setVideos(prev => [videoObj, ...prev]);
       setNewVideoTitle('');
+      setNewVideoGradeLevel('');
       setNewVideoSummary('');
       setNewVideoUrl('');
       setNewVideoExtLink('');
@@ -1138,7 +1209,7 @@ export default function App() {
 
   const processFile = (file: File) => {
     if (!file.type.startsWith('image/')) {
-      alert('Kindly choose an image file (PNG, JPG, WebP) of your notes or paper syllabus material.');
+      setErrorMsg('Kindly choose an image file (PNG, JPG, WebP) of your notes or paper syllabus material.');
       return;
     }
     const reader = new FileReader();
@@ -1297,8 +1368,9 @@ ${textInput}` });
         }
       });
 
-         // 4. Extract the text safely (handles string or method types depending on SDK version)
-    const resultText = typeof response.text === 'function' ? response.text() : response.text;
+         // 4. Extract the text — response.text is a getter property on the SDK's
+         // response object (a string), not a method, so no function-call fallback is needed.
+    const resultText = response.text;
     
     if (!resultText) {
       throw new Error("Gemini returned an empty response");
@@ -1376,7 +1448,7 @@ ${JSON.stringify(userAnswers)}`;
         }
       });
 
-      const resultText = typeof response.text === 'function' ? response.text() : response.text;
+      const resultText = response.text;
       if (!resultText) {
         throw new Error("Gemini returned an empty grading response");
       }
@@ -1470,11 +1542,11 @@ ${JSON.stringify(userAnswers)}`;
   const handleProfileLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginIdentifier.trim()) {
-      alert("Please enter your username or email.");
+      setErrorMsg("Please enter your username or email.");
       return;
     }
     if (!authPassword) {
-      alert("Please enter your password.");
+      setErrorMsg("Please enter your password.");
       return;
     }
     setSyncingProfile(true);
@@ -1491,9 +1563,9 @@ ${JSON.stringify(userAnswers)}`;
       localStorage.setItem('kojlux_user_email', resolvedEmail);
       localStorage.setItem('kojlux_user_username', resolvedUsername);
 
-      const newSess = 'sess-' + Math.random().toString(36).substring(2, 15);
-      setSessionId(newSess);
-      fetchVideos(false, newSess, resolvedEmail, gradeLevel);
+      // Pull this account's global profile (grade level, history, saved videos)
+      // from Firestore so this device matches every other device immediately.
+      await hydrateUserProfile(firebaseUser.uid);
 
       syncHistoryToCloud(historyItems, resolvedEmail);
       setSaveToast("Welcome back! Device backed up.");
@@ -1503,7 +1575,7 @@ ${JSON.stringify(userAnswers)}`;
       setAuthPassword('');
     } catch (err) {
       console.error(err);
-      alert("Something went wrong.");
+      setErrorMsg("Something went wrong.");
     } finally {
       setSyncingProfile(false);
       setTimeout(() => setSaveToast(null), 3000);
@@ -1513,15 +1585,15 @@ ${JSON.stringify(userAnswers)}`;
   const handleProfileRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!authUsername.trim()) {
-      alert("Please enter a username.");
+      setErrorMsg("Please enter a username.");
       return;
     }
     if (!authEmail.trim() || !authEmail.includes('@')) {
-      alert("Please enter a valid email address.");
+      setErrorMsg("Please enter a valid email address.");
       return;
     }
     if (!authPassword || authPassword.length < 4) {
-      alert("Password must be at least 4 characters.");
+      setErrorMsg("Password must be at least 4 characters.");
       return;
     }
     setSyncingProfile(true);
@@ -1539,14 +1611,21 @@ ${JSON.stringify(userAnswers)}`;
       localStorage.setItem('kojlux_user_email', resolvedEmail);
       localStorage.setItem('kojlux_user_username', resolvedUsername);
 
+      const chosenGradeLevel = registerGradeLevel || gradeLevel;
+      setGradeLevel(chosenGradeLevel);
+      localStorage.setItem('kojlux_grade_level', chosenGradeLevel);
+
+      // Seed the new user's global Firestore profile document immediately so
+      // hydrateUserProfile finds a real gradeLevel on this and every future device.
+      await setDoc(
+        doc(db, 'users', userCredential.user.uid),
+        { email: resolvedEmail, gradeLevel: chosenGradeLevel },
+        { merge: true }
+      );
+
       const newSess = 'sess-' + Math.random().toString(36).substring(2, 15);
       setSessionId(newSess);
-      fetchVideos(false, newSess, resolvedEmail, registerGradeLevel || gradeLevel);
-
-      if (registerGradeLevel) {
-        setGradeLevel(registerGradeLevel);
-        localStorage.setItem('kojlux_grade_level', registerGradeLevel);
-      }
+      fetchVideos(false, newSess, resolvedEmail, chosenGradeLevel);
 
       // Sync any offline items created
       syncHistoryToCloud(historyItems, resolvedEmail);
@@ -1557,7 +1636,7 @@ ${JSON.stringify(userAnswers)}`;
       setAuthPassword('');
     } catch (err) {
       console.error(err);
-      alert("Something went wrong.");
+      setErrorMsg("Something went wrong.");
     } finally {
       setSyncingProfile(false);
       setTimeout(() => setSaveToast(null), 3000);
@@ -2003,7 +2082,7 @@ ${summaryTextInput}` });
         }
       });
 
-      const resultText = typeof response.text === 'function' ? response.text() : response.text;
+      const resultText = response.text;
       if (!resultText) {
         throw new Error("Gemini returned an empty summary response");
       }
@@ -2752,6 +2831,7 @@ ${summaryTextInput}` });
                       onGradeLevelChange={handleUpdateGradeLevel}
                       loadedVisualization={activeLoadedVisualization}
                       onSaveHistory={handleSaveVisualizationHistory}
+                      onError={setErrorMsg}
                     />
                   </div>
                 )}
@@ -3013,10 +3093,12 @@ ${summaryTextInput}` });
 
                           {/* OVERLAY PERSISTENT HEADER ACTIONS ON RIGHT */}
                           <div className="absolute top-4 right-4 z-35 flex items-center gap-2">
-                            {/* Cache-busting explicit Sync/Refresh button to pull posts in real-time */}
+                            {/* Sync/Refresh button — opens a grade-level picker instead of
+                                instantly reloading, so a student can pull in a different
+                                grade level's feed on demand. */}
                             <button
                               type="button"
-                              onClick={() => handleRefreshFeed()}
+                              onClick={() => setShowFeedGradeLevelPicker(true)}
                               className="p-2.5 rounded-full bg-black/60 text-white hover:bg-slate-900 border border-white/10 shadow hover:scale-105 active:scale-95 transition"
                               title="Sync classroom database"
                             >
@@ -3191,6 +3273,22 @@ ${summaryTextInput}` });
                                 onChange={(e) => setNewVideoTitle(e.target.value)}
                                 className="w-full text-xs font-semibold p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-black dark:text-white placeholder-slate-400 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition duration-200"
                               />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-[10.5px] font-semibold text-slate-500 uppercase tracking-wider pl-0.5">Target Grade Level</label>
+                              <select
+                                required
+                                value={newVideoGradeLevel}
+                                onChange={(e) => setNewVideoGradeLevel(e.target.value)}
+                                className="w-full text-xs font-semibold p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-black dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition duration-200 cursor-pointer"
+                              >
+                                <option value="" disabled>Select a grade level...</option>
+                                {GRADE_LEVEL_OPTIONS.map((level) => (
+                                  <option key={level} value={level}>{level}</option>
+                                ))}
+                              </select>
+                              <p className="text-[9.5px] text-slate-400 pl-0.5">This tags your Reel so it only appears in that grade level's feed.</p>
                             </div>
 
                             {/* Dynamically display appropriate payload selector based on mode toggle input */}
@@ -3744,6 +3842,55 @@ ${summaryTextInput}` });
                         </div>
                       </div>
                     )}
+
+                    {/* FEED GRADE-LEVEL PICKER MODAL — matches the audio-track picker's bottom-sheet style */}
+                    {showFeedGradeLevelPicker && (
+                      <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-xs flex items-end justify-center animate-fade-in">
+                        <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-t-3xl p-5 text-left shadow-2xl space-y-4">
+                          <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-800">
+                            <div className="flex items-center gap-2">
+                              <RefreshCw className="w-4 h-4 text-indigo-650 dark:text-indigo-400" />
+                              <h3 className="text-xs font-bold text-slate-805 dark:text-white uppercase tracking-wider">Refresh Feed By Grade Level</h3>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setShowFeedGradeLevelPicker(false)}
+                              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold p-1 cursor-pointer"
+                            >
+                              ✕
+                            </button>
+                          </div>
+
+                          <p className="text-[10.5px] text-slate-450 dark:text-slate-500">Choose which grade level's Reels you want to pull into your feed.</p>
+
+                          <div className="space-y-1.5">
+                            {GRADE_LEVEL_OPTIONS.map((level) => {
+                              const isCurrent = level === gradeLevel;
+                              return (
+                                <button
+                                  key={level}
+                                  type="button"
+                                  onClick={() => {
+                                    setShowFeedGradeLevelPicker(false);
+                                    handleRefreshFeed(level);
+                                  }}
+                                  className={`w-full p-2.5 rounded-xl flex items-center justify-between text-left transition-all border cursor-pointer ${
+                                    isCurrent
+                                      ? 'bg-indigo-50 border-indigo-200 dark:bg-indigo-950/40 dark:border-indigo-900 text-indigo-900 dark:text-indigo-200'
+                                      : 'bg-slate-50 border-slate-100 dark:bg-slate-950/40 dark:border-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                                  }`}
+                                >
+                                  <span className="text-xs font-medium">{level}</span>
+                                  {isCurrent && (
+                                    <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-500">Current</span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -3865,11 +4012,9 @@ ${summaryTextInput}` });
                                 value={registerGradeLevel}
                                 onChange={(e) => setRegisterGradeLevel(e.target.value)}
                               >
-                                <option value="Elementary School">Elementary School</option>
-                                <option value="Middle School">Middle School</option>
-                                <option value="High School">High School</option>
-                                <option value="College">College</option>
-                                <option value="Lifelong Learner">Lifelong Learner</option>
+                                {GRADE_LEVEL_OPTIONS.map((level) => (
+                                  <option key={level} value={level}>{level}</option>
+                                ))}
                               </select>
                             </div>
 
@@ -4892,15 +5037,31 @@ ${summaryTextInput}` });
 
 
 
-      {/* Global alert notifications */}
+      {/* Global blocking error modal — replaces native alert() calls across the app */}
       {errorMsg && (
-        <div className="fixed bottom-4 right-4 z-50 bg-rose-50 border border-rose-200 rounded-2xl p-4 shadow-xl flex items-start gap-3 max-w-sm transition animate-bounce">
-          <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-          <div>
-            <span className="font-bold text-xs text-rose-850 block">Note Lens Error</span>
-            <p className="text-[11px] text-rose-700 leading-normal">{errorMsg}</p>
+        <div
+          className="fixed inset-0 z-[200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-5 animate-fade-in"
+          onClick={() => setErrorMsg(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800 p-6 text-center space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-100 dark:border-rose-900 flex items-center justify-center">
+              <AlertCircle className="w-8 h-8 text-rose-600 dark:text-rose-400" />
+            </div>
+            <div className="space-y-1.5">
+              <h3 className="text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wide">Note Lens Error</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{errorMsg}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setErrorMsg(null)}
+              className="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-2xl transition shadow-sm cursor-pointer"
+            >
+              Dismiss
+            </button>
           </div>
-          <button onClick={() => setErrorMsg(null)} className="text-rose-400 hover:text-rose-600 text-xs font-bold ml-auto shrink-0 bg-rose-100 p-1 rounded-md">✕</button>
         </div>
       )}
 

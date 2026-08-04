@@ -1,7 +1,9 @@
+import { GoogleGenAI } from '@google/genai';
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Play, Pause, ArrowLeft, ArrowRight, RotateCcw, 
-  Sparkles, Search, Compass, Lightbulb, Info, Activity, Grid
+  Sparkles, Search, Compass, Lightbulb, Activity,
+  MessageCircle, Send, X, Bot, User as UserIcon
 } from 'lucide-react';
 import { VisualizationResponse, HistoryItem } from '../types';
 
@@ -14,6 +16,15 @@ interface VisualizerProps {
   } | null;
   gradeLevel?: string;
   onGradeLevelChange?: (newLevel: string) => void;
+  // Reports failures up to App.tsx's global blocking error modal instead of
+  // rendering a raw/local error block inside this screen.
+  onError?: (message: string) => void;
+}
+
+// One turn of the follow-up chat conversation about the currently loaded visualization
+interface ChatMessage {
+  role: 'user' | 'model';
+  text: string;
 }
 
 const DEMO_PRESETS = [
@@ -28,18 +39,36 @@ export default function VisualizerScreen({
   onSaveHistory, 
   loadedVisualization, 
   gradeLevel = 'High School',
-  onGradeLevelChange
+  onGradeLevelChange,
+  onError
 }: VisualizerProps) {
   const [query, setQuery] = useState<string>('');
-  const [followUpQuestion, setFollowUpQuestion] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
   
   // Simulation player states
   const [vizData, setVizData] = useState<VisualizationResponse | null>(null);
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const playTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Follow-up AI chat about the currently loaded visualization. Asking a follow-up
+  // no longer regenerates a brand new visualization — it opens this chat thread
+  // instead, so the student can keep talking about the concept that's on screen.
+  const [showFollowUpChat, setShowFollowUpChat] = useState<boolean>(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState<string>('');
+  const [chatLoading, setChatLoading] = useState<boolean>(false);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Reports a failure to the app-wide blocking error modal (falls back to console
+  // logging only if no handler was supplied by the parent).
+  const reportError = (message: string) => {
+    if (onError) {
+      onError(message);
+    } else {
+      console.error(message);
+    }
+  };
 
   // Restore state if a visualizer history is loaded
   useEffect(() => {
@@ -48,8 +77,19 @@ export default function VisualizerScreen({
       setQuery(loadedVisualization.vizPrompt);
       setCurrentStep(0);
       setIsPlaying(false);
+      // A freshly loaded visualization is a new context — start its follow-up
+      // chat thread over rather than carrying stale messages from a prior one.
+      setChatMessages([]);
+      setShowFollowUpChat(false);
     }
   }, [loadedVisualization]);
+
+  // Auto-scroll the follow-up chat to the latest message
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [chatMessages, chatLoading, showFollowUpChat]);
 
   // Animation player timer loop
   useEffect(() => {
@@ -72,21 +112,83 @@ export default function VisualizerScreen({
   const handleGenerate = async (searchPrompt: string) => {
     if (!searchPrompt.trim()) return;
     setLoading(true);
-    setError(null);
     setIsPlaying(false);
     setCurrentStep(0);
 
     try {
-      const res = await fetch('api/generate-visualization', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: searchPrompt, gradeLevel })
+      // Direct browser-to-Gemini call using the exact same client/key pattern as
+      // every other AI call in App.tsx (Quiz, Quiz grading, Summarizer) — instead
+      // of hitting the old '/api/generate-visualization' proxy, which no longer
+      // exists and was returning a 404 HTML page (the source of the "unexpected
+      // token <" JSON-parse crash).
+      const ai = new GoogleGenAI({
+        apiKey: import.meta.env.VITE_QUIZ_GENERATOR_KEY
       });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Visualization service failed to compile steps.');
+
+      // Schema mirrors VisualizationResponse / VizStep / SVGShape / MathHighlight /
+      // GraphConfig exactly as defined in types.ts, so parsed responses never fail
+      // to satisfy what the renderers (renderGraphWidget/renderAnimationWidget/
+      // renderMathWidget) expect.
+      const visualizerPrompt = `You are Kojlux's AI concept visualizer. Build an interactive, step-by-step visualization for a "${gradeLevel}" level student based on this request: "${searchPrompt}".
+Return ONLY valid JSON (no markdown fences, no commentary) matching exactly this TypeScript shape:
+{
+  "title": string,
+  "type": "animation" | "math" | "graph",
+  "steps": [
+    {
+      "label": string,
+      "explanation": string,
+      "visualElements": {
+        // Only present when "type" is "animation". 3-6 shapes per step, coordinates
+        // laid out within a 300x200 canvas (x/y 0-300 by 0-200).
+        "shapes": [
+          {
+            "type": "circle" | "rect" | "line" | "arrow" | "text",
+            "cx": number, "cy": number, "r": number,
+            "x": number, "y": number, "width": number, "height": number,
+            "x1": number, "y1": number, "x2": number, "y2": number,
+            "color": string,
+            "label": string,
+            "text": string,
+            "strokeWidth": number
+          }
+        ],
+        // Only present when "type" is "math". "highlight" is optional.
+        "mathHighlight": { "expression": string, "highlight": string, "note": string }
       }
+    }
+  ],
+  // Only present when "type" is "graph".
+  "graphConfig": {
+    "equation": string,
+    "xMin": number, "xMax": number, "yMin": number, "yMax": number,
+    "points": [ { "x": number, "y": number, "label": string } ]
+  }
+}
+Rules:
+- Include 3-6 steps that build on each other.
+- Only include the "shapes" or "x1/y1/x2/y2" fields on a shape that are actually relevant to that shape's "type" (e.g. a "circle" needs cx/cy/r/color, not x1/y1/x2/y2; a "text" shape needs x/y/text/color).
+- Include "visualElements.shapes" only when "type" is "animation", and "visualElements.mathHighlight" only when "type" is "math". Omit the other one.
+- Include the top-level "graphConfig" field only when "type" is "graph" — omit it entirely otherwise.
+- Never invent extra top-level fields beyond title, type, steps, and graphConfig.`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [{ text: visualizerPrompt }] }],
+        config: {
+          responseMimeType: 'application/json'
+        }
+      });
+
+      const resultText = response.text;
+      if (!resultText) {
+        throw new Error('Gemini returned an empty response.');
+      }
+
+      const data = JSON.parse(resultText) as VisualizationResponse;
       setVizData(data);
+      setChatMessages([]);
+      setShowFollowUpChat(false);
       
       // Auto-save visualization to local and cloud history
       const newHistoryRecord: HistoryItem = {
@@ -102,10 +204,62 @@ export default function VisualizerScreen({
       onSaveHistory(newHistoryRecord);
 
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Unable to build visualization model. Please try a different query.');
+      console.error('Gemini direct visualization generation error:', err);
+      reportError(
+        err instanceof SyntaxError
+          ? "The visualizer couldn't understand the AI's response. Please try rephrasing your question."
+          : (err?.message || 'Unable to build visualization model. Please try a different query.')
+      );
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Sends one turn of the follow-up chat about the currently loaded visualization
+  // to Gemini directly from the browser, without regenerating the visualization.
+  const handleSendChatMessage = async () => {
+    const trimmed = chatInput.trim();
+    if (!trimmed || !vizData || chatLoading) return;
+
+    const updatedMessages: ChatMessage[] = [...chatMessages, { role: 'user', text: trimmed }];
+    setChatMessages(updatedMessages);
+    setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const ai = new GoogleGenAI({
+        apiKey: import.meta.env.VITE_QUIZ_GENERATOR_KEY
+      });
+
+      const systemContext = `You are Kojlux's AI study tutor, chatting with a "${gradeLevel}" level student about a visualization they just generated titled "${vizData.title}". Answer follow-up questions about this specific concept clearly, briefly, and in plain language appropriate for their level. Do not regenerate or describe a new visualization — just explain in conversational text.`;
+
+      const contents = [
+        { role: 'user', parts: [{ text: systemContext }] },
+        { role: 'model', parts: [{ text: `Understood — I'm ready to help you understand "${vizData.title}".` }] },
+        ...updatedMessages.map(m => ({
+          role: m.role,
+          parts: [{ text: m.text }]
+        }))
+      ];
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents
+      });
+
+      const resultText = response.text;
+      if (!resultText) {
+        throw new Error('Gemini returned an empty chat response.');
+      }
+
+      setChatMessages(prev => [...prev, { role: 'model', text: resultText }]);
+    } catch (err: any) {
+      console.error('Gemini follow-up chat error:', err);
+      reportError(err?.message || 'The follow-up chat is temporarily unavailable. Please try again.');
+      // Roll back the optimistic user message on failure so it isn't stranded unanswered
+      setChatMessages(chatMessages);
+    } finally {
+      setChatLoading(false);
     }
   };
 
@@ -546,33 +700,24 @@ export default function VisualizerScreen({
                 Ask a follow-up question
               </span>
             </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!followUpQuestion.trim()) return;
-                handleGenerate(`Explain this concept in simpler, student-friendly language. Follow-up: ${followUpQuestion}`);
-                setFollowUpQuestion('');
-              }}
-              className="flex items-center gap-2"
+            {/* Opens the dedicated follow-up chat instead of regenerating a brand
+                new visualization — the student can now have a continuous back-and-
+                forth about the concept currently on screen. */}
+            <button
+              type="button"
+              onClick={() => setShowFollowUpChat(true)}
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-2.5 text-xs font-semibold text-white transition hover:bg-indigo-700"
             >
-              <input
-                type="text"
-                value={followUpQuestion}
-                onChange={(e) => setFollowUpQuestion(e.target.value)}
-                placeholder="Why does this happen? What should I notice?"
-                className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
-                disabled={loading}
-              />
-              <button
-                type="submit"
-                disabled={loading || !followUpQuestion.trim()}
-                className="rounded-xl bg-indigo-600 px-3 py-2 text-[11px] font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-40"
-              >
-                Ask
-              </button>
-            </form>
+              <MessageCircle className="w-3.5 h-3.5" />
+              <span>Chat about this visualization</span>
+              {chatMessages.length > 0 && (
+                <span className="ml-1 rounded-full bg-white/20 px-1.5 py-0.5 text-[9px] font-bold">
+                  {chatMessages.length}
+                </span>
+              )}
+            </button>
             <p className="mt-2 text-[10px] text-slate-500 dark:text-slate-400">
-              Use this after a visualization appears to get a simpler explanation, next step, or real-world example.
+              Ask why it happens, what to notice, or for a simpler explanation — without losing this visualization.
             </p>
           </div>
 
@@ -697,12 +842,6 @@ export default function VisualizerScreen({
               </button>
             </form>
 
-            {error && (
-              <div className="p-3.5 bg-red-50/80 dark:bg-red-950/30 text-red-700 dark:text-red-400 text-xs rounded-xl font-medium border border-red-200/50 dark:border-red-900/50 flex items-center gap-2 animate-fade-in">
-                <Info className="w-4 h-4 shrink-0 text-red-500" />
-                <span>{error}</span>
-              </div>
-            )}
             <div className="mt-2 px-3 py-2 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-800 text-[10px] text-slate-600 dark:text-slate-300">
               Ask a follow-up question after your visualization appears so the concept is explained clearly in plain language.
             </div>
@@ -765,6 +904,103 @@ export default function VisualizerScreen({
             Generate
           </button>
         </form>
+      )}
+
+      {/* FOLLOW-UP CHAT PANEL — continuous conversation about the loaded visualization,
+          instead of regenerating a brand new one on every follow-up question. */}
+      {showFollowUpChat && vizData && (
+        <div className="fixed inset-0 z-[65] bg-black/50 backdrop-blur-xs flex items-end md:items-center justify-center animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md md:rounded-3xl rounded-t-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800 flex flex-col h-[85dvh] md:h-[70vh] overflow-hidden">
+            {/* Chat header */}
+            <div className="flex justify-between items-center px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-100 dark:border-indigo-900 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
+                  <Bot className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-xs font-bold text-slate-850 dark:text-white uppercase tracking-wider leading-none">Follow-Up Chat</h3>
+                  <p className="text-[10px] text-slate-400 truncate mt-0.5">{vizData.title}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFollowUpChat(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer shrink-0"
+                title="Close chat"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Message thread */}
+            <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+              {chatMessages.length === 0 && (
+                <div className="h-full flex flex-col items-center justify-center text-center gap-2 px-6">
+                  <MessageCircle className="w-8 h-8 text-indigo-300 dark:text-indigo-800" />
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Ask anything about this visualization</p>
+                  <p className="text-[10.5px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                    "Why does this happen?", "Explain that step more simply", or "Give me a real-world example."
+                  </p>
+                </div>
+              )}
+
+              {chatMessages.map((msg, idx) => (
+                <div key={idx} className={`flex items-start gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
+                    msg.role === 'user'
+                      ? 'bg-slate-800 dark:bg-slate-700 text-white'
+                      : 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900'
+                  }`}>
+                    {msg.role === 'user' ? <UserIcon className="w-3 h-3" /> : <Bot className="w-3 h-3" />}
+                  </div>
+                  <div className={`max-w-[78%] rounded-2xl px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${
+                    msg.role === 'user'
+                      ? 'bg-indigo-600 text-white rounded-tr-sm'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-tl-sm'
+                  }`}>
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
+
+              {chatLoading && (
+                <div className="flex items-start gap-2">
+                  <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900">
+                    <Bot className="w-3 h-3" />
+                  </div>
+                  <div className="rounded-2xl rounded-tl-sm px-3 py-2 bg-slate-100 dark:bg-slate-800 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:-0.2s]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:-0.1s]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Composer */}
+            <form
+              onSubmit={(e) => { e.preventDefault(); handleSendChatMessage(); }}
+              className="shrink-0 flex items-center gap-2 p-3 border-t border-slate-100 dark:border-slate-800"
+            >
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder="Ask a follow-up question..."
+                className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                disabled={chatLoading}
+              />
+              <button
+                type="submit"
+                disabled={chatLoading || !chatInput.trim()}
+                className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white transition shrink-0"
+                title="Send"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );
