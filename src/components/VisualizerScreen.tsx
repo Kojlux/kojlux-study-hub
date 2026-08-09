@@ -1,9 +1,9 @@
 import { GoogleGenAI } from '@google/genai';
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Play, Pause, ArrowLeft, ArrowRight, RotateCcw, 
-  Sparkles, Search, Compass, Lightbulb, Activity,
-  MessageCircle, Send, X, Bot, User as UserIcon
+import {
+  Play, Pause, ArrowLeft, ArrowRight, RotateCcw,
+  Sparkles, Compass, Lightbulb, Activity,
+  MessageCircle, Send, Bot, User as UserIcon
 } from 'lucide-react';
 import { VisualizationResponse, HistoryItem } from '../types';
 
@@ -17,48 +17,71 @@ interface VisualizerProps {
   gradeLevel?: string;
   onGradeLevelChange?: (newLevel: string) => void;
   // Reports failures up to App.tsx's global blocking error modal instead of
-  // rendering a raw/local error block inside this screen.
+  // rendering a raw/local error block inside this screen. App.tsx only ever
+  // surfaces this on the Visualizer/Create/Profile screens.
   onError?: (message: string) => void;
 }
 
-// One turn of the follow-up chat conversation about the currently loaded visualization
-interface ChatMessage {
-  role: 'user' | 'model';
-  text: string;
+// One turn of the unified visualizer chat. A turn from the assistant is either a
+// plain explanation ("text") or the delivery of a freshly built visualization
+// ("visualization"), which also becomes the panel's active content.
+interface VisualizerChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  kind: 'text' | 'visualization';
+  text?: string;
+  vizResponse?: VisualizationResponse;
+  vizPrompt?: string;
+}
+
+// Key rotation: tries the primary key first, and if the request fails (rate limit,
+// transient error, etc.) automatically retries with the rotation (fallback) key.
+async function generateContentWithFallback(apiKeys: (string | undefined)[], requestConfig: any) {
+  let lastError: unknown = null;
+  for (const apiKey of apiKeys) {
+    if (!apiKey) continue;
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      return await ai.models.generateContent(requestConfig);
+    } catch (err) {
+      console.error('Gemini request failed on this key, trying next key if available:', err);
+      lastError = err;
+    }
+  }
+  throw lastError ?? new Error('No valid Gemini API key configured.');
 }
 
 const DEMO_PRESETS = [
-  { label: "Solar Eclipse simulation", query: "How does solar eclipse happen" },
+  { label: "Solar eclipse simulation", query: "How does a solar eclipse happen" },
   { label: "Photosynthesis cycle", query: "How does photosynthesis happen" },
-  { label: "Solve Quadratic equations", query: "Solve: x^2 - 5x + 6 = 0" },
-  { label: "Plot algebraic Functions", query: "Graph: y = -2x + 4" }
+  { label: "Solve a quadratic equation", query: "Solve: x^2 - 5x + 6 = 0" },
+  { label: "Plot an algebraic function", query: "Graph: y = -2x + 4" }
 ];
 
-export default function VisualizerScreen({ 
-  darkMode, 
-  onSaveHistory, 
-  loadedVisualization, 
+export default function VisualizerScreen({
+  darkMode,
+  onSaveHistory,
+  loadedVisualization,
   gradeLevel = 'High School',
   onGradeLevelChange,
   onError
 }: VisualizerProps) {
-  const [query, setQuery] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
-  
-  // Simulation player states
+  // Unified chat thread — every user request (whether it's the first prompt or a
+  // follow-up) flows through the same conversation and the same composer.
+  const [messages, setMessages] = useState<VisualizerChatMessage[]>([]);
+  const [composerValue, setComposerValue] = useState<string>('');
+  const [sending, setSending] = useState<boolean>(false);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+
+  // The visualization currently shown in the right-hand (or toggled) panel.
   const [vizData, setVizData] = useState<VisualizationResponse | null>(null);
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const playTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Follow-up AI chat about the currently loaded visualization. Asking a follow-up
-  // no longer regenerates a brand new visualization — it opens this chat thread
-  // instead, so the student can keep talking about the concept that's on screen.
-  const [showFollowUpChat, setShowFollowUpChat] = useState<boolean>(false);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState<string>('');
-  const [chatLoading, setChatLoading] = useState<boolean>(false);
-  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  // Mobile-only toggle between the chat and the visualization panel — desktop
+  // shows both side by side, so this only matters below the md breakpoint.
+  const [mobileView, setMobileView] = useState<'chat' | 'visualization'>('chat');
 
   // Reports a failure to the app-wide blocking error modal (falls back to console
   // logging only if no handler was supplied by the parent).
@@ -70,26 +93,33 @@ export default function VisualizerScreen({
     }
   };
 
-  // Restore state if a visualizer history is loaded
+  // Restore state if a visualizer history item is loaded from elsewhere in the app
   useEffect(() => {
     if (loadedVisualization) {
       setVizData(loadedVisualization.vizResponse);
-      setQuery(loadedVisualization.vizPrompt);
       setCurrentStep(0);
       setIsPlaying(false);
-      // A freshly loaded visualization is a new context — start its follow-up
-      // chat thread over rather than carrying stale messages from a prior one.
-      setChatMessages([]);
-      setShowFollowUpChat(false);
+      setMessages([
+        { id: 'loaded-user', role: 'user', kind: 'text', text: loadedVisualization.vizPrompt },
+        {
+          id: 'loaded-assistant',
+          role: 'assistant',
+          kind: 'visualization',
+          text: `Reloaded "${loadedVisualization.vizResponse.title}" from your history.`,
+          vizResponse: loadedVisualization.vizResponse,
+          vizPrompt: loadedVisualization.vizPrompt
+        }
+      ]);
+      setMobileView('visualization');
     }
   }, [loadedVisualization]);
 
-  // Auto-scroll the follow-up chat to the latest message
+  // Auto-scroll the chat to the latest message
   useEffect(() => {
     if (chatScrollRef.current) {
       chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
     }
-  }, [chatMessages, chatLoading, showFollowUpChat]);
+  }, [messages, sending]);
 
   // Animation player timer loop
   useEffect(() => {
@@ -109,163 +139,156 @@ export default function VisualizerScreen({
     };
   }, [isPlaying, currentStep, vizData]);
 
-  const handleGenerate = async (searchPrompt: string) => {
-    if (!searchPrompt.trim()) return;
-    setLoading(true);
-    setIsPlaying(false);
-    setCurrentStep(0);
+  // Sends one turn of the unified chat. A single Gemini call — using the same
+  // client/key pattern as every other AI call in App.tsx (Quiz, Quiz grading,
+  // Summarizer) — decides, from conversational context, whether this turn should
+  // build a brand-new visualization or just answer as a follow-up about the one
+  // already on screen. This replaces the old dead '/api/generate-visualization'
+  // proxy call entirely.
+  const handleSend = async (rawText: string) => {
+    const trimmed = rawText.trim();
+    if (!trimmed || sending) return;
+
+    const userMsg: VisualizerChatMessage = { id: `u-${Date.now()}`, role: 'user', kind: 'text', text: trimmed };
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
+    setComposerValue('');
+    setSending(true);
 
     try {
-      // Direct browser-to-Gemini call using the exact same client/key pattern as
-      // every other AI call in App.tsx (Quiz, Quiz grading, Summarizer) — instead
-      // of hitting the old '/api/generate-visualization' proxy, which no longer
-      // exists and was returning a 404 HTML page (the source of the "unexpected
-      // token <" JSON-parse crash).
-      const ai = new GoogleGenAI({
-        apiKey: import.meta.env.VITE_QUIZ_GENERATOR_KEY
-      });
+      const activeVizContext = vizData
+        ? `The student currently has this visualization loaded on screen — title: "${vizData.title}", type: "${vizData.type}". Its steps: ${vizData.steps.map((s, i) => `(${i + 1}) ${s.label} — ${s.explanation}`).join(' ')}`
+        : 'No visualization is currently loaded on screen.';
 
       // Schema mirrors VisualizationResponse / VizStep / SVGShape / MathHighlight /
-      // GraphConfig exactly as defined in types.ts, so parsed responses never fail
-      // to satisfy what the renderers (renderGraphWidget/renderAnimationWidget/
-      // renderMathWidget) expect.
-      const visualizerPrompt = `You are Kojlux's AI concept visualizer. Build an interactive, step-by-step visualization for a "${gradeLevel}" level student based on this request: "${searchPrompt}".
+      // GraphConfig exactly as defined in types.ts, so a "visualization" turn
+      // never fails to satisfy what the renderers below expect.
+      const systemInstruction = `You are Kojlux's AI concept visualizer and tutor, in a continuous chat with a "${gradeLevel}" level student.
+${activeVizContext}
+For every message the student sends, choose exactly one response type:
+- "visualization": the student is asking you to build, show, graph, solve, or animate a NEW concept, equation, or system — including asking for something different than what's currently loaded.
+- "text": the student is asking a follow-up or clarifying question about the visualization CURRENTLY on screen (e.g. "why does that happen", "explain step 2 more simply", "give a real-world example"). Do not rebuild the visualization for these — just explain, in plain conversational language appropriate for their level.
 Return ONLY valid JSON (no markdown fences, no commentary) matching exactly this TypeScript shape:
 {
-  "title": string,
-  "type": "animation" | "math" | "graph",
-  "steps": [
-    {
-      "label": string,
-      "explanation": string,
-      "visualElements": {
-        // Only present when "type" is "animation". 3-6 shapes per step, coordinates
-        // laid out within a 300x200 canvas (x/y 0-300 by 0-200).
-        "shapes": [
-          {
-            "type": "circle" | "rect" | "line" | "arrow" | "text",
-            "cx": number, "cy": number, "r": number,
-            "x": number, "y": number, "width": number, "height": number,
-            "x1": number, "y1": number, "x2": number, "y2": number,
-            "color": string,
-            "label": string,
-            "text": string,
-            "strokeWidth": number
-          }
-        ],
-        // Only present when "type" is "math". "highlight" is optional.
-        "mathHighlight": { "expression": string, "highlight": string, "note": string }
+  "responseType": "visualization" | "text",
+  "textReply": string,
+  "visualization": {
+    "title": string,
+    "type": "animation" | "math" | "graph",
+    "steps": [
+      {
+        "label": string,
+        "explanation": string,
+        "visualElements": {
+          "shapes": [ { "type": "circle" | "rect" | "line" | "arrow" | "text", "cx": number, "cy": number, "r": number, "x": number, "y": number, "width": number, "height": number, "x1": number, "y1": number, "x2": number, "y2": number, "color": string, "label": string, "text": string, "strokeWidth": number } ],
+          "mathHighlight": { "expression": string, "highlight": string, "note": string }
+        }
       }
+    ],
+    "graphConfig": {
+      "equation": string,
+      "xMin": number, "xMax": number, "yMin": number, "yMax": number,
+      "points": [ { "x": number, "y": number, "label": string } ]
     }
-  ],
-  // Only present when "type" is "graph".
-  "graphConfig": {
-    "equation": string,
-    "xMin": number, "xMax": number, "yMin": number, "yMax": number,
-    "points": [ { "x": number, "y": number, "label": string } ]
   }
 }
 Rules:
-- Include 3-6 steps that build on each other.
-- Only include the "shapes" or "x1/y1/x2/y2" fields on a shape that are actually relevant to that shape's "type" (e.g. a "circle" needs cx/cy/r/color, not x1/y1/x2/y2; a "text" shape needs x/y/text/color).
-- Include "visualElements.shapes" only when "type" is "animation", and "visualElements.mathHighlight" only when "type" is "math". Omit the other one.
-- Include the top-level "graphConfig" field only when "type" is "graph" — omit it entirely otherwise.
-- Never invent extra top-level fields beyond title, type, steps, and graphConfig.`;
+- "textReply" is always included: a short (1-3 sentence) reply, even when responseType is "visualization" (e.g. "Here's how photosynthesis works, step by step.").
+- Include the top-level "visualization" key ONLY when responseType is "visualization" — omit it entirely for "text".
+- Within "visualization": include 3-6 steps that build on each other; shape coordinates sit within a 300x200 canvas; include "visualElements.shapes" only for type "animation" and "visualElements.mathHighlight" only for type "math" (omit the other); include "graphConfig" only when type is "graph".
+- Never invent extra top-level fields.`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
-        contents: [{ role: 'user', parts: [{ text: visualizerPrompt }] }],
-        config: {
-          responseMimeType: 'application/json'
+      const contents = [
+        { role: 'user', parts: [{ text: systemInstruction }] },
+        { role: 'model', parts: [{ text: JSON.stringify({ responseType: 'text', textReply: 'Understood — ready to help.' }) }] },
+        ...updatedMessages.map(m => ({
+          role: m.role === 'user' ? 'user' : 'model',
+          parts: [{ text: m.kind === 'visualization' ? (m.text || `Generated visualization: ${m.vizResponse?.title}`) : (m.text || '') }]
+        }))
+      ];
+
+      const response = await generateContentWithFallback(
+        [import.meta.env.VITE_VISUALIZER_KEY, import.meta.env.VITE_VISUALIZER_KEY_ROTATION],
+        {
+          model: 'gemini-3.5-flash-lite',
+          contents,
+          config: {
+            responseMimeType: 'application/json'
+          }
         }
-      });
+      );
 
       const resultText = response.text;
       if (!resultText) {
         throw new Error('Gemini returned an empty response.');
       }
 
-      const data = JSON.parse(resultText) as VisualizationResponse;
-      setVizData(data);
-      setChatMessages([]);
-      setShowFollowUpChat(false);
-      
-      // Auto-save visualization to local and cloud history
-      const newHistoryRecord: HistoryItem = {
-        id: Date.now().toString(),
-        itemType: 'visualization',
-        title: data.title || `Visualizing ${searchPrompt}`,
-        subject: `Interactive ${data.type === 'graph' ? 'Plotter' : data.type === 'math' ? 'Equation' : 'Animation'}`,
-        savedAt: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        vizPrompt: searchPrompt,
-        vizResponse: data
-      };
-      
-      onSaveHistory(newHistoryRecord);
+      const parsed = JSON.parse(resultText);
 
-    } catch (err: any) {
-      console.error('Gemini direct visualization generation error:', err);
-      reportError(
-        err instanceof SyntaxError
-          ? "The visualizer couldn't understand the AI's response. Please try rephrasing your question."
-          : (err?.message || 'Unable to build visualization model. Please try a different query.')
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+      if (parsed.responseType === 'visualization' && parsed.visualization) {
+        const vizResponse = parsed.visualization as VisualizationResponse;
+        setVizData(vizResponse);
+        setCurrentStep(0);
+        setIsPlaying(false);
+        setMobileView('visualization');
 
-  // Sends one turn of the follow-up chat about the currently loaded visualization
-  // to Gemini directly from the browser, without regenerating the visualization.
-  const handleSendChatMessage = async () => {
-    const trimmed = chatInput.trim();
-    if (!trimmed || !vizData || chatLoading) return;
+        const assistantMsg: VisualizerChatMessage = {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          kind: 'visualization',
+          text: parsed.textReply || `Here's "${vizResponse.title}".`,
+          vizResponse,
+          vizPrompt: trimmed
+        };
+        setMessages(prev => [...prev, assistantMsg]);
 
-    const updatedMessages: ChatMessage[] = [...chatMessages, { role: 'user', text: trimmed }];
-    setChatMessages(updatedMessages);
-    setChatInput('');
-    setChatLoading(true);
-
-    try {
-      const ai = new GoogleGenAI({
-        apiKey: import.meta.env.VITE_QUIZ_GENERATOR_KEY
-      });
-
-      const systemContext = `You are Kojlux's AI study tutor, chatting with a "${gradeLevel}" level student about a visualization they just generated titled "${vizData.title}". Answer follow-up questions about this specific concept clearly, briefly, and in plain language appropriate for their level. Do not regenerate or describe a new visualization — just explain in conversational text.`;
-
-      const contents = [
-        { role: 'user', parts: [{ text: systemContext }] },
-        { role: 'model', parts: [{ text: `Understood — I'm ready to help you understand "${vizData.title}".` }] },
-        ...updatedMessages.map(m => ({
-          role: m.role,
-          parts: [{ text: m.text }]
-        }))
-      ];
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
-        contents
-      });
-
-      const resultText = response.text;
-      if (!resultText) {
-        throw new Error('Gemini returned an empty chat response.');
+        onSaveHistory({
+          id: Date.now().toString(),
+          itemType: 'visualization',
+          title: vizResponse.title || `Visualizing ${trimmed}`,
+          subject: `Interactive ${vizResponse.type === 'graph' ? 'Plotter' : vizResponse.type === 'math' ? 'Equation' : 'Animation'}`,
+          savedAt: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          vizPrompt: trimmed,
+          vizResponse
+        });
+      } else {
+        const assistantMsg: VisualizerChatMessage = {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          kind: 'text',
+          text: parsed.textReply || "Noted."
+        };
+        setMessages(prev => [...prev, assistantMsg]);
       }
-
-      setChatMessages(prev => [...prev, { role: 'model', text: resultText }]);
     } catch (err: any) {
-      console.error('Gemini follow-up chat error:', err);
-      reportError(err?.message || 'The follow-up chat is temporarily unavailable. Please try again.');
+      // Full technical detail stays in the console for debugging; the user only
+      // ever sees a clean, standardized message — never a raw error string.
+      console.error('Gemini visualizer chat error:', err);
+      reportError('An error occurred. Please try again.');
       // Roll back the optimistic user message on failure so it isn't stranded unanswered
-      setChatMessages(chatMessages);
+      setMessages(messages);
     } finally {
-      setChatLoading(false);
+      setSending(false);
     }
   };
 
-  const handlePresetClick = (q: string) => {
-    setQuery(q);
-    handleGenerate(q);
+  // Clears the whole conversation and the active visualization, starting fresh.
+  const handleNewConversation = () => {
+    setMessages([]);
+    setVizData(null);
+    setCurrentStep(0);
+    setIsPlaying(false);
+    setMobileView('chat');
+  };
+
+  // Loads a past visualization message back into the active panel (e.g. after
+  // scrolling up to an earlier turn in the conversation).
+  const handleOpenVizMessage = (msg: VisualizerChatMessage) => {
+    if (!msg.vizResponse) return;
+    setVizData(msg.vizResponse);
+    setCurrentStep(0);
+    setIsPlaying(false);
+    setMobileView('visualization');
   };
 
   const nextStep = () => {
@@ -586,10 +609,10 @@ Rules:
         <div className="w-full max-w-sm aspect-[3/2] bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 flex flex-col items-center justify-center text-center shadow-inner relative overflow-hidden">
           {/* Subtle math graph grid pattern overlay */}
           <div className="absolute inset-0 bg-[radial-gradient(#ddd_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] opacity-35 pointer-events-none" />
-          
+
           <div className="relative z-10 space-y-4">
             <span className="text-[10px] tracking-widest font-bold text-indigo-500 uppercase block">Active Formula Matrix</span>
-            
+
             <div className="py-2.5 px-4 bg-indigo-50/50 dark:bg-slate-900 border border-indigo-100/50 dark:border-slate-800 rounded-2xl inline-block shadow-xs">
               <span className="text-xl md:text-2xl font-black font-mono tracking-wide text-slate-850 dark:text-slate-150 inline-block py-1">
                 {highlightData.expression}
@@ -606,7 +629,7 @@ Rules:
             )}
           </div>
         </div>
-        
+
         <div className="w-full max-w-sm flex items-start gap-2.5 bg-indigo-50/40 dark:bg-slate-900/50 p-3 rounded-2xl border border-indigo-100/20 dark:border-slate-800/60 mt-1">
           <Lightbulb className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
           <div className="text-left">
@@ -621,331 +644,116 @@ Rules:
   const currentStepData = vizData?.steps[currentStep];
 
   return (
-    <div className="flex-1 flex flex-col gap-4 animate-fade-in text-left h-full">
-      {(vizData || loading) && (
-        <div className="space-y-0.5">
-          <div className="flex items-center gap-2">
-            <Compass className="w-4.5 h-4.5 text-indigo-600 dark:text-indigo-400" />
-            <h2 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider">
-              Concept Visualizer
-            </h2>
-          </div>
-          <p className="text-[11px] text-slate-400 leading-tight">
-            Type math puzzles, physical sciences, or graphed equations to construct step animations
-          </p>
-        </div>
-      )}
-
-      {loading ? (
-        <div className="flex-1 min-h-[300px] flex flex-col items-center justify-center p-6 text-center bg-slate-50/50 dark:bg-slate-900/20 rounded-3xl border border-slate-150 dark:border-slate-850/80">
-          <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-slate-900 border border-indigo-100 dark:border-slate-800 flex items-center justify-center mb-4">
-            <Activity className="w-6 h-6 text-indigo-600 animate-pulse" />
-          </div>
-          <span className="text-[10px] tracking-widest font-extrabold text-indigo-600 dark:text-indigo-400 uppercase">Constructing Visual Model</span>
-          <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mt-1">Applying math engines &amp; geometric coordinate rendering...</p>
-          <p className="text-[10px] text-slate-400 mt-3 animate-pulse max-w-xs block leading-relaxed">Gemini is plotting shape matrices, axes intervals, and chronological education stages...</p>
-        </div>
-      ) : vizData ? (
-        // ACTIVE SIMULATOR PLAYER BOARD
-        <div className="flex-grow flex flex-col gap-4">
-          
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-850 pb-2.5">
-            <div>
-              <span className={`text-[8px] tracking-wider uppercase font-extrabold px-2 py-0.5 rounded-full ${
-                vizData.type === 'graph' 
-                  ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-450' 
-                  : vizData.type === 'math' 
-                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-450'
-                    : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-450'
-              }`}>
-                {vizData.type === 'graph' ? 'Coordinate Plotter' : vizData.type === 'math' ? 'Equation steps' : 'Physics/Science Loop'}
-              </span>
-              <h3 className="text-sm font-extrabold text-slate-800 dark:text-white mt-1 leading-tight">{vizData.title}</h3>
-            </div>
-            
-            <button
-              onClick={() => { setVizData(null); }}
-              className="px-2 py-1 text-[10px] font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-500 dark:text-slate-300 transition"
-            >
-              Reset
-            </button>
-          </div>
-
-          {/* Whiteboard widgets */}
-          {vizData.type === 'graph' && renderGraphWidget()}
-          {vizData.type === 'animation' && renderAnimationWidget()}
-          {vizData.type === 'math' && renderMathWidget()}
-
-          {/* Chronological steps narrative deck */}
-          {currentStepData && (
-            <div className="rounded-2xl p-4 bg-slate-100/40 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/80 flex-grow flex flex-col gap-2">
-              <div className="flex justify-between items-center bg-white dark:bg-slate-850 px-3 py-1 rounded-xl shadow-xs border border-slate-200/10">
-                <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest leading-none">
-                  Step {currentStep + 1} of {vizData.steps.length}
-                </span>
-                <span className="text-[10.5px] font-extrabold text-slate-800 dark:text-white leading-none">
-                  {currentStepData.label}
-                </span>
-              </div>
-              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-sans font-medium text-left">
-                {currentStepData.explanation}
-              </p>
-            </div>
-          )}
-
-          <div className="rounded-2xl border border-indigo-100/80 bg-indigo-50/70 p-3 dark:border-indigo-900/50 dark:bg-indigo-950/20">
-            <div className="mb-2 flex items-center gap-2">
-              <Lightbulb className="h-4 w-4 text-amber-500" />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                Ask a follow-up question
-              </span>
-            </div>
-            {/* Opens the dedicated follow-up chat instead of regenerating a brand
-                new visualization — the student can now have a continuous back-and-
-                forth about the concept currently on screen. */}
-            <button
-              type="button"
-              onClick={() => setShowFollowUpChat(true)}
-              className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 py-2.5 text-xs font-semibold text-white transition hover:bg-indigo-700"
-            >
-              <MessageCircle className="w-3.5 h-3.5" />
-              <span>Chat about this visualization</span>
-              {chatMessages.length > 0 && (
-                <span className="ml-1 rounded-full bg-white/20 px-1.5 py-0.5 text-[9px] font-bold">
-                  {chatMessages.length}
-                </span>
-              )}
-            </button>
-            <p className="mt-2 text-[10px] text-slate-500 dark:text-slate-400">
-              Ask why it happens, what to notice, or for a simpler explanation — without losing this visualization.
-            </p>
-          </div>
-
-          {/* Simulation player timeline controls bar */}
-          <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-850 p-2.5 rounded-2xl border border-slate-200/20 dark:border-slate-800">
-            <button
-              onClick={restartPlayer}
-              title="Restart"
-              className="p-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 text-slate-500 transition"
-              disabled={currentStep === 0}
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={prevStep}
-                className="p-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 disabled:opacity-40 transition"
-                disabled={currentStep === 0}
-                title="Previous frame"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-
-              <button
-                onClick={() => setIsPlaying(!isPlaying)}
-                className="p-2 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition animate-pulse"
-                title={isPlaying ? "Pause simulation loop" : "Auto-play simulation steps"}
-              >
-                {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white" />}
-              </button>
-
-              <button
-                onClick={nextStep}
-                className="p-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 disabled:opacity-40 transition"
-                disabled={currentStep === vizData.steps.length - 1}
-                title="Next frame"
-              >
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Stepper dots indicator */}
-            <div className="flex gap-1">
-              {vizData.steps.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => { setIsPlaying(false); setCurrentStep(i); }}
-                  className={`w-2 h-2 rounded-full transition-all ${
-                    i === currentStep 
-                      ? 'bg-indigo-650 w-3.5' 
-                      : 'bg-slate-350 dark:bg-slate-600 hover:bg-slate-400'
-                  }`}
-                />
-              ))}
-            </div>
-          </div>
-
-        </div>
-      ) : (
-        // DASHBOARD INITIAL SEARCH STATE - ChatGPT/Claude-like premium interface
-        <div className="flex-1 flex flex-col justify-center max-w-2xl mx-auto w-full gap-8 py-8 md:py-12 animate-fade-in text-left">
-          
-          {/* Hero Header Section */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-100 dark:border-indigo-950 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
-                <Compass className="w-5 h-5" />
-              </div>
-              <h1 className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-800 dark:text-white">
-                Concept Visualizer
-              </h1>
-            </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed pl-1">
-              Type math puzzles, physical sciences, or graphed equations to construct step animations.
-            </p>
-          </div>
-
-          {/* Central Action Zone (The Input Bar & Grade Selector) */}
-          <div className="space-y-4">
-            {/* Live Grade Level Toggle Selector */}
-            <div className="flex flex-wrap items-center gap-2.5 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-2xl border border-slate-200/50 dark:border-slate-805/80">
-              <span className="text-[10.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider shrink-0 flex items-center gap-1.5 pl-0.5">
-                <Lightbulb className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                Tailor to Grade / Understanding Level:
-              </span>
-              <select
-                value={gradeLevel}
-                onChange={(e) => onGradeLevelChange && onGradeLevelChange(e.target.value)}
-                className="bg-white dark:bg-slate-950 text-xs font-bold px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500 transition cursor-pointer shadow-xs"
-              >
-                <option value="Elementary School">Elementary School (Simple Terms)</option>
-                <option value="Middle School">Middle School (Visual Analogies)</option>
-                <option value="High School">High School (Standard Curriculum)</option>
-                <option value="College">College (Advanced Technical/Rigorous)</option>
-                <option value="Lifelong Learner">Lifelong Learner (Intuitive & Professional)</option>
-              </select>
-            </div>
-
-            <form
-              onSubmit={(e) => { e.preventDefault(); handleGenerate(query); }}
-              className="w-full bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 rounded-2xl flex items-center gap-2 p-3 pr-2 shadow-xs hover:shadow-sm transition-all duration-200"
-            >
-              <div className="flex-1 min-w-0 flex items-center gap-2.5 px-1.5">
-                <Search className="w-4.5 h-4.5 text-slate-400 shrink-0" />
-                <input
-                  type="text"
-                  className="w-full bg-transparent border-none text-sm focus:ring-0 text-slate-800 dark:text-white placeholder-slate-400 p-0 focus:outline-none"
-                  placeholder="Ask anything to generate physical system drawings, math formulas breakdowns, or algebraic coordinate axes..."
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
-              <button
-                type="submit"
-                className="p-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-xl font-bold transition shrink-0 shadow-xs flex items-center justify-center"
-                disabled={loading || !query.trim()}
-                title="Generate simulation"
-              >
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </form>
-
-            <div className="mt-2 px-3 py-2 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-800 text-[10px] text-slate-600 dark:text-slate-300">
-              Ask a follow-up question after your visualization appears so the concept is explained clearly in plain language.
-            </div>
-          </div>
-
-          {/* Suggested Presets Section (The Grid) */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-1.5 pl-1">
-              <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Suggested Presets</span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {DEMO_PRESETS.map((p, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => handlePresetClick(p.query)}
-                  className="p-4 bg-white dark:bg-slate-900 hover:bg-slate-50/50 dark:hover:bg-slate-850/50 border border-slate-100 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-900 rounded-2xl text-left transition-all duration-200 shadow-xs hover:shadow-sm flex items-start gap-3 group relative"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-indigo-50/60 dark:bg-indigo-950/40 flex items-center justify-center shrink-0 text-indigo-500 dark:text-indigo-400">
-                    <Sparkles className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate group-hover:text-indigo-600 dark:group-hover:text-amber-400 transition-colors">
-                      {p.label}
-                    </h4>
-                    <p className="text-[10.5px] text-slate-400 dark:text-slate-500 truncate font-normal leading-tight">
-                      "{p.query}"
-                    </p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-          
-        </div>
-      )}
-
-      {/* INPUT FORM SITUATED AT EXPLICIT BOTTOM (ONLY SHOW WHEN RESULT IS ACTIVE) */}
-      {vizData && (
-        <form
-          onSubmit={(e) => { e.preventDefault(); handleGenerate(query); }}
-          className="mt-auto bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-2 rounded-2xl flex items-center gap-1.5 focus-within:border-indigo-500 shadow-sm"
+    <div className="flex-1 flex flex-col gap-3 animate-fade-in text-left h-full min-h-[640px]">
+      {/* Mobile-only toggle tabs — desktop shows chat and visualization side by side */}
+      <div className="md:hidden flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800 shrink-0">
+        <button
+          type="button"
+          onClick={() => setMobileView('chat')}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition ${
+            mobileView === 'chat'
+              ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs'
+              : 'text-slate-400 dark:text-slate-500'
+          }`}
         >
-          <div className="flex-1 min-w-0 flex items-center gap-2 px-2">
-            <Search className="w-4 h-4 text-slate-400 shrink-0" />
-            <input
-              type="text"
-              className="w-full bg-transparent border-none text-xs focus:ring-0 text-slate-800 dark:text-white placeholder-slate-400 p-1 focus:outline-none"
-              placeholder="Ask anything to generate physical system drawings, math formulas breakdowns, or algebraic coordinate axes..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              disabled={loading}
-            />
-          </div>
-          <button
-            type="submit"
-            className="p-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-xl font-bold text-xs shrink-0 transition"
-            disabled={loading || !query.trim()}
-          >
-            Generate
-          </button>
-        </form>
-      )}
+          <MessageCircle className="w-3.5 h-3.5" />
+          Chat
+        </button>
+        <button
+          type="button"
+          onClick={() => vizData && setMobileView('visualization')}
+          disabled={!vizData}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition disabled:opacity-35 ${
+            mobileView === 'visualization'
+              ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs'
+              : 'text-slate-400 dark:text-slate-500'
+          }`}
+        >
+          <Compass className="w-3.5 h-3.5" />
+          Visualization
+        </button>
+      </div>
 
-      {/* FOLLOW-UP CHAT PANEL — continuous conversation about the loaded visualization,
-          instead of regenerating a brand new one on every follow-up question. */}
-      {showFollowUpChat && vizData && (
-        <div className="fixed inset-0 z-[65] bg-black/50 backdrop-blur-xs flex items-end md:items-center justify-center animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-md md:rounded-3xl rounded-t-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800 flex flex-col h-[85dvh] md:h-[70vh] overflow-hidden">
-            {/* Chat header */}
-            <div className="flex justify-between items-center px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-100 dark:border-indigo-900 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
-                  <Bot className="w-4 h-4" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-xs font-bold text-slate-850 dark:text-white uppercase tracking-wider leading-none">Follow-Up Chat</h3>
-                  <p className="text-[10px] text-slate-400 truncate mt-0.5">{vizData.title}</p>
-                </div>
+      <div className="flex-1 flex flex-col md:flex-row gap-3 min-h-0">
+
+        {/* ===================== CHAT PANE ===================== */}
+        <div className={`${mobileView === 'chat' ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-[400px] lg:w-[440px] md:shrink-0 min-h-0 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl overflow-hidden`}>
+
+          {/* Chat header */}
+          <div className="shrink-0 flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-100 dark:border-indigo-900 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
+                <Compass className="w-4 h-4" />
               </div>
+              <div className="min-w-0">
+                <h2 className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider leading-none">Concept Visualizer</h2>
+                <p className="text-[10px] text-slate-400 mt-0.5">AI chat &amp; simulations</p>
+              </div>
+            </div>
+            {messages.length > 0 && (
               <button
                 type="button"
-                onClick={() => setShowFollowUpChat(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer shrink-0"
-                title="Close chat"
+                onClick={handleNewConversation}
+                title="Start a new conversation"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition shrink-0"
               >
-                <X className="w-4 h-4" />
+                <RotateCcw className="w-3 h-3" />
+                New
               </button>
-            </div>
+            )}
+          </div>
 
-            {/* Message thread */}
-            <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-              {chatMessages.length === 0 && (
-                <div className="h-full flex flex-col items-center justify-center text-center gap-2 px-6">
-                  <MessageCircle className="w-8 h-8 text-indigo-300 dark:text-indigo-800" />
-                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Ask anything about this visualization</p>
+          {/* Grade level selector */}
+          <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40">
+            <Lightbulb className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+            <span className="text-[9.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider shrink-0">Level:</span>
+            <select
+              value={gradeLevel}
+              onChange={(e) => onGradeLevelChange && onGradeLevelChange(e.target.value)}
+              className="flex-1 min-w-0 bg-white dark:bg-slate-900 text-[11px] font-bold px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-white outline-none focus:ring-1 focus:ring-indigo-500 transition cursor-pointer"
+            >
+              <option value="Elementary School">Elementary School</option>
+              <option value="Middle School">Middle School</option>
+              <option value="High School">High School</option>
+              <option value="College">College</option>
+              <option value="Lifelong Learner">Lifelong Learner</option>
+            </select>
+          </div>
+
+          {/* Message thread */}
+          <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0">
+            {messages.length === 0 ? (
+              <div className="h-full flex flex-col justify-center gap-6 py-4">
+                <div className="text-center space-y-1.5 px-2">
+                  <MessageCircle className="w-7 h-7 text-indigo-300 dark:text-indigo-800 mx-auto" />
+                  <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Ask for a concept to visualize</p>
                   <p className="text-[10.5px] text-slate-400 dark:text-slate-500 leading-relaxed">
-                    "Why does this happen?", "Explain that step more simply", or "Give me a real-world example."
+                    Describe a science process, a math problem, or an equation to graph. Ask follow-up questions any time after.
                   </p>
                 </div>
-              )}
-
-              {chatMessages.map((msg, idx) => (
-                <div key={idx} className={`flex items-start gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                <div className="space-y-1.5">
+                  <span className="text-[9.5px] font-bold tracking-wider text-slate-400 uppercase pl-1">Try one of these</span>
+                  {DEMO_PRESETS.map((p, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleSend(p.query)}
+                      className="w-full p-3 bg-slate-50 dark:bg-slate-850/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-150 dark:border-slate-800 rounded-2xl text-left transition flex items-start gap-2.5 group"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <span className="text-[11.5px] font-bold text-slate-700 dark:text-slate-200 block group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                          {p.label}
+                        </span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 block truncate">"{p.query}"</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              messages.map((msg) => (
+                <div key={msg.id} className={`flex items-start gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
                   <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
                     msg.role === 'user'
                       ? 'bg-slate-800 dark:bg-slate-700 text-white'
@@ -953,55 +761,197 @@ Rules:
                   }`}>
                     {msg.role === 'user' ? <UserIcon className="w-3 h-3" /> : <Bot className="w-3 h-3" />}
                   </div>
-                  <div className={`max-w-[78%] rounded-2xl px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${
-                    msg.role === 'user'
-                      ? 'bg-indigo-600 text-white rounded-tr-sm'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-tl-sm'
-                  }`}>
-                    {msg.text}
+
+                  <div className={`max-w-[80%] space-y-1.5 ${msg.role === 'user' ? 'items-end flex flex-col' : ''}`}>
+                    <div className={`rounded-2xl px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${
+                      msg.role === 'user'
+                        ? 'bg-indigo-600 text-white rounded-tr-sm'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-tl-sm'
+                    }`}>
+                      {msg.text}
+                    </div>
+
+                    {msg.kind === 'visualization' && msg.vizResponse && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenVizMessage(msg)}
+                        className={`w-full flex items-center gap-2.5 rounded-2xl px-3 py-2.5 text-left border transition ${
+                          vizData === msg.vizResponse
+                            ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-900'
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-800'
+                        }`}
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
+                          <Compass className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[10.5px] font-bold text-slate-700 dark:text-slate-200 block truncate">{msg.vizResponse.title}</span>
+                          <span className="text-[9px] text-slate-400 uppercase tracking-wider">{msg.vizResponse.type}</span>
+                        </div>
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-350 dark:text-slate-600 shrink-0" />
+                      </button>
+                    )}
                   </div>
                 </div>
-              ))}
+              ))
+            )}
 
-              {chatLoading && (
-                <div className="flex items-start gap-2">
-                  <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900">
-                    <Bot className="w-3 h-3" />
+            {sending && (
+              <div className="flex items-start gap-2">
+                <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900">
+                  <Activity className="w-3 h-3 animate-pulse" />
+                </div>
+                <div className="rounded-2xl rounded-tl-sm px-3 py-2 bg-slate-100 dark:bg-slate-800 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:-0.2s]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:-0.1s]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Composer */}
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleSend(composerValue); }}
+            className="shrink-0 flex items-center gap-2 p-3 border-t border-slate-100 dark:border-slate-800"
+          >
+            <input
+              type="text"
+              value={composerValue}
+              onChange={(e) => setComposerValue(e.target.value)}
+              placeholder={vizData ? "Ask a follow-up, or request a new visualization..." : "Describe a concept to visualize..."}
+              className="flex-1 min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+              disabled={sending}
+            />
+            <button
+              type="submit"
+              disabled={sending || !composerValue.trim()}
+              className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white transition shrink-0"
+              title="Send"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </form>
+        </div>
+
+        {/* ===================== VISUALIZATION PANE ===================== */}
+        <div className={`${mobileView === 'visualization' ? 'flex' : 'hidden'} md:flex flex-col flex-1 min-h-0 bg-slate-50/60 dark:bg-slate-950/40 border border-slate-200/60 dark:border-slate-800 rounded-3xl overflow-hidden`}>
+          {vizData ? (
+            <div className="flex-1 flex flex-col gap-4 p-4 overflow-y-auto">
+
+              <div className="flex items-center justify-between border-b border-slate-200/60 dark:border-slate-850 pb-2.5 shrink-0">
+                <div className="min-w-0">
+                  <span className={`text-[8px] tracking-wider uppercase font-extrabold px-2 py-0.5 rounded-full inline-block ${
+                    vizData.type === 'graph'
+                      ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-450'
+                      : vizData.type === 'math'
+                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-450'
+                        : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-450'
+                  }`}>
+                    {vizData.type === 'graph' ? 'Coordinate Plotter' : vizData.type === 'math' ? 'Equation Steps' : 'Physics/Science Loop'}
+                  </span>
+                  <h3 className="text-sm font-extrabold text-slate-800 dark:text-white mt-1 leading-tight truncate">{vizData.title}</h3>
+                </div>
+
+                <button
+                  onClick={() => { setVizData(null); setMobileView('chat'); }}
+                  className="px-2 py-1 text-[10px] font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg text-slate-500 dark:text-slate-300 transition shrink-0"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="flex-1 flex flex-col items-center justify-center gap-4">
+                {vizData.type === 'graph' && renderGraphWidget()}
+                {vizData.type === 'animation' && renderAnimationWidget()}
+                {vizData.type === 'math' && renderMathWidget()}
+              </div>
+
+              {/* Chronological steps narrative deck */}
+              {currentStepData && (
+                <div className="rounded-2xl p-4 bg-white/60 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/80 shrink-0">
+                  <div className="flex justify-between items-center bg-white dark:bg-slate-850 px-3 py-1 rounded-xl shadow-xs border border-slate-200/10 mb-2">
+                    <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest leading-none">
+                      Step {currentStep + 1} of {vizData.steps.length}
+                    </span>
+                    <span className="text-[10.5px] font-extrabold text-slate-800 dark:text-white leading-none">
+                      {currentStepData.label}
+                    </span>
                   </div>
-                  <div className="rounded-2xl rounded-tl-sm px-3 py-2 bg-slate-100 dark:bg-slate-800 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:-0.2s]" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:-0.1s]" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" />
-                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-sans font-medium text-left">
+                    {currentStepData.explanation}
+                  </p>
                 </div>
               )}
-            </div>
 
-            {/* Composer */}
-            <form
-              onSubmit={(e) => { e.preventDefault(); handleSendChatMessage(); }}
-              className="shrink-0 flex items-center gap-2 p-3 border-t border-slate-100 dark:border-slate-800"
-            >
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Ask a follow-up question..."
-                className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
-                disabled={chatLoading}
-              />
-              <button
-                type="submit"
-                disabled={chatLoading || !chatInput.trim()}
-                className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white transition shrink-0"
-                title="Send"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </form>
-          </div>
+              {/* Simulation player timeline controls bar */}
+              <div className="flex items-center justify-between bg-white dark:bg-slate-850 p-2.5 rounded-2xl border border-slate-200/60 dark:border-slate-800 shrink-0">
+                <button
+                  onClick={restartPlayer}
+                  title="Restart"
+                  className="p-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 text-slate-500 transition"
+                  disabled={currentStep === 0}
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={prevStep}
+                    className="p-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 disabled:opacity-40 transition"
+                    disabled={currentStep === 0}
+                    title="Previous frame"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
+
+                  <button
+                    onClick={() => setIsPlaying(!isPlaying)}
+                    className="p-2 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition"
+                    title={isPlaying ? "Pause simulation loop" : "Auto-play simulation steps"}
+                  >
+                    {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white" />}
+                  </button>
+
+                  <button
+                    onClick={nextStep}
+                    className="p-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 disabled:opacity-40 transition"
+                    disabled={currentStep === vizData.steps.length - 1}
+                    title="Next frame"
+                  >
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Stepper dots indicator */}
+                <div className="flex gap-1">
+                  {vizData.steps.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => { setIsPlaying(false); setCurrentStep(i); }}
+                      className={`w-2 h-2 rounded-full transition-all ${
+                        i === currentStep
+                          ? 'bg-indigo-650 w-3.5'
+                          : 'bg-slate-350 dark:bg-slate-600 hover:bg-slate-400'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-center gap-3 p-8">
+              <div className="w-14 h-14 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center">
+                <Compass className="w-6 h-6 text-slate-300 dark:text-slate-700" />
+              </div>
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">No visualization loaded</p>
+              <p className="text-[10.5px] text-slate-400 dark:text-slate-600 max-w-[220px] leading-relaxed">
+                Ask a question in the chat and your interactive visualization will appear here.
+              </p>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -43,9 +43,12 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
           VITE_FIREBASE_MEASUREMENT_ID: ${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}
           VITE_VISUALIZER_KEY: ${{ secrets.VITE_VISUALIZER_KEY }}
+          VITE_VISUALIZER_KEY_ROTATION: ${{ secrets.VITE_VISUALIZER_KEY_ROTATION }}
           VITE_QUIZ_GENERATOR_KEY: ${{ secrets.VITE_QUIZ_GENERATOR_KEY }}
+          VITE_QUIZ_GENERATOR_KEY_ROTATION: ${{ secrets.VITE_QUIZ_GENERATOR_KEY_ROTATION }}
           VITE_CHAT_KEY: ${{ secrets.VITE_CHAT_KEY }}
           VITE_SUMMARIZER_KEY: ${{ secrets.VITE_SUMMARIZER_KEY }}
+          VITE_SUMMARIZER_KEY_ROTATION: ${{ secrets.VITE_SUMMARIZER_KEY_ROTATION }}
         run: npm run build
 
       - name: Upload artifact

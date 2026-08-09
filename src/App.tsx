@@ -26,6 +26,23 @@ import Auth from './components/Auth';
 // Daily cap on AI tool calls (Quiz, Quiz grading, Summarizer) per signed-in user
 const AI_DAILY_LIMIT = 4;
 
+// Key rotation: tries the primary key first, and if the request fails (rate limit,
+// transient error, etc.) automatically retries with the rotation (fallback) key.
+async function generateContentWithFallback(apiKeys: (string | undefined)[], requestConfig: any) {
+  let lastError: unknown = null;
+  for (const apiKey of apiKeys) {
+    if (!apiKey) continue;
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      return await ai.models.generateContent(requestConfig);
+    } catch (err) {
+      console.error('Gemini request failed on this key, trying next key if available:', err);
+      lastError = err;
+    }
+  }
+  throw lastError ?? new Error('No valid Gemini API key configured.');
+}
+
 // Shared grade-level options used across registration, post-creation, the
 // visualizer, and the feed grade-level filter picker so they always stay in sync.
 const GRADE_LEVEL_OPTIONS = [
@@ -525,7 +542,21 @@ export default function App() {
   });
 
   // bottom navigation bar state: 'home' | 'create' | 'visualizer' | 'watch' | 'profile'
-  const [activeNavTab, setActiveNavTab] = useState<'home' | 'create' | 'visualizer' | 'watch' | 'profile'>('home');
+  // Persisted to sessionStorage (not localStorage) so a manual page refresh keeps
+  // the user on the exact screen they were viewing, while fully closing the
+  // tab/window and reopening it still starts fresh back on Home — sessionStorage
+  // is cleared by the browser exactly on that boundary.
+  type NavTab = 'home' | 'create' | 'visualizer' | 'watch' | 'profile';
+  const VALID_NAV_TABS: NavTab[] = ['home', 'create', 'visualizer', 'watch', 'profile'];
+  const [activeNavTab, setActiveNavTab] = useState<NavTab>(() => {
+    const stored = sessionStorage.getItem('kojlux_active_tab');
+    return (stored && VALID_NAV_TABS.includes(stored as NavTab)) ? (stored as NavTab) : 'home';
+  });
+
+  // Keep the persisted tab in sync every time the user navigates.
+  useEffect(() => {
+    sessionStorage.setItem('kojlux_active_tab', activeNavTab);
+  }, [activeNavTab]);
 
   // Interactive mobile video editing states
   const [trimStart, setTrimStart] = useState<number>(0);
@@ -598,7 +629,7 @@ export default function App() {
         );
       } catch (err) {
         console.error('Failed to sync profile grade level:', err);
-        setErrorMsg("Something went wrong.");
+        showError("Something went wrong.");
       }
     }
   };
@@ -639,6 +670,23 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [saveToast, setSaveToast] = useState<string | null>(null);
 
+  // Screens where the global blocking error modal is allowed to appear. Errors
+  // that occur while the user is on the Home or Watch screens are intentionally
+  // swallowed (still logged to console for debugging) so nothing interrupts
+  // browsing/content-consumption there — see showError below.
+  const ERROR_VISIBLE_TABS: Array<typeof activeNavTab> = ['visualizer', 'create', 'profile'];
+
+  // Central gate for the global error modal. Every user-facing error in the app
+  // should be routed through this (instead of calling setErrorMsg directly) so
+  // Home/Watch stay silent while Visualizer/Create/Profile keep surfacing errors.
+  const showError = (message: string) => {
+    if (ERROR_VISIBLE_TABS.includes(activeNavTab)) {
+      setErrorMsg(message);
+    } else {
+      console.error('[suppressed on', activeNavTab, 'screen]:', message);
+    }
+  };
+
   // Enforces a per-user daily cap of AI tool calls (Quiz generation, Quiz grading,
   // Summarizer) by reading/writing a counter on the user's Firestore profile doc.
   // Returns true if this call is allowed to proceed (and reserves the slot by
@@ -650,7 +698,7 @@ export default function App() {
   // Security Rules (or a server-side proxy) that independently validate this counter.
   const canUseAiToday = async (): Promise<boolean> => {
     if (!auth.currentUser) {
-      setErrorMsg("Something went wrong.");
+      showError("Something went wrong.");
       return false;
     }
     const todayStr = new Date().toISOString().split('T')[0];
@@ -662,7 +710,7 @@ export default function App() {
       const currentCount = typeof data?.dailyAiCount === 'number' ? data.dailyAiCount : 0;
 
       if (lastDate === todayStr && currentCount >= AI_DAILY_LIMIT) {
-        setErrorMsg("Something went wrong.");
+        showError("Something went wrong.");
         return false;
       }
 
@@ -675,7 +723,7 @@ export default function App() {
       return true;
     } catch (err) {
       console.error("Failed to verify daily AI usage limit:", err);
-      setErrorMsg("Something went wrong.");
+      showError("Something went wrong.");
       return false;
     }
   };
@@ -842,7 +890,7 @@ export default function App() {
       }
     } catch (err) {
       console.error("Failed to load saved videos:", err);
-      setErrorMsg("Something went wrong.");
+      showError("Something went wrong.");
     }
   };
 
@@ -861,7 +909,7 @@ export default function App() {
         );
       } catch (err) {
          console.error("Failed to sync bookmark:", err);
-         setErrorMsg("Something went wrong.");
+         showError("Something went wrong.");
       }
     }
   };
@@ -899,7 +947,7 @@ export default function App() {
       fetchVideos(false, newSess, data.email || profileEmail, data.gradeLevel || gradeLevel);
     } catch (err) {
       console.error('Failed to hydrate user profile from Firestore:', err);
-      setErrorMsg("We couldn't sync your profile from the cloud. Some information on this device may be out of date.");
+      showError("We couldn't sync your profile from the cloud. Some information on this device may be out of date.");
     }
   };
 
@@ -934,7 +982,7 @@ export default function App() {
       }
     } catch (err) {
       console.error('Failed to load videos:', err);
-      setErrorMsg("Something went wrong.");
+      showError("Something went wrong.");
     } finally {
       setLoadingVideos(false);
     }
@@ -962,7 +1010,7 @@ export default function App() {
       }
     } catch (err) {
       console.error('Failed to refresh feed:', err);
-      setErrorMsg("Something went wrong.");
+      showError("Something went wrong.");
     } finally {
       setLoadingVideos(false);
     }
@@ -986,7 +1034,7 @@ export default function App() {
       setTimeout(() => setSaveToast(null), 3000);
     } catch (err) {
       console.error(err);
-      setErrorMsg("Something went wrong.");
+      showError("Something went wrong.");
     }
   };
 
@@ -1032,35 +1080,35 @@ export default function App() {
   const handlePostVideo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newVideoTitle.trim()) {
-      setErrorMsg("Please specify what your video teaches.");
+      showError("Please specify what your video teaches.");
       return;
     }
     if (!newVideoSummary.trim()) {
-      setErrorMsg("Please provide a short summary explaining the video.");
+      showError("Please provide a short summary explaining the video.");
       return;
     }
     if (!newVideoGradeLevel) {
-      setErrorMsg("Please select which grade level this video is intended for.");
+      showError("Please select which grade level this video is intended for.");
       return;
     }
 
     let finalVideoUrl = '';
     if (newVideoMode === 'file') {
       if (!newVideoBase64) {
-        setErrorMsg("Please select or record a video/image file first.");
+        showError("Please select or record a video/image file first.");
         return;
       }
       finalVideoUrl = newVideoBase64;
     } else {
       if (!newVideoUrl.trim()) {
-        setErrorMsg("Please supply a valid YouTube link.");
+        showError("Please supply a valid YouTube link.");
         return;
       }
       finalVideoUrl = newVideoUrl.trim();
     }
 
     if (!newVideoAgreed) {
-      setErrorMsg("You must agree that this video consists only of learning content.");
+      showError("You must agree that this video consists only of learning content.");
       return;
     }
 
@@ -1074,7 +1122,7 @@ export default function App() {
           uploadedUrl = await uploadBase64File(newVideoBase64, dest);
         } catch (err) {
           console.error(err);
-          setErrorMsg("Something went wrong.");
+          showError("Something went wrong.");
           setPostingVideo(false);
           return;
         }
@@ -1122,7 +1170,7 @@ export default function App() {
       setTimeout(() => setSaveToast(null), 3500);
     } catch (err) {
       console.error(err);
-      setErrorMsg("Something went wrong.");
+      showError("Something went wrong.");
     } finally {
       setPostingVideo(false);
     }
@@ -1209,7 +1257,7 @@ export default function App() {
 
   const processFile = (file: File) => {
     if (!file.type.startsWith('image/')) {
-      setErrorMsg('Kindly choose an image file (PNG, JPG, WebP) of your notes or paper syllabus material.');
+      showError('Kindly choose an image file (PNG, JPG, WebP) of your notes or paper syllabus material.');
       return;
     }
     const reader = new FileReader();
@@ -1317,12 +1365,7 @@ export default function App() {
     }, 2000);
 
     try {
-      // 1. Initialize the Google Gen AI client using your Vite key
-      const ai = new GoogleGenAI({ 
-        apiKey: import.meta.env.VITE_QUIZ_GENERATOR_KEY 
-      });
-
-      // 2. Build the multimodal prompt from the user's REAL uploaded note data
+      // 1. Build the multimodal prompt from the user's REAL uploaded note data
       const quizPrompt = `You are Kojlux's AI study assistant. Based on the study notes provided (image and/or text below), generate a ${quizType} quiz with exactly ${questionCount} questions at ${difficulty} difficulty.
 Return ONLY valid JSON (no markdown fences, no commentary) matching exactly this structure:
 {
@@ -1359,14 +1402,17 @@ ${textInput}` });
         }
       }
 
-      // 3. Direct browser-to-Gemini call
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
-        contents: [{ role: 'user', parts: quizParts }],
-        config: {
-          responseMimeType: 'application/json'
+      // 2. Direct browser-to-Gemini call, with automatic key rotation on failure
+      const response = await generateContentWithFallback(
+        [import.meta.env.VITE_QUIZ_GENERATOR_KEY, import.meta.env.VITE_QUIZ_GENERATOR_KEY_ROTATION],
+        {
+          model: 'gemini-3.5-flash-lite',
+          contents: [{ role: 'user', parts: quizParts }],
+          config: {
+            responseMimeType: 'application/json'
+          }
         }
-      });
+      );
 
          // 4. Extract the text — response.text is a getter property on the SDK's
          // response object (a string), not a method, so no function-call fallback is needed.
@@ -1383,7 +1429,7 @@ ${textInput}` });
 
     } catch (error) {
       console.error("Gemini direct quiz generation error:", error);
-      setErrorMsg("Something went wrong.");
+      showError("Something went wrong.");
     } finally {
       setLoading(false);
       clearInterval(msgInterval);
@@ -1411,10 +1457,6 @@ ${textInput}` });
     }
 
     try {
-      const ai = new GoogleGenAI({ 
-        apiKey: import.meta.env.VITE_QUIZ_GENERATOR_KEY 
-      });
-
       const evalPrompt = `You are Kojlux's AI grading tutor. Grade the student's submitted answers against the quiz questions below.
 Return ONLY valid JSON (no markdown fences, no commentary) matching exactly this structure:
 {
@@ -1440,13 +1482,16 @@ ${JSON.stringify(quizData.questions)}
 Student's submitted answers, keyed by question id:
 ${JSON.stringify(userAnswers)}`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
-        contents: [{ role: 'user', parts: [{ text: evalPrompt }] }],
-        config: {
-          responseMimeType: 'application/json'
+      const response = await generateContentWithFallback(
+        [import.meta.env.VITE_QUIZ_GENERATOR_KEY, import.meta.env.VITE_QUIZ_GENERATOR_KEY_ROTATION],
+        {
+          model: 'gemini-3.5-flash-lite',
+          contents: [{ role: 'user', parts: [{ text: evalPrompt }] }],
+          config: {
+            responseMimeType: 'application/json'
+          }
         }
-      });
+      );
 
       const resultText = response.text;
       if (!resultText) {
@@ -1475,7 +1520,7 @@ ${JSON.stringify(userAnswers)}`;
 
     } catch (err: any) {
       console.error(err);
-      setErrorMsg("Something went wrong.");
+      showError("Something went wrong.");
     } finally {
       setIsEvaluating(false);
     }
@@ -1492,7 +1537,7 @@ ${JSON.stringify(userAnswers)}`;
       );
     } catch (err) {
       console.error('Failed to back up progress:', err);
-      setErrorMsg("Something went wrong.");
+      showError("Something went wrong.");
     }
   };
 
@@ -1542,11 +1587,11 @@ ${JSON.stringify(userAnswers)}`;
   const handleProfileLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginIdentifier.trim()) {
-      setErrorMsg("Please enter your username or email.");
+      showError("Please enter your username or email.");
       return;
     }
     if (!authPassword) {
-      setErrorMsg("Please enter your password.");
+      showError("Please enter your password.");
       return;
     }
     setSyncingProfile(true);
@@ -1575,7 +1620,7 @@ ${JSON.stringify(userAnswers)}`;
       setAuthPassword('');
     } catch (err) {
       console.error(err);
-      setErrorMsg("Something went wrong.");
+      showError("Something went wrong.");
     } finally {
       setSyncingProfile(false);
       setTimeout(() => setSaveToast(null), 3000);
@@ -1585,15 +1630,15 @@ ${JSON.stringify(userAnswers)}`;
   const handleProfileRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!authUsername.trim()) {
-      setErrorMsg("Please enter a username.");
+      showError("Please enter a username.");
       return;
     }
     if (!authEmail.trim() || !authEmail.includes('@')) {
-      setErrorMsg("Please enter a valid email address.");
+      showError("Please enter a valid email address.");
       return;
     }
     if (!authPassword || authPassword.length < 4) {
-      setErrorMsg("Password must be at least 4 characters.");
+      showError("Password must be at least 4 characters.");
       return;
     }
     setSyncingProfile(true);
@@ -1636,7 +1681,7 @@ ${JSON.stringify(userAnswers)}`;
       setAuthPassword('');
     } catch (err) {
       console.error(err);
-      setErrorMsg("Something went wrong.");
+      showError("Something went wrong.");
     } finally {
       setSyncingProfile(false);
       setTimeout(() => setSaveToast(null), 3000);
@@ -2010,7 +2055,7 @@ ${JSON.stringify(userAnswers)}`;
 
   const handleGenerateSummary = async () => {
     if (!summaryImage && !summaryTextInput.trim()) {
-      setErrorMsg("Please upload an image snapshot, snap with camera, or paste notes text first!");
+      showError("Please upload an image snapshot, snap with camera, or paste notes text first!");
       return;
     }
 
@@ -2040,10 +2085,6 @@ ${JSON.stringify(userAnswers)}`;
     }, 2000);
 
     try {
-      const ai = new GoogleGenAI({ 
-        apiKey: import.meta.env.VITE_QUIZ_GENERATOR_KEY 
-      });
-
       const summaryPrompt = `You are Kojlux's AI study assistant. Create a ${detailLevel} study summary sheet from the notes provided (image and/or text below).
 Return ONLY valid JSON (no markdown fences, no commentary) matching exactly this structure:
 {
@@ -2074,13 +2115,16 @@ ${summaryTextInput}` });
         }
       }
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
-        contents: [{ role: 'user', parts: summaryParts }],
-        config: {
-          responseMimeType: 'application/json'
+      const response = await generateContentWithFallback(
+        [import.meta.env.VITE_SUMMARIZER_KEY, import.meta.env.VITE_SUMMARIZER_KEY_ROTATION],
+        {
+          model: 'gemini-3.5-flash-lite',
+          contents: [{ role: 'user', parts: summaryParts }],
+          config: {
+            responseMimeType: 'application/json'
+          }
         }
-      });
+      );
 
       const resultText = response.text;
       if (!resultText) {
@@ -2110,7 +2154,7 @@ ${summaryTextInput}` });
 
     } catch (err: any) {
       console.error(err);
-      setErrorMsg("Something went wrong.");
+      showError("Something went wrong.");
     } finally {
       clearInterval(msgInterval);
       setIsSummarizing(false);
@@ -2338,9 +2382,7 @@ ${summaryTextInput}` });
   </g>
 </svg>
 
-                {notifications.some(n => !n.read) && (
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900 animate-pulse" />
-                )}
+                {/* Unread-notification indicator dot intentionally removed per design request */}
               </button>
               
               {/* Custom Interactive Notifications List Dropdown */}
@@ -2831,7 +2873,7 @@ ${summaryTextInput}` });
                       onGradeLevelChange={handleUpdateGradeLevel}
                       loadedVisualization={activeLoadedVisualization}
                       onSaveHistory={handleSaveVisualizationHistory}
-                      onError={setErrorMsg}
+                      onError={showError}
                     />
                   </div>
                 )}
@@ -3121,7 +3163,7 @@ ${summaryTextInput}` });
                               onClick={() => {
                                 if (!isLoggedIn) {
                                   setActiveNavTab('profile');
-                                  setErrorMsg("You must be signed in or signed up to publish a learning Reel. Please log in or register below.");
+                                  showError("You must be signed in or signed up to publish a learning Reel. Please log in or register below.");
                                 } else {
                                   setShowPostModal(true);
                                 }
@@ -5037,8 +5079,10 @@ ${summaryTextInput}` });
 
 
 
-      {/* Global blocking error modal — replaces native alert() calls across the app */}
-      {errorMsg && (
+      {/* Global blocking error modal — replaces native alert() calls across the app.
+          Only ever rendered on Visualizer/Create/Profile (see ERROR_VISIBLE_TABS);
+          Home and Watch stay silent even if errorMsg is still set from a prior tab. */}
+      {errorMsg && ERROR_VISIBLE_TABS.includes(activeNavTab) && (
         <div
           className="fixed inset-0 z-[200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-5 animate-fade-in"
           onClick={() => setErrorMsg(null)}

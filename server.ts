@@ -11,31 +11,45 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Lazy initialization of Gemini
-let aiClient: GoogleGenAI | null = null;
-function getGeminiClient() {
-  if (!aiClient) {
-   const apiKey = 
-  process.env.GEMINI_API_KEY || 
-  process.env.VITE_VISUALIZER_KEY || 
-  process.env.VITE_QUIZ_GENERATOR_KEY || 
-  process.env.VITE_CHAT_KEY || 
-  process.env.VITE_SUMMARIZER_KEY;
+// Key rotation: each task has a primary key and a rotation (fallback) key.
+// If a primary key is missing, rate-limited, or errors out, we automatically
+// retry the same request with the next key in the chain.
+const GEMINI_KEY_CHAIN: string[] = [
+  process.env.GEMINI_API_KEY,
+  process.env.VITE_QUIZ_GENERATOR_KEY,
+  process.env.VITE_QUIZ_GENERATOR_KEY_ROTATION,
+  process.env.VITE_VISUALIZER_KEY,
+  process.env.VITE_VISUALIZER_KEY_ROTATION,
+  process.env.VITE_CHAT_KEY,
+  process.env.VITE_SUMMARIZER_KEY,
+  process.env.VITE_SUMMARIZER_KEY_ROTATION,
+].filter((key): key is string => !!key);
 
-if (!apiKey) {
+if (GEMINI_KEY_CHAIN.length === 0) {
   console.warn("⚠️ Warning: No Gemini API Key detected in environment variables.");
 }
 
-    aiClient = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
+// Tries each key in GEMINI_KEY_CHAIN in order until one succeeds. This is what
+// gives us the primary -> rotation fallback behavior on rate limits/errors.
+async function generateContentWithFallback(requestConfig: any) {
+  let lastError: unknown = null;
+  for (const apiKey of GEMINI_KEY_CHAIN) {
+    try {
+      const client = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          },
         },
-      },
-    });
+      });
+      return await client.models.generateContent(requestConfig);
+    } catch (err) {
+      console.error('Gemini request failed on this key, trying next key if available:', err);
+      lastError = err;
+    }
   }
-  return aiClient;
+  throw lastError ?? new Error('No valid Gemini API key configured.');
 }
 
 async function main() {
@@ -57,7 +71,6 @@ async function main() {
       const qType = type || 'multiple-choice';
       const qDifficulty = difficulty || 'medium';
 
-      const ai = getGeminiClient();
       const contents: any[] = [];
 
       let prompt = `You are a friendly but highly systematic tutor. Analyze the provided study material carefully. Construct an interactive student quiz that evaluates their deep understanding.
@@ -127,8 +140,8 @@ Rules:
         required: ["title", "subject", "questions"]
       };
 
-      const result = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+      const result = await generateContentWithFallback({
+        model: 'gemini-3.5-flash-lite',
         contents,
         config: {
           responseMimeType: 'application/json',
@@ -158,7 +171,6 @@ Rules:
       }
 
       const lengthType = detailLevel || 'standard'; // 'concise' | 'standard' | 'thorough'
-      const ai = getGeminiClient();
       const contents: any[] = [];
 
       let prompt = `You are a world-class academic tutor and summary specialist. Your task is to compress and study-map the provided source material.
@@ -228,8 +240,8 @@ Rules:
         required: ["title", "subject", "mainIdea", "keyTakeaways", "glossary", "comprehensiveSummary"]
       };
 
-      const result = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+      const result = await generateContentWithFallback({
+        model: 'gemini-3.5-flash-lite',
         contents,
         config: {
           responseMimeType: 'application/json',
@@ -258,7 +270,6 @@ Rules:
         return res.status(400).json({ error: 'Missing quiz questions or user input answers.' });
       }
 
-      const ai = getGeminiClient();
 
       const evaluationPrompt = `You are a supportive, high-quality, and positive AI tutor.
 Review the following quiz questions along with the user's answers.
@@ -316,8 +327,8 @@ Guidelines:
         required: ["questionEvaluations", "summary"]
       };
 
-      const result = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+      const result = await generateContentWithFallback({
+        model: 'gemini-3.5-flash-lite',
         contents: evaluationPrompt,
         config: {
           responseMimeType: 'application/json',
@@ -945,7 +956,6 @@ Guidelines:
       }
 
       const userGradeLevel = gradeLevel || 'High School';
-      const ai = getGeminiClient();
       
       const vizPrompt = `You are a world-class academic simulation and educational visual specialist.
 Analyze the user's inquiry: "${prompt}" for a student at the **${userGradeLevel}** understanding/grade level.
@@ -1049,8 +1059,8 @@ Let your explanations be incredibly friendly, clear, supportive, and motivating.
         required: ["title", "type", "steps"]
       };
 
-      const result = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+      const result = await generateContentWithFallback({
+        model: 'gemini-3.5-flash-lite',
         contents: [
           { text: vizPrompt }
         ],
