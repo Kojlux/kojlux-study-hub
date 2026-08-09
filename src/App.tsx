@@ -25,6 +25,9 @@ import Auth from './components/Auth';
 
 // Daily cap on AI tool calls (Quiz, Quiz grading, Summarizer) per signed-in user
 const AI_DAILY_LIMIT = 4;
+// Temporarily disabled while we track down an unrelated bug — flip this back
+// to true whenever we're ready to re-enable the daily cap.
+const AI_DAILY_LIMIT_ENABLED = false;
 
 // Key rotation: tries the primary key first, and if the request fails (rate limit,
 // transient error, etc.) automatically retries with the rotation (fallback) key.
@@ -697,6 +700,9 @@ export default function App() {
   // their own Firestore document directly. Real enforcement requires Firestore
   // Security Rules (or a server-side proxy) that independently validate this counter.
   const canUseAiToday = async (): Promise<boolean> => {
+    if (!AI_DAILY_LIMIT_ENABLED) {
+      return true;
+    }
     if (!auth.currentUser) {
       showError("Something went wrong.");
       return false;
