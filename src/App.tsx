@@ -2462,7 +2462,7 @@ ${summaryTextInput}` });
                       <p className="text-[10px] text-slate-400 text-center py-4">No notifications yet.</p>
                     ) : (
                       notifications.map(notif => (
-                        <div key={notif.id} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-150 dark:border-slate-800/60 flex flex-col gap-1 text-left relative">
+                        <div key={notif.id} className="p-2.5 rounded-xl bg-white dark:bg-slate-850 border border-[#B2EBF2] dark:border-slate-800/60 flex flex-col gap-1 text-left relative">
                           <div className="flex justify-between items-start gap-1">
                             <span className="text-[10.5px] font-black text-slate-800 dark:text-white leading-tight">
                               {notif.title}
@@ -2612,7 +2612,7 @@ ${summaryTextInput}` });
                               setActiveNavTab('create');
                               setCreateSubTab('quiz');
                             }}
-                            className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/80 shadow-3xs hover:shadow-2xs hover:scale-[1.02] active:scale-95 transition-all duration-200 cursor-pointer text-left flex flex-col justify-between min-h-[110px]"
+                            className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#B2EBF2] dark:border-slate-800/80 shadow-3xs hover:shadow-2xs hover:scale-[1.02] active:scale-95 transition-all duration-200 cursor-pointer text-left flex flex-col justify-between min-h-[110px]"
                           >
                             <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100/60 dark:border-indigo-900/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                               <BookOpenCheck className="w-4.5 h-4.5" />
@@ -2626,7 +2626,7 @@ ${summaryTextInput}` });
                           {/* Card 2: Concept Visualizer */}
                           <div
                             onClick={() => setActiveNavTab('visualizer')}
-                            className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/80 shadow-3xs hover:shadow-2xs hover:scale-[1.02] active:scale-95 transition-all duration-200 cursor-pointer text-left flex flex-col justify-between min-h-[110px]"
+                            className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#B2EBF2] dark:border-slate-800/80 shadow-3xs hover:shadow-2xs hover:scale-[1.02] active:scale-95 transition-all duration-200 cursor-pointer text-left flex flex-col justify-between min-h-[110px]"
                           >
                             <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100/60 dark:border-emerald-900/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
                               <Compass className="w-4.5 h-4.5" />
@@ -2640,7 +2640,7 @@ ${summaryTextInput}` });
                           {/* Card 3: Watch Feed */}
                           <div
                             onClick={() => setActiveNavTab('watch')}
-                            className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/80 shadow-3xs hover:shadow-2xs hover:scale-[1.02] active:scale-95 transition-all duration-200 cursor-pointer text-left flex flex-col justify-between min-h-[110px]"
+                            className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#B2EBF2] dark:border-slate-800/80 shadow-3xs hover:shadow-2xs hover:scale-[1.02] active:scale-95 transition-all duration-200 cursor-pointer text-left flex flex-col justify-between min-h-[110px]"
                           >
                             <div className="w-8 h-8 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-100/60 dark:border-rose-900/60 flex items-center justify-center text-rose-600 dark:text-rose-400">
                               <Video className="w-4.5 h-4.5" />
@@ -2657,7 +2657,7 @@ ${summaryTextInput}` });
                               setActiveNavTab('create');
                               setCreateSubTab('summarizer');
                             }}
-                            className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800/80 shadow-3xs hover:shadow-2xs hover:scale-[1.02] active:scale-95 transition-all duration-200 cursor-pointer text-left flex flex-col justify-between min-h-[110px]"
+                            className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-[#B2EBF2] dark:border-slate-800/80 shadow-3xs hover:shadow-2xs hover:scale-[1.02] active:scale-95 transition-all duration-200 cursor-pointer text-left flex flex-col justify-between min-h-[110px]"
                           >
                             <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-100/60 dark:border-amber-900/60 flex items-center justify-center text-amber-600 dark:text-amber-400">
                               <FileText className="w-4.5 h-4.5" />
@@ -2753,7 +2753,7 @@ ${summaryTextInput}` });
                         </div>
 
                         {historyItems.length === 0 ? (
-                          <div className="flex-grow flex flex-col items-center justify-center text-center p-6 bg-slate-50/50 dark:bg-slate-900/40 rounded-2xl border border-slate-200/40 dark:border-slate-800/80">
+                          <div className="flex-grow flex flex-col items-center justify-center text-center p-6 bg-white dark:bg-slate-900/40 rounded-2xl border border-[#B2EBF2] dark:border-slate-800/80">
                             <History className="w-8 h-8 opacity-20 mb-2 text-indigo-500" />
                             <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 leading-none">No recent activity found</p>
                             <p className="text-[9px] text-slate-400 max-w-[200px] mt-1">Generate a quiz or create study sheets to log records.</p>
@@ -2855,7 +2855,7 @@ ${summaryTextInput}` });
                                     handleLoadHistoryItem(item);
                                     setShowFullHistory(false);
                                   }}
-                                  className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/50 border border-slate-100 dark:border-slate-800/80 shadow-3xs hover:shadow-2xs hover:scale-[1.01] transition-all cursor-pointer flex justify-between items-start gap-3"
+                                  className="p-3 rounded-xl bg-white dark:bg-slate-950/50 border border-[#B2EBF2] dark:border-slate-800/80 shadow-3xs hover:shadow-2xs hover:scale-[1.01] transition-all cursor-pointer flex justify-between items-start gap-3"
                                 >
                                   <div className="flex-1 truncate">
                                     <div className="flex justify-between items-start gap-2 mb-1">
@@ -2981,7 +2981,7 @@ ${summaryTextInput}` });
                         </div>
 
                         {/* Interactive Tab Selector: Explore vs Bookmarks */}
-                        <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-900/80 rounded-xl self-start">
+                        <div className="flex items-center gap-2 p-1 bg-cyan-50 dark:bg-slate-900/80 rounded-xl self-start">
                           <button
                             type="button"
                             onClick={() => setShowSavedOnly(false)}
@@ -3030,7 +3030,7 @@ ${summaryTextInput}` });
 
                           if (discoverVideos.length === 0) {
                             return (
-                              <div className="flex-1 flex flex-col items-center justify-center p-8 py-16 text-center bg-slate-50/50 dark:bg-slate-950/20 rounded-2xl border border-slate-150 dark:border-slate-850">
+                              <div className="flex-1 flex flex-col items-center justify-center p-8 py-16 text-center bg-white dark:bg-slate-950/20 rounded-2xl border border-[#B2EBF2] dark:border-slate-850">
                                 <Video className="w-10 h-10 opacity-35 mb-3 text-slate-400" />
                                 <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider">No matches found</h4>
                                 <p className="text-[11px] text-slate-450 mt-1 max-w-xs leading-normal">
@@ -3336,7 +3336,7 @@ ${summaryTextInput}` });
                           </div>
 
                           {/* POST REELS ENTRY SOURCE TOGGLE BUTTON BAR */}
-                          <div className="grid grid-cols-2 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl">
+                          <div className="grid grid-cols-2 bg-cyan-50 dark:bg-slate-900 p-1 rounded-xl">
                             <button
                               type="button"
                               onClick={() => { setNewVideoMode('file'); setNewVideoUrl(''); }}
@@ -3372,7 +3372,7 @@ ${summaryTextInput}` });
                                 placeholder="What mathematical, biological or study concept is solved?"
                                 value={newVideoTitle}
                                 onChange={(e) => setNewVideoTitle(e.target.value)}
-                                className="w-full text-xs font-semibold p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-black dark:text-white placeholder-slate-400 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition duration-200"
+                                className="w-full text-xs font-semibold p-2.5 rounded-xl border border-[#B2EBF2] dark:border-slate-800 bg-white dark:bg-slate-900 text-black dark:text-white placeholder-slate-400 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition duration-200"
                               />
                             </div>
 
@@ -3382,7 +3382,7 @@ ${summaryTextInput}` });
                                 required
                                 value={newVideoGradeLevel}
                                 onChange={(e) => setNewVideoGradeLevel(e.target.value)}
-                                className="w-full text-xs font-semibold p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-black dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition duration-200 cursor-pointer"
+                                className="w-full text-xs font-semibold p-2.5 rounded-xl border border-[#B2EBF2] dark:border-slate-800 bg-white dark:bg-slate-900 text-black dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition duration-200 cursor-pointer"
                               >
                                 <option value="" disabled>Select a grade level...</option>
                                 {GRADE_LEVEL_OPTIONS.map((level) => (
@@ -3397,7 +3397,7 @@ ${summaryTextInput}` });
                               <div className="space-y-4">
                                 <div className="space-y-1">
                                   <label className="text-[10.5px] font-semibold text-slate-500 uppercase tracking-wider pl-0.5">Select Video File from Phone</label>
-                                  <div className="border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-6 bg-slate-50 dark:bg-slate-950 text-center relative hover:bg-slate-100/50 dark:hover:bg-slate-900/50 transition duration-200 cursor-pointer">
+                                  <div className="border-2 border-dashed border-[#B2EBF2] dark:border-slate-800 rounded-2xl p-6 bg-white dark:bg-slate-950 text-center relative hover:bg-slate-100/50 dark:hover:bg-slate-900/50 transition duration-200 cursor-pointer">
                                     <input
                                       type="file"
                                       required={!newVideoBase64}
@@ -3436,7 +3436,7 @@ ${summaryTextInput}` });
 
                                 {/* PREVIEW AND INTEGRATED VIDEO EDITING SUITE */}
                                 {newVideoBase64 && (
-                                  <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-150 dark:border-slate-800 space-y-4">
+                                  <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-[#B2EBF2] dark:border-slate-800 space-y-4">
                                     <div className="text-xs font-bold text-slate-700 dark:text-slate-300">File Preview & Editing Suite</div>
                                     
                                     <div className="relative max-w-xs mx-auto bg-black rounded-xl overflow-hidden shadow-md" style={{ aspectRatio: selectedAspectRatio === '9:16' ? '9/16' : selectedAspectRatio === '1:1' ? '1/1' : '16/9' }}>
@@ -3626,7 +3626,7 @@ ${summaryTextInput}` });
 
                                     {/* AUDIO ATTACHMENT CONTROLLER SECTION */}
                                     {(isStaticImageMode || !!selectedAudioTrack) && (
-                                      <div className="bg-slate-100/65 dark:bg-slate-950 p-3 rounded-xl border border-slate-200/40 dark:border-slate-800/80 space-y-2 animate-fade-in">
+                                      <div className="bg-white/65 dark:bg-slate-950 p-3 rounded-xl border border-[#B2EBF2]/70 dark:border-slate-800/80 space-y-2 animate-fade-in">
                                         <div className="flex items-center justify-between gap-3">
                                           <div className="flex items-center gap-2 min-w-0">
                                             <Music className="w-4 h-4 text-indigo-600 shrink-0" />
@@ -3668,7 +3668,7 @@ ${summaryTextInput}` });
                                   placeholder="e.g. https://www.youtube.com/watch?v=WUvTyaaNkzM"
                                   value={newVideoUrl}
                                   onChange={(e) => setNewVideoUrl(e.target.value)}
-                                  className="w-full text-xs font-semibold p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-black dark:text-white placeholder-slate-400 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500 transition duration-200"
+                                  className="w-full text-xs font-semibold p-2.5 rounded-xl border border-[#B2EBF2] dark:border-slate-800 bg-white dark:bg-slate-900 text-black dark:text-white placeholder-slate-400 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500 transition duration-200"
                                 />
                                 <p className="text-[9px] text-slate-400 mt-0.5 pl-0.5">Your link is auto-embeded seamlessly inside the Reels container player slot.</p>
                               </div>
@@ -3682,7 +3682,7 @@ ${summaryTextInput}` });
                                 placeholder="Details the mathematical rules, scientific logic, structures or definitions this mini-Reel teaches..."
                                 value={newVideoSummary}
                                 onChange={(e) => setNewVideoSummary(e.target.value)}
-                                className="w-full text-xs font-semibold p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-black dark:text-white placeholder-slate-400 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500 transition duration-200 resize-none"
+                                className="w-full text-xs font-semibold p-2.5 rounded-xl border border-[#B2EBF2] dark:border-slate-800 bg-white dark:bg-slate-900 text-black dark:text-white placeholder-slate-400 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500 transition duration-200 resize-none"
                               />
                             </div>
 
@@ -3693,13 +3693,13 @@ ${summaryTextInput}` });
                                 placeholder="e.g. https://instagram.com/reels/abc or website link where post leads"
                                 value={newVideoExtLink}
                                 onChange={(e) => setNewVideoExtLink(e.target.value)}
-                                className="w-full text-xs font-semibold p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-black dark:text-white placeholder-slate-400 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500 transition duration-200"
+                                className="w-full text-xs font-semibold p-2.5 rounded-xl border border-[#B2EBF2] dark:border-slate-800 bg-white dark:bg-slate-900 text-black dark:text-white placeholder-slate-400 outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500 transition duration-200"
                               />
                               <p className="text-[9.5px] text-slate-400 mt-1 pl-0.5">Viewers will see a clickable compass link to navigate to this original content.</p>
                             </div>
 
                             {/* Terms of Agreement Checkbox */}
-                            <div className="bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl border border-slate-100 dark:border-slate-850 flex items-start gap-2.5">
+                            <div className="bg-white dark:bg-slate-950 p-3 rounded-2xl border border-[#B2EBF2] dark:border-slate-850 flex items-start gap-2.5">
                               <input
                                 type="checkbox"
                                 id="certifyAcademicCheckbox"
@@ -3773,7 +3773,7 @@ ${summaryTextInput}` });
                               <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 leading-snug">
                                 {activeSummarizedVideo.title}
                               </h3>
-                              <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 max-h-[220px] overflow-y-auto font-medium">
+                              <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed bg-white dark:bg-slate-950 p-4 rounded-2xl border border-[#B2EBF2] dark:border-slate-800 max-h-[220px] overflow-y-auto font-medium">
                                 {activeSummarizedVideo.summary}
                               </p>
                             </div>
@@ -3865,7 +3865,7 @@ ${summaryTextInput}` });
                               placeholder="Search academic tracks..."
                               value={audioSearchQuery}
                               onChange={(e) => setAudioSearchQuery(e.target.value)}
-                              className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition duration-200"
+                              className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-[#B2EBF2] dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-800 dark:text-white outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition duration-200"
                             />
                           </div>
 
@@ -3897,7 +3897,7 @@ ${summaryTextInput}` });
                                           className={`w-full p-2.5 rounded-xl flex items-center justify-between text-left transition-all border cursor-pointer ${
                                             isSelected 
                                               ? 'bg-indigo-50 border-indigo-200 dark:bg-indigo-950/40 dark:border-indigo-900 text-indigo-900 dark:text-indigo-200' 
-                                              : 'bg-slate-50 border-slate-100 dark:bg-slate-950/40 dark:border-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                                              : 'bg-white border-[#B2EBF2] dark:bg-slate-950/40 dark:border-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
                                           }`}
                                         >
                                           <div className="flex items-center gap-2.5 min-w-0">
@@ -3978,7 +3978,7 @@ ${summaryTextInput}` });
                                   className={`w-full p-2.5 rounded-xl flex items-center justify-between text-left transition-all border cursor-pointer ${
                                     isCurrent
                                       ? 'bg-indigo-50 border-indigo-200 dark:bg-indigo-950/40 dark:border-indigo-900 text-indigo-900 dark:text-indigo-200'
-                                      : 'bg-slate-50 border-slate-100 dark:bg-slate-950/40 dark:border-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                                      : 'bg-white border-[#B2EBF2] dark:bg-slate-950/40 dark:border-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
                                   }`}
                                 >
                                   <span className="text-xs font-medium">{level}</span>
@@ -4041,7 +4041,7 @@ ${summaryTextInput}` });
                               <input
                                 type="text"
                                 required
-                                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-850 dark:text-white placeholder-slate-400 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition duration-150"
+                                className="w-full text-xs p-2.5 rounded-xl border border-[#B2EBF2] dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-850 dark:text-white placeholder-slate-400 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition duration-150"
                                 placeholder="Enter username or email"
                                 value={loginIdentifier}
                                 onChange={(e) => setLoginIdentifier(e.target.value)}
@@ -4053,7 +4053,7 @@ ${summaryTextInput}` });
                               <input
                                 type="password"
                                 required
-                                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-850 dark:text-white placeholder-slate-400 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition duration-150"
+                                className="w-full text-xs p-2.5 rounded-xl border border-[#B2EBF2] dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-850 dark:text-white placeholder-slate-400 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition duration-150"
                                 placeholder="Enter password"
                                 value={authPassword}
                                 onChange={(e) => setAuthPassword(e.target.value)}
@@ -4075,7 +4075,7 @@ ${summaryTextInput}` });
                               <input
                                 type="text"
                                 required
-                                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-850 dark:text-white placeholder-slate-400 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition duration-150"
+                                className="w-full text-xs p-2.5 rounded-xl border border-[#B2EBF2] dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-850 dark:text-white placeholder-slate-400 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition duration-150"
                                 placeholder="Choose a username"
                                 value={authUsername}
                                 onChange={(e) => setAuthUsername(e.target.value)}
@@ -4087,7 +4087,7 @@ ${summaryTextInput}` });
                               <input
                                 type="email"
                                 required
-                                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-850 dark:text-white placeholder-slate-400 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition duration-150"
+                                className="w-full text-xs p-2.5 rounded-xl border border-[#B2EBF2] dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-850 dark:text-white placeholder-slate-400 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition duration-150"
                                 placeholder="academic@school.edu"
                                 value={authEmail}
                                 onChange={(e) => setAuthEmail(e.target.value)}
@@ -4099,7 +4099,7 @@ ${summaryTextInput}` });
                               <input
                                 type="password"
                                 required
-                                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-850 dark:text-white placeholder-slate-400 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition duration-150"
+                                className="w-full text-xs p-2.5 rounded-xl border border-[#B2EBF2] dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-850 dark:text-white placeholder-slate-400 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition duration-150"
                                 placeholder="At least 4 characters"
                                 value={authPassword}
                                 onChange={(e) => setAuthPassword(e.target.value)}
@@ -4109,7 +4109,7 @@ ${summaryTextInput}` });
                             <div className="space-y-1.5">
                               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider pl-0.5">Grade / Understanding Level</label>
                               <select
-                                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-850 dark:text-white outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition duration-150 cursor-pointer"
+                                className="w-full text-xs p-2.5 rounded-xl border border-[#B2EBF2] dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-850 dark:text-white outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition duration-150 cursor-pointer"
                                 value={registerGradeLevel}
                                 onChange={(e) => setRegisterGradeLevel(e.target.value)}
                               >
@@ -4174,7 +4174,7 @@ ${summaryTextInput}` });
                         <div className="space-y-2 flex-1 flex flex-col min-h-0">
                           <span className="text-[10px] font-semibold tracking-wider text-slate-500 dark:text-slate-400 block pl-1 uppercase">My Published Reels ({videos.filter(v => v.postedBy === profileEmail).length})</span>
                           {videos.filter(v => v.postedBy === profileEmail).length === 0 ? (
-                            <div className="p-4 bg-slate-50 dark:bg-slate-900/40 rounded-xl text-center border border-dashed border-slate-200 dark:border-slate-800">
+                            <div className="p-4 bg-white dark:bg-slate-900/40 rounded-xl text-center border border-dashed border-[#B2EBF2] dark:border-slate-800">
                               <p className="text-[10.5px] text-slate-500">You haven't published any educational reels yet.</p>
                             </div>
                           ) : (
@@ -4212,7 +4212,7 @@ ${summaryTextInput}` });
                   <div className="flex-1 flex flex-col gap-3.5 animate-fade-in">
                     
                     {/* Persistent Side-by-side Dashboard Toggle Controls */}
-                    <div className="grid grid-cols-2 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-2xl mb-1 border border-slate-200/10 dark:border-slate-700/35 shadow-xs">
+                    <div className="grid grid-cols-2 bg-cyan-50 dark:bg-slate-800/80 p-1 rounded-2xl mb-1 border border-[#B2EBF2]/50 dark:border-slate-700/35 shadow-xs">
                       <button
                         type="button"
                         onClick={() => {
@@ -4285,7 +4285,7 @@ ${summaryTextInput}` });
                               </span>
                             </div>
                           ) : (
-                            <div className="text-center flex flex-col items-center gap-2 p-2 bg-slate-50/40 dark:bg-slate-950/40 rounded-xl w-full">
+                            <div className="text-center flex flex-col items-center gap-2 p-2 bg-white/70 dark:bg-slate-950/40 rounded-xl w-full">
                               <Upload className="w-8 h-8 text-indigo-500 mb-1" />
                               <span className="text-xs font-semibold text-slate-805 dark:text-slate-200">Upload or Snap Study Material</span>
                               <span className="text-[10px] text-slate-500 block max-w-[280px] mx-auto leading-relaxed">
@@ -4339,7 +4339,7 @@ ${summaryTextInput}` });
                               <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400">{questionCount} Qs</span>
                             </div>
                             <div className="flex flex-col gap-2">
-                              <div className="grid grid-cols-4 gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-xl">
+                              <div className="grid grid-cols-4 gap-1 bg-cyan-50 dark:bg-slate-950 p-1 rounded-xl">
                                 {[3, 5, 8, 12].map(cnt => (
                                   <button
                                     key={cnt}
@@ -4356,7 +4356,7 @@ ${summaryTextInput}` });
                                 ))}
                               </div>
                               
-                              <div className="flex items-center justify-between gap-2 p-1.5 bg-slate-100 dark:bg-slate-950 rounded-xl">
+                              <div className="flex items-center justify-between gap-2 p-1.5 bg-cyan-50 dark:bg-slate-950 rounded-xl">
                                 <span className="text-[10px] text-slate-500 font-semibold pl-1.5">Custom Question Count</span>
                                 <input
                                   type="number"
@@ -4383,7 +4383,7 @@ ${summaryTextInput}` });
                             <label className="text-[10px] font-semibold text-slate-500">
                               Exercise Format
                             </label>
-                            <div className="grid grid-cols-2 gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-xl">
+                            <div className="grid grid-cols-2 gap-1 bg-cyan-50 dark:bg-slate-950 p-1 rounded-xl">
                               <button
                                 type="button"
                                 onClick={() => setQuizType('multiple-choice')}
@@ -4414,7 +4414,7 @@ ${summaryTextInput}` });
                             <label className="text-[10px] font-semibold text-slate-500">
                               Difficulty Level
                             </label>
-                            <div className="grid grid-cols-3 gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-xl">
+                            <div className="grid grid-cols-3 gap-1 bg-cyan-50 dark:bg-slate-950 p-1 rounded-xl">
                               {(['easy', 'medium', 'hard'] as const).map(diff => (
                                 <button
                                   key={diff}
@@ -4511,7 +4511,7 @@ ${summaryTextInput}` });
                                       </span>
                                     </div>
                                   ) : (
-                                    <div className="text-center flex flex-col items-center gap-1.5 p-2 bg-slate-100/40 dark:bg-slate-855/40 rounded-xl w-full">
+                                    <div className="text-center flex flex-col items-center gap-1.5 p-2 bg-white/70 dark:bg-slate-855/40 rounded-xl w-full">
                                       <Upload className="w-7 h-7 text-indigo-500 mb-1" />
                                       <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Upload Summary Study Material</span>
                                       <span className="text-[10px] text-slate-450 block max-w-[280px] mx-auto leading-normal">
@@ -4653,7 +4653,7 @@ ${summaryTextInput}` });
                                       <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1">Glossary &amp; Technical Terms</h4>
                                       <div className="grid grid-cols-1 gap-2">
                                         {summaryData.glossary.map((gitem, gIdx) => (
-                                          <div key={gIdx} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 flex flex-col gap-0.5 leading-normal">
+                                          <div key={gIdx} className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-[#B2EBF2] dark:border-slate-800 flex flex-col gap-0.5 leading-normal">
                                             <span className="text-[11px] font-extrabold text-indigo-700 dark:text-indigo-400 font-mono block">
                                               {gitem.term}
                                             </span>
@@ -4670,7 +4670,7 @@ ${summaryTextInput}` });
                                   {summaryData.comprehensiveSummary && (
                                     <div className="space-y-2 border-t border-slate-100 dark:border-slate-850 pt-3">
                                       <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1">Detailed Study Summation</h4>
-                                      <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-sans bg-slate-100/50 dark:bg-slate-855/30 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
+                                      <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-sans bg-white/80 dark:bg-slate-855/30 p-3 rounded-xl border border-[#B2EBF2] dark:border-slate-800">
                                         {summaryData.comprehensiveSummary}
                                       </div>
                                     </div>
@@ -5023,7 +5023,7 @@ ${summaryTextInput}` });
                 )}
 
                 {/* Bottom Navigation Bar */}
-                <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-3 py-3 sm:px-4 sm:py-3 shadow-2xl border-t border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-2 md:gap-4 w-full">
+                <div className="fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-slate-900/95 backdrop-blur-md px-3 py-3 sm:px-4 sm:py-3 shadow-2xl border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2 md:gap-4 w-full">
                     <button
                       type="button"
                       onClick={() => {
@@ -5033,7 +5033,7 @@ ${summaryTextInput}` });
                       className={`w-12 h-12 flex flex-col items-center justify-center rounded-full transition-all duration-200 relative ${
                         activeNavTab === 'home' 
                           ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-extrabold' 
-                          : 'text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                          : 'text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-cyan-50 dark:hover:bg-slate-800/60'
                       }`}
                       style={{ width: '48px', height: '48px' }}
                       title="Home"
@@ -5058,7 +5058,7 @@ ${summaryTextInput}` });
                       className={`w-12 h-12 flex flex-col items-center justify-center rounded-full transition-all duration-200 relative ${
                         activeNavTab === 'create' 
                           ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-extrabold' 
-                          : 'text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                          : 'text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-cyan-50 dark:hover:bg-slate-800/60'
                       }`}
                       style={{ width: '48px', height: '48px' }}
                       title="Create"
@@ -5082,7 +5082,7 @@ ${summaryTextInput}` });
                       className={`w-12 h-12 flex flex-col items-center justify-center rounded-full transition-all duration-200 relative ${
                         activeNavTab === 'visualizer' 
                           ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-455 font-extrabold' 
-                          : 'text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                          : 'text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-cyan-50 dark:hover:bg-slate-800/60'
                       }`}
                       style={{ width: '48px', height: '48px' }}
                       title="Visualizer"
@@ -5107,7 +5107,7 @@ ${summaryTextInput}` });
                       className={`w-12 h-12 flex flex-col items-center justify-center rounded-full transition-all duration-200 relative ${
                         activeNavTab === 'watch' 
                           ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-extrabold' 
-                          : 'text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                          : 'text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-cyan-50 dark:hover:bg-slate-800/60'
                       }`}
                       style={{ width: '48px', height: '48px' }}
                       title="Watch"
@@ -5132,7 +5132,7 @@ ${summaryTextInput}` });
                       className={`w-12 h-12 flex flex-col items-center justify-center rounded-full transition-all duration-200 relative ${
                         activeNavTab === 'profile' 
                           ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-extrabold' 
-                          : 'text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                          : 'text-slate-400 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-cyan-50 dark:hover:bg-slate-800/60'
                       }`}
                       style={{ width: '48px', height: '48px' }}
                       title="Profile"
