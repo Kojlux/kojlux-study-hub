@@ -2228,10 +2228,10 @@ ${summaryTextInput}` });
   }
 
   return (
-    <div className={`min-h-screen text-slate-800 font-sans mt-0 flex flex-col justify-start transition-all duration-300 ${
+    <div className={`min-h-screen w-full text-slate-800 font-sans mt-0 flex flex-col justify-start transition-all duration-300 ${
       (activeNavTab === 'watch' && !showDiscoverPage) ? 'p-0' : 'p-4 pt-0 md:p-6 md:pt-0 pb-24'
     } ${
-      (activeNavTab === 'watch' && !showDiscoverPage) ? 'bg-black text-white' : (darkMode ? 'bg-slate-950 text-slate-100' : 'bg-[#F0F4F8]')
+      (activeNavTab === 'watch' && !showDiscoverPage) ? 'bg-black text-white' : (darkMode ? 'bg-slate-950 text-slate-100' : 'bg-cyan-50')
     }`}>
       
       {/* Explicit print stylesheet — belt-and-suspenders alongside the Tailwind
@@ -2505,7 +2505,7 @@ ${summaryTextInput}` });
           
           {/* ================= MAIN APPLICATION CARD ================= */}
           <div className={`w-full h-full relative overflow-visible flex flex-col justify-between flex-1 transition-all p-0 ${
-            (activeNavTab === 'watch' && !showDiscoverPage) ? 'gap-0 bg-black' : 'gap-6 bg-[#F0F4F8] dark:bg-slate-950'
+            (activeNavTab === 'watch' && !showDiscoverPage) ? 'gap-0 bg-black' : 'gap-6 bg-cyan-50 dark:bg-slate-950'
           }`}>
               
               {/* Inner App Container & Native Views Router */}

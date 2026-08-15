@@ -8,9 +8,12 @@ interface ImportMetaEnv {
   VITE_FIREBASE_APP_ID: string;
   VITE_FIREBASE_MEASUREMENT_ID?: string;
   VITE_VISUALIZER_KEY?: string;
+  VITE_VISUALIZER_KEY_ROTATION?: string;
   VITE_QUIZ_GENERATOR_KEY?: string;
+  VITE_QUIZ_GENERATOR_KEY_ROTATION?: string;
   VITE_CHAT_KEY?: string;
   VITE_SUMMARIZER_KEY?: string;
+  VITE_SUMMARIZER_KEY_ROTATION?: string;
 }
 
 declare global {
