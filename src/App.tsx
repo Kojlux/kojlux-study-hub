@@ -673,6 +673,11 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [saveToast, setSaveToast] = useState<string | null>(null);
 
+  // Which question the Khan Academy-style quiz player is currently showing
+  // (one question per screen). Reset to the first question whenever a new
+  // quiz is loaded/generated — see the useEffect below.
+  const [khanQuestionIndex, setKhanQuestionIndex] = useState<number>(0);
+
   // Screens where the global blocking error modal is allowed to appear. Errors
   // that occur while the user is on the Home or Watch screens are intentionally
   // swallowed (still logged to console for debugging) so nothing interrupts
@@ -682,9 +687,22 @@ export default function App() {
   // Central gate for the global error modal. Every user-facing error in the app
   // should be routed through this (instead of calling setErrorMsg directly) so
   // Home/Watch stay silent while Visualizer/Create/Profile keep surfacing errors.
+  //
+  // The "Post a Video" modal (showPostModal) is rendered inside the Watch tab's
+  // JSX tree, so activeNavTab is still 'watch' the entire time a user is filling
+  // out and submitting that form — it never becomes 'create'. That's fine for
+  // ordinary Watch-tab browsing (stay silent, as intended), but it meant every
+  // validation/upload/Firestore error from handlePostVideo was ALSO getting
+  // swallowed: clicking "Post" would just do nothing, with zero feedback. Real
+  // Home/Watch browsing errors still get fully suppressed below; the post modal
+  // is the one exception, and even then it only ever shows a generic message,
+  // never the specific one (the specific text still goes to console.error).
   const showError = (message: string) => {
     if (ERROR_VISIBLE_TABS.includes(activeNavTab)) {
       setErrorMsg(message);
+    } else if (showPostModal) {
+      console.error('[post modal — generic message shown to user]:', message);
+      setErrorMsg('An error occurred.');
     } else {
       console.error('[suppressed on', activeNavTab, 'screen]:', message);
     }
@@ -771,9 +789,6 @@ export default function App() {
       read: false
     }
   ]);
-
-  // Long press / hover state for displaying full MCQ options
-  const [heldOption, setHeldOption] = useState<{ questionId: number; optionIndex: number } | null>(null);
 
   // Summarizer states
   const [summaryImage, setSummaryImage] = useState<string | null>(null);
@@ -1247,6 +1262,8 @@ export default function App() {
         }
       });
       setUserAnswers(prev => ({ ...initial, ...prev }));
+      // Always start a freshly loaded quiz on its first question.
+      setKhanQuestionIndex(0);
     }
   }, [quizData]);
 
@@ -1721,6 +1738,7 @@ ${JSON.stringify(userAnswers)}`;
 
   // Trigger browser print
   const handlePrintDocument = (mode: 'blank' | 'evaluated') => {
+    setPrintMode(mode);
     downloadQuizPDF(mode);
   };
 
@@ -2182,6 +2200,21 @@ ${summaryTextInput}` });
     setSummaryData(null);
   };
 
+  // "Clean Expansion" mode — a spacious, full-width layout used whenever an AI
+  // tool is actively generating content or has just finished, so results have
+  // room to breathe instead of being squeezed into the app's normal narrow
+  // desktop width. Covers all three AI content tools: the Quiz Maker (loading
+  // while generating, then quizData once it's ready), the Summarizer (isSummarizing
+  // while generating, then summaryData once it's ready), and the Visualizer tab
+  // (always treated as expanded, since visualizing is its whole purpose).
+  const aiExpandMode =
+    activeNavTab === 'visualizer' ||
+    (activeNavTab === 'create' && (
+      loading ||
+      !!quizData ||
+      (createSubTab === 'summarizer' && (isSummarizing || !!summaryData))
+    ));
+
   // Show splash screen overlay
   if (showSplash) {
     return (
@@ -2201,6 +2234,25 @@ ${summaryTextInput}` });
       (activeNavTab === 'watch' && !showDiscoverPage) ? 'bg-black text-white' : (darkMode ? 'bg-slate-950 text-slate-100' : 'bg-[#F0F4F8]')
     }`}>
       
+      {/* Explicit print stylesheet — belt-and-suspenders alongside the Tailwind
+          `print:` utility classes already used throughout this component. If a
+          user hits their browser's native Print (Ctrl/Cmd+P) instead of the
+          "Print Worksheet" / "Print Graded Evaluation" buttons, this guarantees
+          the single-card Khan Academy player (with its fixed nav footer) is
+          fully suppressed, and every question instead flows one after another
+          on a normal continuous printed page via .print-only-wrapper below.
+          The existing print-only-wrapper output itself is untouched. */}
+      <style>{`
+        @media print {
+          .khan-quiz-interactive {
+            display: none !important;
+          }
+          .print-only-wrapper {
+            display: block !important;
+          }
+        }
+      `}</style>
+
       {/* ================= PRINT WINDOW CHASSIS (HIDDEN IN SECURE WEB VIEW) ================= */}
       
       {quizData && (
@@ -2335,12 +2387,13 @@ ${summaryTextInput}` });
       )}
 
       {/* ================= MAIN APPLICATION INTERFACES ================= */}
-      <div className={`mx-auto w-full flex-1 flex flex-col justify-start print:hidden ${
-        (activeNavTab === 'watch' && !showDiscoverPage) ? 'max-w-full gap-0 pb-0 pt-0' : 'max-w-7xl gap-3 pb-24 pt-0'
+      <div className={`khan-quiz-interactive mx-auto w-full flex-1 flex flex-col justify-start print:hidden ${
+        (activeNavTab === 'watch' && !showDiscoverPage) || aiExpandMode ? 'max-w-full gap-0 pb-0 pt-0' : 'max-w-7xl gap-3 pb-24 pt-0'
       }`}>
         
-        {/* Upper Brand / Menu dropdown wrapper */}
-        {!(activeNavTab === 'watch' && !showDiscoverPage) && (
+        {/* Upper Brand / Menu dropdown wrapper — hidden during full-bleed Watch and
+            during Clean Expansion mode, so AI tools get the full screen to work with. */}
+        {!(activeNavTab === 'watch' && !showDiscoverPage) && !aiExpandMode && (
           <div className="flex justify-between items-center border-b border-slate-200/50 dark:border-slate-800 pb-2 mb-1 mt-0 relative">
             <div className="flex items-center gap-2">
               <span className="text-sm font-black tracking-[0.15em] text-indigo-600 dark:text-indigo-455 select-none bg-transparent">KOJLUX STUDY HUB</span>
@@ -2447,7 +2500,7 @@ ${summaryTextInput}` });
         )}
 
         <div className={`w-full mx-auto mt-0 flex flex-col items-stretch flex-1 ${
-          (activeNavTab === 'watch' && !showDiscoverPage) ? 'max-w-full px-0' : 'max-w-7xl px-2'
+          (activeNavTab === 'watch' && !showDiscoverPage) || aiExpandMode ? 'max-w-full px-0' : 'max-w-7xl px-2'
         }`}>
           
           {/* ================= MAIN APPLICATION CARD ================= */}
@@ -4662,167 +4715,251 @@ ${summaryTextInput}` });
                 )}
 
                 {/* Screen B: PRACTICE QUIZ INTERACTIVE INSIDE MOBILE VIEW */}
-                {activeNavTab === 'create' && quizData && (
-                  <div className="flex-1 flex flex-col justify-between gap-3">
-                    
-                    {/* Header parameters info */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center text-[9px]">
-                        <button 
+                {activeNavTab === 'create' && quizData && !evaluation && (
+                  /* ============ KHAN ACADEMY-STYLE QUIZ PLAYER ============
+                     One question per screen, no red/green feedback while answering,
+                     answers stored silently in `userAnswers`. Grading only happens
+                     when "Finish & View Results" is pressed (see handleEvaluateQuiz),
+                     which flips `evaluation` from null and swaps this whole view out
+                     for the Score Summary Sheet below. */
+                  <div className="flex-1 flex flex-col min-h-[65vh] pb-36">
+
+                    {/* Top: exit link + thin progress bar / "Question X of N" tracker */}
+                    <div className="pt-1 pb-6 space-y-3 max-w-2xl w-full mx-auto">
+                      <div className="flex items-center justify-between">
+                        <button
+                          type="button"
                           onClick={clearInputs}
-                          className="flex items-center gap-1 font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
+                          className="flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
                         >
-                          <ArrowLeft className="w-2.5 h-2.5" /> Start Screen
+                          <ArrowLeft className="w-3 h-3" /> Exit Quiz
                         </button>
-                        <span className="font-bold text-slate-400 uppercase tracking-widest bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
-                          {difficulty} level
+                        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wide">
+                          Question {khanQuestionIndex + 1} of {quizData.questions.length}
                         </span>
                       </div>
-                      <h3 className="text-sm font-extrabold text-slate-800 dark:text-white leading-tight">
-                        {quizData.title}
-                      </h3>
-                      <p className="text-[10px] text-slate-400">
-                        {evaluation ? "Exam Grade Scored below!" : "Solve the questions here or Print physically first!"}
-                      </p>
+                      <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-indigo-600 rounded-full transition-all duration-300 ease-out"
+                          style={{ width: `${((khanQuestionIndex + 1) / quizData.questions.length) * 100}%` }}
+                        />
+                      </div>
                     </div>
 
-                    {/* Quick Hint for option holding */}
-                    {quizData.questions.some(q => q.type === 'multiple-choice') && (
-                      <div className="bg-indigo-50 dark:bg-slate-800/60 p-2.5 py-2 rounded-xl border border-indigo-100 dark:border-slate-705/80 flex items-center gap-2 text-[10px] text-indigo-850 dark:text-indigo-200 animate-fade-in">
-                        <HelpCircle className="w-4 h-4 text-indigo-500 shrink-0" />
-                        <span><strong>Tip:</strong> Press &amp; hold (or hover) any option cut off to see the full answer in a popup!</span>
-                      </div>
-                    )}
-
-                    {/* Scrollable listing inside active workspace */}
-                    <div className="flex-grow overflow-y-auto space-y-3 max-h-[340px] pr-1">
-                      {quizData.questions.map((q, idx) => {
-                        const isGraded = evaluation !== null;
-                        const specGrade = evaluation?.questionEvaluations.find(e => e.id === q.id);
-                        
+                    {/* Center: single centered white card with ONLY the current question */}
+                    <div className="flex-1 flex items-center justify-center">
+                      {(() => {
+                        const q = quizData.questions[khanQuestionIndex];
                         return (
-                          <div 
-                            key={q.id} 
-                            className={`p-3 rounded-xl border transition duration-300 ${
-                              isGraded 
-                                ? specGrade?.isCorrect 
-                                  ? "bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900" 
-                                  : "bg-rose-50/70 dark:bg-rose-950/20 border-rose-250 dark:border-rose-900"
-                                : "bg-white dark:bg-slate-850 border-slate-150 dark:border-slate-800"
-                            }`}
+                          <div
+                            key={q.id}
+                            className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-800 p-6 md:p-10 space-y-6 animate-fade-in"
                           >
-                            <div className="flex justify-between items-start gap-1 mb-1.5">
-                              <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Q{idx + 1}.</span>
-                              <span className="text-[8px] uppercase font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-1 py-0.5 rounded">
-                                {q.type === 'multiple-choice' ? 'MCQ' : 'Short Answer'}
-                              </span>
-                            </div>
-
-                            <p className="text-xs font-semibold text-slate-850 dark:text-slate-205 mb-2 leading-relaxed">
+                            <span className="text-[11px] uppercase tracking-widest font-bold text-indigo-500 dark:text-indigo-400">
+                              {q.type === 'multiple-choice' ? 'Multiple Choice' : 'Short Answer'}
+                            </span>
+                            <p className="text-lg md:text-xl font-semibold text-slate-900 dark:text-white leading-relaxed">
                               {q.question}
                             </p>
 
-                            {/* Multiple Choice answer interactives */}
                             {q.type === 'multiple-choice' && q.options && (
-                              <div className="space-y-1">
+                              <div className="space-y-3">
                                 {q.options.map((opt, oIdx) => {
-                                  const label = String.fromCharCode(65 + oIdx); // A, B, C, D
+                                  const label = String.fromCharCode(65 + oIdx);
                                   const isSelected = userAnswers[q.id] === label;
-                                  const isOptionCorrect = q.correctAnswer === label;
-                                  const isCurrentlyHeld = heldOption?.questionId === q.id && heldOption?.optionIndex === oIdx;
-                                  
                                   return (
                                     <button
                                       key={oIdx}
-                                      disabled={isGraded}
-                                      onClick={() => {
-                                        setUserAnswers(prev => ({
-                                          ...prev,
-                                          [q.id]: label
-                                        }));
-                                      }}
-                                      onMouseEnter={() => setHeldOption({ questionId: q.id, optionIndex: oIdx })}
-                                      onMouseLeave={() => setHeldOption(null)}
-                                      onTouchStart={() => setHeldOption({ questionId: q.id, optionIndex: oIdx })}
-                                      onTouchEnd={() => setHeldOption(null)}
-                                      onTouchCancel={() => setHeldOption(null)}
-                                      title={opt}
-                                      className={`w-full text-left p-1.5 px-2 rounded-lg text-xs flex items-center gap-2 border transition relative ${
-                                        isGraded
-                                          ? isOptionCorrect
-                                            ? "bg-emerald-100 dark:bg-emerald-950 border-emerald-300 dark:border-slate-800 text-emerald-800 dark:text-emerald-300 font-bold"
-                                            : isSelected
-                                              ? "bg-rose-100 dark:bg-rose-950 border-rose-350 dark:border-slate-800 text-rose-800 dark:text-rose-300"
-                                              : "bg-slate-50 dark:bg-slate-850 border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-500"
-                                          : isSelected
-                                            ? "bg-indigo-50 dark:bg-slate-800 border-indigo-300 dark:border-indigo-800 text-indigo-900 dark:text-indigo-200 font-semibold"
-                                            : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-850"
+                                      type="button"
+                                      onClick={() => setUserAnswers(prev => ({ ...prev, [q.id]: label }))}
+                                      className={`w-full text-left px-5 py-4 rounded-2xl border-2 flex items-center gap-3 text-base leading-relaxed transition ${
+                                        isSelected
+                                          ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-900 dark:text-indigo-200 font-semibold"
+                                          : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200"
                                       }`}
                                     >
-                                      <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold border transition shrink-0 ${
-                                        isSelected 
-                                          ? "bg-indigo-600 text-white border-indigo-600" 
-                                          : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800"
+                                      <span className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold border-2 shrink-0 ${
+                                        isSelected
+                                          ? "bg-indigo-600 text-white border-indigo-600"
+                                          : "border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400"
                                       }`}>
                                         {label}
                                       </span>
-                                      <span className="flex-1 truncate">{opt}</span>
-                                      
-                                      {isGraded && isOptionCorrect && (
-                                        <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400 ml-auto shrink-0" />
-                                      )}
-
-                                      {/* Beautiful absolute interactive tooltip */}
-                                      {isCurrentlyHeld && (
-                                        <div className="absolute left-0 bottom-full mb-2 w-full bg-slate-900 dark:bg-slate-950 border border-slate-700/80 text-slate-100 p-2.5 rounded-xl shadow-2xl z-50 animate-fade-in text-xs leading-normal font-medium pointer-events-none">
-                                          <div className="flex items-center gap-1.5 text-indigo-400 font-bold uppercase text-[9px] mb-1 pb-1 border-b border-slate-800">
-                                            <Eye className="w-3 h-3 text-indigo-400 shrink-0" />
-                                            <span>Full Choice {label}:</span>
-                                          </div>
-                                          <span className="block whitespace-normal break-words py-0.5">{opt}</span>
-                                        </div>
-                                      )}
+                                      <span>{opt}</span>
                                     </button>
                                   );
                                 })}
                               </div>
                             )}
 
-                            {/* Short Answer text inputs */}
                             {q.type === 'short-answer' && (
-                              <div className="space-y-1.5">
-                                {isGraded ? (
-                                  <div className="space-y-1.5 text-[11px]">
-                                    <div className="bg-slate-50 dark:bg-slate-950 p-2 rounded text-slate-700 dark:text-slate-300 italic">
-                                      Your response: <span className="font-medium">{userAnswers[q.id] || "(Left Blank)"}</span>
+                              <textarea
+                                value={userAnswers[q.id] || ''}
+                                onChange={(e) => setUserAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
+                                placeholder="Write your answer here..."
+                                className="w-full text-base p-4 border-2 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 min-h-[140px] resize-none leading-relaxed text-slate-800 dark:text-slate-100"
+                              />
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Bottom: fixed navigation footer — Previous / Next / Finish.
+                        Sits just above the app's own bottom tab bar (which is
+                        also fixed to bottom-0) instead of directly on top of it,
+                        so the two don't overlap and cover the Next button. */}
+                    <div className="fixed bottom-[76px] left-0 right-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200/80 dark:border-slate-800/80 px-4 py-3 md:px-8 md:py-4 shadow-lg">
+                      <div className="max-w-2xl mx-auto flex items-center justify-between gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setKhanQuestionIndex(i => Math.max(0, i - 1))}
+                          disabled={khanQuestionIndex === 0}
+                          className="px-5 py-3 rounded-xl text-sm font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                        >
+                          Previous
+                        </button>
+
+                        {khanQuestionIndex < quizData.questions.length - 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => setKhanQuestionIndex(i => Math.min(quizData.questions.length - 1, i + 1))}
+                            className="px-6 py-3 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition shadow-sm"
+                          >
+                            Next Question
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleEvaluateQuiz}
+                            disabled={isEvaluating}
+                            className="px-6 py-3 rounded-xl text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition shadow-sm disabled:opacity-50 flex items-center gap-2"
+                          >
+                            {isEvaluating ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 animate-spin" /> Grading...
+                              </>
+                            ) : (
+                              <>Finish &amp; View Results</>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeNavTab === 'create' && quizData && evaluation && (
+                  /* ============ SCORE SUMMARY SHEET ============
+                     Replaces the quiz player entirely once grading finishes. Shows the
+                     final score up top, then a full right/wrong review of every question. */
+                  <div className="flex-1 flex flex-col gap-6 pb-10 max-w-2xl w-full mx-auto animate-fade-in">
+
+                    <div className="text-center space-y-2 pt-2">
+                      <span className="text-[11px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest">Score Summary</span>
+                      <h2 className="text-xl md:text-2xl font-extrabold text-slate-900 dark:text-white leading-snug">{quizData.title}</h2>
+                      <div className="text-5xl font-black text-indigo-600 dark:text-indigo-400 py-2">
+                        {evaluation.summary.overallPercentage}%
+                      </div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        {quizData.questions.filter(q => evaluation.questionEvaluations.find(e => e.id === q.id)?.isCorrect).length} of {quizData.questions.length} correct
+                      </p>
+                    </div>
+
+                    {/* Tutor advice block */}
+                    <div className="bg-slate-900 text-white rounded-2xl p-5 border border-slate-800 space-y-3 text-left">
+                      <div className="flex items-center gap-2">
+                        <Lightbulb className="w-4 h-4 text-amber-400" />
+                        <span className="text-[10px] text-indigo-300 uppercase tracking-widest font-bold">Study Focus Advice</span>
+                      </div>
+                      <p className="text-sm text-slate-300 leading-relaxed">
+                        {evaluation.summary.tutorAdvice}
+                      </p>
+                      <div className="pt-2 border-t border-slate-800 flex flex-wrap gap-1.5">
+                        <span className="text-[10px] font-bold text-indigo-400 block w-full">Focus subject keywords:</span>
+                        {evaluation.summary.focusTopics.map((topic, tIdx) => (
+                          <span key={tIdx} className="text-xs bg-slate-800 text-indigo-200 px-2 py-1 rounded-md">
+                            • {topic}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Full per-question review */}
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200 px-1">Question review</h3>
+                      {quizData.questions.map((q, idx) => {
+                        const specGrade = evaluation.questionEvaluations.find(e => e.id === q.id);
+                        const isCorrect = !!specGrade?.isCorrect;
+
+                        return (
+                          <div
+                            key={q.id}
+                            className={`p-5 rounded-2xl border-2 leading-relaxed ${
+                              isCorrect
+                                ? "bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900"
+                                : "bg-rose-50/70 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900"
+                            }`}
+                          >
+                            <div className="flex justify-between items-start gap-2 mb-3">
+                              <span className="text-sm font-bold text-slate-700 dark:text-slate-300">Q{idx + 1}.</span>
+                              <span className="text-[10px] uppercase font-bold text-slate-400 bg-white/70 dark:bg-slate-800 px-2 py-0.5 rounded">
+                                {q.type === 'multiple-choice' ? 'MCQ' : 'Short Answer'}
+                              </span>
+                            </div>
+
+                            <p className="text-base font-semibold text-slate-900 dark:text-slate-100 mb-4 leading-relaxed">
+                              {q.question}
+                            </p>
+
+                            {q.type === 'multiple-choice' && q.options && (
+                              <div className="space-y-2">
+                                {q.options.map((opt, oIdx) => {
+                                  const label = String.fromCharCode(65 + oIdx);
+                                  const isSelected = userAnswers[q.id] === label;
+                                  const isOptionCorrect = q.correctAnswer === label;
+                                  return (
+                                    <div
+                                      key={oIdx}
+                                      className={`w-full text-left px-4 py-3 rounded-xl text-sm flex items-center gap-3 border-2 leading-relaxed ${
+                                        isOptionCorrect
+                                          ? "bg-emerald-100 dark:bg-emerald-950 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 font-bold"
+                                          : isSelected
+                                            ? "bg-rose-100 dark:bg-rose-950 border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-300"
+                                            : "bg-white/60 dark:bg-slate-850 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400"
+                                      }`}
+                                    >
+                                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 shrink-0 ${
+                                        isOptionCorrect || isSelected
+                                          ? "bg-white/70 dark:bg-slate-900 border-current"
+                                          : "border-slate-300 dark:border-slate-700"
+                                      }`}>
+                                        {label}
+                                      </span>
+                                      <span className="flex-1">{opt}</span>
+                                      {isOptionCorrect && <Check className="w-4 h-4 shrink-0" />}
                                     </div>
-                                    <div className="bg-emerald-50 dark:bg-slate-900/60 p-2 rounded text-emerald-800 dark:text-emerald-400">
-                                      <strong>Tutor Model Key:</strong> {specGrade?.modelAnswer}
-                                    </div>
-                                    <div className="bg-indigo-50 dark:bg-indigo-950/40 p-2 rounded text-indigo-800 dark:text-indigo-400">
-                                      <strong>Coach Advice ({specGrade?.score}%):</strong> {specGrade?.feedback}
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <textarea
-                                    value={userAnswers[q.id] || ''}
-                                    onChange={(e) => {
-                                      setUserAnswers(prev => ({
-                                        ...prev,
-                                        [q.id]: e.target.value
-                                      }));
-                                    }}
-                                    placeholder="Write your study answer explanation here..."
-                                    className="w-full text-xs p-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 min-h-[50px] resize-none"
-                                  />
+                                  );
+                                })}
+                                {q.explanation && (
+                                  <p className="text-xs text-slate-500 dark:text-slate-400 pt-2 leading-relaxed">
+                                    <strong className="text-indigo-600 dark:text-indigo-400">Concept tip:</strong> {q.explanation}
+                                  </p>
                                 )}
                               </div>
                             )}
 
-                            {isGraded && q.type === 'multiple-choice' && specGrade && (
-                              <div className="mt-2 text-[10px] text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-2 flex items-start gap-1">
-                                <span className="font-bold text-indigo-600 dark:text-indigo-400">Concept Tip:</span>
-                                <span>{q.explanation}</span>
+                            {q.type === 'short-answer' && (
+                              <div className="space-y-2 text-sm">
+                                <div className="bg-white/70 dark:bg-slate-950 p-3 rounded-xl text-slate-700 dark:text-slate-300 italic leading-relaxed">
+                                  Your response: <span className="font-medium not-italic">{userAnswers[q.id] || "(Left blank)"}</span>
+                                </div>
+                                <div className="bg-emerald-50 dark:bg-slate-900/60 p-3 rounded-xl text-emerald-800 dark:text-emerald-400 leading-relaxed">
+                                  <strong>Model answer:</strong> {specGrade?.modelAnswer}
+                                </div>
+                                <div className="bg-indigo-50 dark:bg-indigo-950/40 p-3 rounded-xl text-indigo-800 dark:text-indigo-400 leading-relaxed">
+                                  <strong>Feedback ({specGrade?.score}%):</strong> {specGrade?.feedback}
+                                </div>
                               </div>
                             )}
                           </div>
@@ -4830,120 +4967,57 @@ ${summaryTextInput}` });
                       })}
                     </div>
 
-                    {/* Interactive AI tutoring Focus notes shown after results are given */}
-                    {evaluation && (
-                      <div className="bg-slate-900 text-white rounded-xl p-3 border border-slate-800 space-y-2 text-left animate-fade-in">
-                        
-                        <div className="flex items-center gap-2">
-                          <Lightbulb className="w-4 h-4 text-amber-400" />
-                          <div>
-                            <span className="text-[8px] text-indigo-300 uppercase tracking-widest font-bold block">STUDY FOCUS ADVICE</span>
-                            <span className="text-xs font-bold text-slate-100">
-                              Based on your scored {evaluation.summary.overallPercentage}% accuracy:
-                            </span>
-                          </div>
-                        </div>
-
-                        <p className="text-[10px] text-slate-300 leading-normal">
-                          {evaluation.summary.tutorAdvice}
-                        </p>
-
-                        <div className="pt-1.5 border-t border-slate-800 flex flex-wrap gap-1">
-                          <span className="text-[8px] font-bold text-indigo-400 block w-full">FOCUS SUBJECT KEYWORDS:</span>
-                          {evaluation.summary.focusTopics.map((topic, tIdx) => (
-                            <span key={tIdx} className="text-[9px] bg-slate-800 text-indigo-200 px-1.5 py-0.5 rounded-md">
-                              • {topic}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Persistent Study Utilities: Print & Save for Later (Visible Before & After Eval) */}
-                    <div className="bg-indigo-50/50 dark:bg-slate-850/80 p-3 rounded-2xl border border-indigo-100/50 dark:border-slate-800 space-y-2 mt-2">
+                    {/* Export / print tools */}
+                    <div className="bg-indigo-50/50 dark:bg-slate-850/80 p-4 rounded-2xl border border-indigo-100/50 dark:border-slate-800 space-y-2">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Study Tools & Export</span>
-                      
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 gap-2">
                         <button
                           type="button"
                           onClick={() => handlePrintDocument('blank')}
-                          className="w-full py-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-755 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs"
+                          className="w-full py-2.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-755 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl text-sm font-bold transition flex items-center justify-center gap-1.5 shadow-xs"
                           title="Print clean questions with lines to answer in pencil"
                         >
-                          <Printer className="w-3.5 h-3.5 text-indigo-500" />
+                          <Printer className="w-4 h-4 text-indigo-500" />
                           <span>Print Worksheet</span>
                         </button>
-                      </div>
-
-                      {evaluation && (
                         <button
                           type="button"
                           onClick={() => handlePrintDocument('evaluated')}
-                          className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm animate-fade-in"
+                          className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
                           title="Print results page with correct answers marked by Tutor Coach"
                         >
-                          <Printer className="w-3.5 h-3.5 text-white" />
+                          <Printer className="w-4 h-4 text-white" />
                           <span>Print Graded Evaluation & Answers</span>
                         </button>
-                      )}
-
-                      <div className="flex justify-between items-center text-[9px] text-slate-400 px-1 pt-1 border-t border-slate-100 dark:border-slate-800/80">
+                      </div>
+                      <div className="flex justify-between items-center text-xs text-slate-400 px-1 pt-2 border-t border-slate-100 dark:border-slate-800/80">
                         <span className="truncate">Unit: {quizData.title.slice(0, 24)}...</span>
                         <span className="capitalize">{difficulty} • {quizType.replace('-', ' ')}</span>
                       </div>
                     </div>
 
-                    {/* Grading / Evaluation Submission Control */}
-                    <div className="space-y-1.5 mt-auto pt-2 border-t border-slate-100 dark:border-slate-800">
-
-                      {!evaluation ? (
-                        <div className="flex flex-col gap-1.5">
-                          <button
-                            onClick={handleEvaluateQuiz}
-                            disabled={isEvaluating}
-                            className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-md transition disabled:opacity-50 flex items-center justify-center gap-1.5"
-                          >
-                            {isEvaluating ? (
-                              <>
-                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                Grading answers with Tutor Coach...
-                              </>
-                            ) : (
-                              <>
-                                <CheckCircle className="w-3.5 h-3.5" /> Submit & score answers
-                              </>
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={clearInputs}
-                            className="w-full py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-705 text-slate-600 dark:text-slate-300 rounded-xl text-[10px] font-black tracking-wide transition text-center flex items-center justify-center gap-1 border border-slate-200 dark:border-slate-700"
-                          >
-                            <ArrowLeft className="w-3 h-3" /> Go Back to Start
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <button
-                            onClick={() => {
-                              // restart custom quiz answers session
-                              const empty: Record<number, string> = {};
-                              quizData?.questions.forEach(q => { empty[q.id] = ''; });
-                              setUserAnswers(empty);
-                              setEvaluation(null);
-                            }}
-                            className="py-2.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-705 text-slate-700 dark:text-slate-200 rounded-xl text-[10px] font-bold transition text-center"
-                          >
-                            Clear answers
-                          </button>
-                          <button
-                            onClick={clearInputs}
-                            className="py-2 bg-indigo-100 dark:bg-indigo-950/40 hover:bg-indigo-250 text-indigo-700 dark:text-indigo-300 rounded-lg text-[10px] font-bold transition text-center"
-                          >
-                            New Material
-                          </button>
-                        </div>
-                      )}
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // restart custom quiz answers session
+                          const empty: Record<number, string> = {};
+                          quizData?.questions.forEach(q => { empty[q.id] = ''; });
+                          setUserAnswers(empty);
+                          setEvaluation(null);
+                          setKhanQuestionIndex(0);
+                        }}
+                        className="py-3 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-705 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-bold transition text-center"
+                      >
+                        Retake quiz
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearInputs}
+                        className="py-3 bg-indigo-100 dark:bg-indigo-950/40 hover:bg-indigo-250 text-indigo-700 dark:text-indigo-300 rounded-xl text-sm font-bold transition text-center"
+                      >
+                        New Material
+                      </button>
                     </div>
                   </div>
                 )}
@@ -5086,9 +5160,12 @@ ${summaryTextInput}` });
 
 
       {/* Global blocking error modal — replaces native alert() calls across the app.
-          Only ever rendered on Visualizer/Create/Profile (see ERROR_VISIBLE_TABS);
-          Home and Watch stay silent even if errorMsg is still set from a prior tab. */}
-      {errorMsg && ERROR_VISIBLE_TABS.includes(activeNavTab) && (
+          Only ever rendered on Visualizer/Create/Profile (see ERROR_VISIBLE_TABS),
+          or while the Post Video modal is open (that modal lives inside the Watch
+          tab's JSX, so activeNavTab alone can't gate it — see showError above).
+          Home and Watch (without the post modal open) stay silent even if errorMsg
+          is still set from a prior tab. */}
+      {errorMsg && (ERROR_VISIBLE_TABS.includes(activeNavTab) || showPostModal) && (
         <div
           className="fixed inset-0 z-[200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-5 animate-fade-in"
           onClick={() => setErrorMsg(null)}
