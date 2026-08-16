@@ -544,6 +544,20 @@ export default function App() {
     return localStorage.getItem('kojlux_dark_mode') === 'true';
   });
 
+  // Luxury Dark Mode theme test toggle: swaps the whole app between the original
+  // indigo/slate palette and the Rich Obsidian / Deep Teal / Neon Cyan luxury
+  // palette via the `.luxury-theme` CSS scope (see the injected <style> block).
+  const [luxuryMode, setLuxuryMode] = useState<boolean>(() => {
+    return localStorage.getItem('kojlux_luxury_mode') === 'true';
+  });
+  const toggleLuxuryMode = () => {
+    setLuxuryMode(prev => {
+      const next = !prev;
+      localStorage.setItem('kojlux_luxury_mode', String(next));
+      return next;
+    });
+  };
+
   // bottom navigation bar state: 'home' | 'create' | 'visualizer' | 'watch' | 'profile'
   // Persisted to sessionStorage (not localStorage) so a manual page refresh keeps
   // the user on the exact screen they were viewing, while fully closing the
@@ -2228,11 +2242,197 @@ ${summaryTextInput}` });
   }
 
   return (
-    <div className={`min-h-screen w-full text-slate-800 font-sans mt-0 flex flex-col justify-start transition-all duration-300 ${
+    <div className={`min-h-screen w-full text-slate-800 font-sans mt-0 flex flex-col justify-start transition-all duration-300 ${luxuryMode ? 'luxury-theme' : ''} ${
       (activeNavTab === 'watch' && !showDiscoverPage) ? 'p-0' : 'p-4 pt-0 md:p-6 md:pt-0 pb-24'
     } ${
-      (activeNavTab === 'watch' && !showDiscoverPage) ? 'bg-black text-white' : (darkMode ? 'bg-slate-950 text-slate-100' : 'bg-cyan-50')
+      (activeNavTab === 'watch' && !showDiscoverPage) ? 'bg-black text-white' : (darkMode ? 'bg-slate-950 text-slate-100 app-root-surface' : 'bg-cyan-50 app-root-surface')
     }`}>
+      {/* Luxury Dark Mode theme toggle — scoped override stylesheet. Activated by
+          adding the .luxury-theme class to the root container above; every rule
+          here targets the app's normal Tailwind classes so no other JSX had to
+          change. See the "Use Luxury Dark Mode" toggle on the Profile tab. */}
+      <style>{`
+    .luxury-theme [class~="border-slate-200/50"] { border-color: #1A6B6B80 !important; }
+    .luxury-theme [class~="accent-indigo-500"] { accent-color: #00FFE0 !important; }
+    .luxury-theme [class~="dark:hover:bg-slate-800"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="dark:bg-slate-950/50"] { background-color: #004D4D80 !important; }
+    .luxury-theme [class~="hover:bg-slate-900"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="focus:ring-indigo-500"] { --tw-ring-color: #00FFE0 !important; }
+    .luxury-theme [class~="dark:border-slate-700"] { border-color: #1A6B6B66 !important; }
+    .luxury-theme [class~="border-white/10"] { border-color: #1A6B6B1A !important; }
+    .luxury-theme [class~="border-slate-300"] { border-color: #1A6B6B66 !important; }
+    .luxury-theme [class~="focus:ring-indigo-600"] { --tw-ring-color: #00FFE0 !important; }
+    .luxury-theme [class~="hover:bg-slate-50/50"] { background-color: #004D4D80 !important; }
+    .luxury-theme [class~="dark:bg-slate-855/40"] { background-color: #004D4D66 !important; }
+    .luxury-theme [class~="dark:bg-slate-800/80"] { background-color: #004D4DCC !important; }
+    .luxury-theme [class~="hover:bg-slate-50"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="dark:border-slate-800/80"] { border-color: #1A6B6BCC !important; }
+    .luxury-theme [class~="bg-indigo-300"] { background-color: #00FFE01A !important; }
+    .luxury-theme [class~="dark:hover:border-slate-700"] { border-color: #1A6B6B66 !important; }
+    .luxury-theme [class~="hover:text-indigo-300"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="border-slate-200/80"] { border-color: #1A6B6BCC !important; }
+    .luxury-theme [class~="bg-white/20"] { background-color: #004D4D33 !important; }
+    .luxury-theme [class~="dark:text-indigo-455"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="border-indigo-150"] { border-color: #00FFE0 !important; }
+    .luxury-theme [class~="dark:bg-indigo-950/30"] { background-color: #004D4D4C !important; }
+    .luxury-theme [class~="bg-slate-900/70"] { background-color: #004D4DB2 !important; }
+    .luxury-theme [class~="dark:bg-slate-900/50"] { background-color: #004D4D80 !important; }
+    .luxury-theme [class~="bg-indigo-50/10"] { background-color: #00FFE01A !important; }
+    .luxury-theme [class~="dark:bg-slate-900/95"] { background-color: #004D4DF2 !important; }
+    .luxury-theme [class~="text-indigo-400"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="bg-slate-200/60"] { background-color: #004D4D99 !important; }
+    .luxury-theme [class~="hover:border-slate-300"] { border-color: #1A6B6B66 !important; }
+    .luxury-theme [class~="border-indigo-700"] { border-color: #00FFE0 !important; }
+    .luxury-theme [class~="bg-indigo-600/90"] { background-color: #00FFE0E6 !important; }
+    .luxury-theme [class~="bg-slate-900"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="bg-indigo-500"] { background-color: #00FFE0 !important; }
+    .luxury-theme [class~="dark:bg-slate-850"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="text-indigo-800"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="border-indigo-200"] { border-color: #00FFE0 !important; }
+    .luxury-theme [class~="text-indigo-650"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="bg-slate-900/60"] { background-color: #004D4D99 !important; }
+    .luxury-theme [class~="bg-indigo-50/40"] { background-color: #00FFE066 !important; }
+    .luxury-theme [class~="text-indigo-200"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="bg-white/95"] { background-color: #004D4DF2 !important; }
+    .luxury-theme [class~="dark:bg-indigo-400"] { background-color: #00FFE0 !important; }
+    .luxury-theme [class~="text-slate-800"] { color: #FFFFFF !important; }
+    .luxury-theme [class~="bg-slate-50"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="border-white"] { border-color: #1A6B6B66 !important; }
+    .luxury-theme [class~="dark:bg-indigo-950/20"] { background-color: #004D4D33 !important; }
+    .luxury-theme [class~="dark:text-slate-100"] { color: #FFFFFF !important; }
+    .luxury-theme [class~="dark:hover:bg-slate-900/30"] { background-color: #004D4D4C !important; }
+    .luxury-theme [class~="dark:bg-slate-950"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="border-slate-200"] { border-color: #1A6B6B66 !important; }
+    .luxury-theme [class~="text-indigo-350"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="text-black"] { color: #FFFFFF !important; }
+    .luxury-theme [class~="hover:bg-slate-700"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="hover:bg-white/10"] { background-color: #004D4D1A !important; }
+    .luxury-theme [class~="dark:bg-slate-900/40"] { background-color: #004D4D66 !important; }
+    .luxury-theme [class~="border-indigo-600"] { border-color: #00FFE0 !important; }
+    .luxury-theme [class~="border-slate-150"] { border-color: #1A6B6B66 !important; }
+    .luxury-theme [class~="dark:bg-slate-850/80"] { background-color: #004D4DCC !important; }
+    .luxury-theme [class~="dark:hover:bg-slate-950/50"] { background-color: #004D4D80 !important; }
+    .luxury-theme [class~="hover:bg-slate-100/50"] { background-color: #004D4D80 !important; }
+    .luxury-theme [class~="text-indigo-500"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="dark:bg-indigo-405"] { background-color: #00FFE0 !important; }
+    .luxury-theme [class~="text-indigo-300"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="dark:text-indigo-400"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="bg-slate-800"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="dark:bg-slate-800"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="text-indigo-750"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="border-slate-250"] { border-color: #1A6B6B66 !important; }
+    .luxury-theme [class~="bg-indigo-650"] { background-color: #00FFE0 !important; }
+    .luxury-theme [class~="dark:bg-slate-900/60"] { background-color: #004D4D99 !important; }
+    .luxury-theme [class~="hover:border-indigo-500"] { border-color: #00FFE0 !important; }
+    .luxury-theme [class~="dark:bg-slate-950/95"] { background-color: #004D4DF2 !important; }
+    .luxury-theme [class~="border-slate-200/20"] { border-color: #1A6B6B33 !important; }
+    .luxury-theme [class~="dark:border-slate-850"] { border-color: #1A6B6B66 !important; }
+    .luxury-theme [class~="hover:bg-slate-800"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="bg-slate-200"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="border-slate-400"] { border-color: #1A6B6B66 !important; }
+    .luxury-theme [class~="hover:border-indigo-400"] { border-color: #00FFE0 !important; }
+    .luxury-theme [class~="dark:border-white"] { border-color: #1A6B6B66 !important; }
+    .luxury-theme [class~="text-indigo-600"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="text-slate-700"] { color: #E2E8F0 !important; }
+    .luxury-theme [class~="dark:border-slate-700/35"] { border-color: #1A6B6B59 !important; }
+    .luxury-theme [class~="dark:text-indigo-300"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="dark:bg-slate-950/20"] { background-color: #004D4D33 !important; }
+    .luxury-theme [class~="border-white/30"] { border-color: #1A6B6B4C !important; }
+    .luxury-theme [class~="hover:text-indigo-700"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="text-indigo-700"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="hover:bg-slate-100"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="dark:bg-indigo-950/40"] { background-color: #004D4D66 !important; }
+    .luxury-theme [class~="hover:text-slate-700"] { color: #E2E8F0 !important; }
+    .luxury-theme [class~="bg-white/70"] { background-color: #004D4DB2 !important; }
+    .luxury-theme [class~="border-white/25"] { border-color: #1A6B6B40 !important; }
+    .luxury-theme [class~="hover:bg-indigo-50/30"] { background-color: #00FFE04C !important; }
+    .luxury-theme [class~="hover:bg-indigo-700"] { background-color: #00FFE0 !important; }
+    .luxury-theme [class~="bg-slate-105"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="dark:border-slate-800"] { border-color: #1A6B6B66 !important; }
+    .luxury-theme [class~="bg-slate-100"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="dark:bg-slate-900/80"] { background-color: #004D4DCC !important; }
+    .luxury-theme [class~="hover:bg-slate-200"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="dark:border-slate-755"] { border-color: #1A6B6B66 !important; }
+    .luxury-theme [class~="dark:border-indigo-900"] { border-color: #00FFE0 !important; }
+    .luxury-theme [class~="border-white/15"] { border-color: #1A6B6B26 !important; }
+    .luxury-theme [class~="bg-indigo-600"] { background-color: #00FFE0 !important; }
+    .luxury-theme [class~="bg-slate-900/90"] { background-color: #004D4DE6 !important; }
+    .luxury-theme [class~="bg-slate-950/95"] { background-color: #004D4DF2 !important; }
+    .luxury-theme [class~="border-indigo-100"] { border-color: #00FFE0 !important; }
+    .luxury-theme [class~="bg-indigo-100"] { background-color: #00FFE01A !important; }
+    .luxury-theme [class~="bg-white/80"] { background-color: #004D4DCC !important; }
+    .luxury-theme [class~="hover:bg-slate-105"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="dark:bg-slate-950/40"] { background-color: #004D4D66 !important; }
+    .luxury-theme [class~="bg-indigo-50/50"] { background-color: #00FFE080 !important; }
+    .luxury-theme [class~="dark:bg-slate-900"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="border-slate-800"] { border-color: #1A6B6B66 !important; }
+    .luxury-theme [class~="bg-white"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="border-slate-800/80"] { border-color: #1A6B6BCC !important; }
+    .luxury-theme [class~="dark:bg-slate-850/50"] { background-color: #004D4D80 !important; }
+    .luxury-theme [class~="border-slate-100"] { border-color: #1A6B6B66 !important; }
+    .luxury-theme [class~="dark:border-slate-805"] { border-color: #1A6B6B66 !important; }
+    .luxury-theme [class~="dark:hover:bg-slate-900/50"] { background-color: #004D4D80 !important; }
+    .luxury-theme [class~="bg-indigo-50/30"] { background-color: #00FFE04C !important; }
+    .luxury-theme [class~="bg-indigo-850"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="bg-indigo-50"] { background-color: #00FFE01A !important; }
+    .luxury-theme [class~="dark:bg-indigo-950"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="dark:hover:bg-slate-705"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="border-slate-350"] { border-color: #1A6B6B66 !important; }
+    .luxury-theme [class~="dark:bg-slate-900/45"] { background-color: #004D4D73 !important; }
+    .luxury-theme [class~="hover:text-slate-800"] { color: #FFFFFF !important; }
+    .luxury-theme [class~="dark:hover:bg-slate-850"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="group-hover:text-indigo-200"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="border-slate-450"] { border-color: #1A6B6B66 !important; }
+    .luxury-theme [class~="bg-indigo-500/20"] { background-color: #00FFE033 !important; }
+    .luxury-theme [class~="text-indigo-950"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="dark:bg-slate-855/30"] { background-color: #004D4D4C !important; }
+    .luxury-theme [class~="text-slate-900"] { color: #FFFFFF !important; }
+    .luxury-theme [class~="text-indigo-900"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="bg-indigo-900"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="border-slate-200/55"] { border-color: #1A6B6B8C !important; }
+    .luxury-theme [class~="bg-white/65"] { background-color: #004D4DA6 !important; }
+    .luxury-theme [class~="bg-indigo-600/95"] { background-color: #00FFE0F2 !important; }
+    .luxury-theme [class~="bg-slate-950"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="hover:bg-indigo-250"] { background-color: #00FFE01A !important; }
+    .luxury-theme [class~="border-white/35"] { border-color: #1A6B6B59 !important; }
+    .luxury-theme [class~="hover:bg-slate-300"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="dark:hover:text-indigo-300"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="dark:bg-slate-700"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="dark:hover:bg-slate-700"] { background-color: #004D4D !important; }
+    .luxury-theme [class~="dark:border-slate-800/60"] { border-color: #1A6B6B99 !important; }
+    .luxury-theme [class~="focus:ring-indigo-400"] { --tw-ring-color: #00FFE0 !important; }
+    .luxury-theme [class~="dark:text-indigo-200"] { color: #00FFE0 !important; }
+    .luxury-theme [class~="bg-indigo-600/90"][class~="text-white"] { color: #0f172a !important; }
+    .luxury-theme [class~="bg-indigo-500"][class~="text-white"] { color: #0f172a !important; }
+    .luxury-theme [class~="bg-indigo-650"][class~="text-white"] { color: #0f172a !important; }
+    .luxury-theme [class~="hover:bg-indigo-700"][class~="text-white"] { color: #0f172a !important; }
+    .luxury-theme [class~="bg-indigo-600"][class~="text-white"] { color: #0f172a !important; }
+    .luxury-theme [class~="bg-indigo-500/20"][class~="text-white"] { color: #0f172a !important; }
+    .luxury-theme [class~="bg-indigo-600/95"][class~="text-white"] { color: #0f172a !important; }
+    /* Canvas-direct text sweep — any header, title, or label that sits straight on
+       the light-teal canvas (or on a pale tinted card, like the emerald/rose
+       question-review cards) instead of inside a solid white/dark-teal card.
+       These classes replace the generic text-slate-800/900/700 → white/near-white
+       overrides above wherever that swap would make text invisible against the
+       new light background. .dashboard-heading = deep navy for primary text.
+       .dashboard-label = muted charcoal for secondary/uppercase micro-labels. */
+    .luxury-theme .dashboard-label { color: #64748B !important; }
+    .luxury-theme .dashboard-heading { color: #0F172A !important; }
+
+    /* Create tab's Quiz Maker / Notes Summarizer switcher track — carved out of
+       the generic bg-slate-100/border-slate-200 overrides above so it stays a
+       clean, crisp light track (not dark teal) even in Dark Mode, with the
+       active pill staying white so it clearly stands out. */
+    .luxury-theme .subtab-track { background-color: #F1F5F9 !important; border-color: #E2E8F0 !important; }
+    .luxury-theme .subtab-track .subtab-active { background-color: #FFFFFF !important; }
+
+    /* Global Light Electric Teal takeover — the app's root background surface
+       (both the outer shell and the inner "main application card" wrapper
+       share the .app-root-surface class) no longer drops to the obsidian
+       black/navy (#0B0F19) in Dark Mode. It now stays Light Electric Teal
+       everywhere, edge-to-edge, eliminating the inner black block. */
+    .luxury-theme .app-root-surface { background-color: #E0F7FA !important; }
+      `}</style>
       
       {/* Explicit print stylesheet — belt-and-suspenders alongside the Tailwind
           `print:` utility classes already used throughout this component. If a
@@ -2505,7 +2705,7 @@ ${summaryTextInput}` });
           
           {/* ================= MAIN APPLICATION CARD ================= */}
           <div className={`w-full h-full relative overflow-visible flex flex-col justify-between flex-1 transition-all p-0 ${
-            (activeNavTab === 'watch' && !showDiscoverPage) ? 'gap-0 bg-black' : 'gap-6 bg-cyan-50 dark:bg-slate-950'
+            (activeNavTab === 'watch' && !showDiscoverPage) ? 'gap-0 bg-black' : 'gap-6 bg-cyan-50 dark:bg-slate-950 app-root-surface'
           }`}>
               
               {/* Inner App Container & Native Views Router */}
@@ -2594,8 +2794,8 @@ ${summaryTextInput}` });
                       {/* 1. Personalized Welcome Header */}
                       <div className="flex justify-between items-center bg-transparent">
                         <div>
-                          <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest block">Welcome Back</span>
-                          <span className="text-xl font-bold text-slate-800 dark:text-white block mt-0.5">
+                          <span className="dashboard-label text-[10px] font-semibold text-slate-500 uppercase tracking-widest block">Welcome Back</span>
+                          <span className="dashboard-heading text-xl font-bold text-slate-800 block mt-0.5">
                             {displayName}
                           </span>
                         </div>
@@ -2604,7 +2804,7 @@ ${summaryTextInput}` });
 
                       {/* 2. Central Quick Actions Grid */}
                       <div className="space-y-2.5">
-                        <span className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider block pl-0.5">Quick Actions</span>
+                        <span className="dashboard-label text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block pl-0.5">Quick Actions</span>
                         <div className="grid grid-cols-2 gap-3">
                           {/* Card 1: Quiz Builder */}
                           <div
@@ -2672,7 +2872,7 @@ ${summaryTextInput}` });
 
                       {/* 2.5 Recent Reels Horizontal Scroll */}
                       <div className="space-y-2.5">
-                        <span className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider block pl-0.5">Trending Classroom Reels</span>
+                        <span className="dashboard-label text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider block pl-0.5">Trending Classroom Reels</span>
                         <div className="flex overflow-x-auto gap-3.5 pb-2.5 scrollbar-none snap-x -mx-1 px-1">
                           {(() => {
                             const firstFour = videos.slice(0, 4);
@@ -2729,7 +2929,7 @@ ${summaryTextInput}` });
                                     <Compass className="w-4.5 h-4.5" />
                                   </div>
                                   <span className="text-[10.5px] font-extrabold text-indigo-750 dark:text-indigo-300 leading-snug">Click to watch more</span>
-                                  <span className="text-[8.5px] text-slate-400 dark:text-slate-500 mt-1">Search peer reels</span>
+                                  <span className="dashboard-label text-[8.5px] text-slate-400 dark:text-slate-500 mt-1">Search peer reels</span>
                                 </div>
                               </>
                             );
@@ -2740,7 +2940,7 @@ ${summaryTextInput}` });
                       {/* 3. Minimized "Recent Activity" Section */}
                       <div className="space-y-2.5 flex-1 flex flex-col">
                         <div className="flex justify-between items-center pl-0.5">
-                          <span className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Recent Activity</span>
+                          <span className="dashboard-label text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Recent Activity</span>
                           {historyItems.length > 0 && (
                             <button
                               type="button"
@@ -4001,7 +4201,7 @@ ${summaryTextInput}` });
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-2">
                         <UserIcon className="w-4 h-4 text-slate-600 dark:text-slate-400" />
-                        <h2 className="text-base font-semibold text-slate-900 dark:text-white leading-none">Kojlux Study Profile</h2>
+                        <h2 className="dashboard-heading text-base font-semibold text-slate-900 dark:text-white leading-none">Kojlux Study Profile</h2>
                       </div>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400">Synchronize your studies and evaluations seamlessly across all of your academic devices with cloud persistence</p>
                     </div>
@@ -4132,6 +4332,38 @@ ${summaryTextInput}` });
                         <p className="text-[10px] text-slate-500 text-center pb-4 px-4 leading-normal">
                           Log in to synchronize device data and share educational reels across classrooms instantly.
                         </p>
+
+                        {/* Light/Dark theme toggle — also available while signed out, so this
+                            isn't locked behind having an account (mirrors the signed-in toggle
+                            below, switching between the original palette and the Luxury Dark
+                            Mode test palette: Obsidian / Deep Teal / Neon Cyan) */}
+                        <button
+                          type="button"
+                          onClick={toggleLuxuryMode}
+                          className="w-full p-3 bg-white dark:bg-slate-900 rounded-2xl flex justify-between items-center shadow-sm border border-slate-100 dark:border-slate-800 text-left mx-4 mb-4"
+                          style={{ width: 'calc(100% - 2rem)' }}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 flex items-center justify-center shrink-0">
+                              {luxuryMode ? (
+                                <Sun className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                              ) : (
+                                <Moon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                              )}
+                            </div>
+                            <div>
+                              <span className="text-xs font-bold text-slate-800 dark:text-white block">
+                                {luxuryMode ? 'Luxury Dark Mode: On' : 'Use Luxury Dark Mode'}
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                {luxuryMode ? 'Tap to switch back to the original theme' : 'Try the Obsidian / Teal / Cyan look'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className={`w-10 h-6 rounded-full p-0.5 transition-colors shrink-0 ${luxuryMode ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'}`}>
+                            <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${luxuryMode ? 'translate-x-4' : 'translate-x-0'}`} />
+                          </div>
+                        </button>
                       </div>
                     ) : (
                       <div className="space-y-4 flex-grow flex flex-col justify-start">
@@ -4150,6 +4382,35 @@ ${summaryTextInput}` });
                             <span>Log Out</span>
                           </button>
                         </div>
+
+                        {/* Light/Dark theme toggle — switch between the original palette and
+                            the Luxury Dark Mode test palette (Obsidian / Deep Teal / Neon Cyan) */}
+                        <button
+                          type="button"
+                          onClick={toggleLuxuryMode}
+                          className="w-full p-3 bg-white dark:bg-slate-900 rounded-2xl flex justify-between items-center shadow-sm border border-slate-100 dark:border-slate-800 text-left"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 flex items-center justify-center shrink-0">
+                              {luxuryMode ? (
+                                <Sun className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                              ) : (
+                                <Moon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                              )}
+                            </div>
+                            <div>
+                              <span className="text-xs font-bold text-slate-800 dark:text-white block">
+                                {luxuryMode ? 'Luxury Dark Mode: On' : 'Use Luxury Dark Mode'}
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                {luxuryMode ? 'Tap to switch back to the original theme' : 'Try the Obsidian / Teal / Cyan look'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className={`w-10 h-6 rounded-full p-0.5 transition-colors shrink-0 ${luxuryMode ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'}`}>
+                            <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${luxuryMode ? 'translate-x-4' : 'translate-x-0'}`} />
+                          </div>
+                        </button>
 
                         {/* Real-time stats */}
                         <div className="space-y-2">
@@ -4212,7 +4473,7 @@ ${summaryTextInput}` });
                   <div className="flex-1 flex flex-col gap-3.5 animate-fade-in">
                     
                     {/* Persistent Side-by-side Dashboard Toggle Controls */}
-                    <div className="grid grid-cols-2 bg-cyan-50 dark:bg-slate-800/80 p-1 rounded-2xl mb-1 border border-[#B2EBF2]/50 dark:border-slate-700/35 shadow-xs">
+                    <div className="subtab-track grid grid-cols-2 bg-slate-100 p-1 rounded-2xl mb-1 border border-slate-200 shadow-xs">
                       <button
                         type="button"
                         onClick={() => {
@@ -4221,8 +4482,8 @@ ${summaryTextInput}` });
                         }}
                         className={`py-2 text-[11px] font-extrabold rounded-xl flex items-center justify-center gap-1.5 transition duration-200 ${
                           createSubTab === 'quiz'
-                            ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-white shadow-sm font-black'
-                            : 'text-slate-550 dark:text-slate-400 hover:text-slate-850 dark:hover:text-slate-200 font-extrabold'
+                            ? 'subtab-active bg-white text-indigo-700 shadow-sm font-black'
+                            : 'text-slate-500 hover:text-slate-700 font-extrabold'
                         }`}
                       >
                         <Brain className="w-3.5 h-3.5 text-indigo-650 dark:text-indigo-400" />
@@ -4236,8 +4497,8 @@ ${summaryTextInput}` });
                         }}
                         className={`py-2 text-[11px] font-extrabold rounded-xl flex items-center justify-center gap-1.5 transition duration-200 ${
                           createSubTab === 'summarizer'
-                            ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-white shadow-sm font-black'
-                            : 'text-slate-550 dark:text-slate-400 hover:text-slate-850 dark:hover:text-slate-200 font-extrabold'
+                            ? 'subtab-active bg-white text-indigo-700 shadow-sm font-black'
+                            : 'text-slate-500 hover:text-slate-700 font-extrabold'
                         }`}
                       >
                         <Sparkles className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400" />
@@ -4248,7 +4509,7 @@ ${summaryTextInput}` });
                     {createSubTab === 'quiz' ? (
                       <div className="flex-1 flex flex-col gap-4 animate-fade-in text-left">
                         <div className="space-y-0.5 select-none">
-                          <h2 className="text-base font-semibold text-slate-900 dark:text-white">Instant Quiz Maker</h2>
+                          <h2 className="dashboard-heading text-base font-semibold text-slate-900 dark:text-white">Instant Quiz Maker</h2>
                           <p className="text-[10px] text-slate-500 dark:text-slate-400">Generate test templates by uploading notes images or typing materials</p>
                         </div>
 
@@ -4347,7 +4608,7 @@ ${summaryTextInput}` });
                                     onClick={() => setQuestionCount(cnt)}
                                     className={`py-1 rounded-lg text-xs font-semibold transition-all duration-150 ${
                                       questionCount === cnt
-                                        ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs"
+                                        ? "bg-indigo-600 text-white shadow-sm"
                                         : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                                     }`}
                                   >
@@ -4389,7 +4650,7 @@ ${summaryTextInput}` });
                                 onClick={() => setQuizType('multiple-choice')}
                                 className={`py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 text-center ${
                                   quizType === 'multiple-choice'
-                                    ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs"
+                                    ? "bg-indigo-600 text-white shadow-sm"
                                     : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                                 }`}
                               >
@@ -4400,7 +4661,7 @@ ${summaryTextInput}` });
                                 onClick={() => setQuizType('short-answer')}
                                 className={`py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 text-center ${
                                   quizType === 'short-answer'
-                                    ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs"
+                                    ? "bg-indigo-600 text-white shadow-sm"
                                     : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                                 }`}
                               >
@@ -4422,7 +4683,7 @@ ${summaryTextInput}` });
                                   onClick={() => setDifficulty(diff)}
                                   className={`py-1.5 rounded-lg text-xs font-semibold capitalize transition-all duration-150 ${
                                     difficulty === diff
-                                      ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs"
+                                      ? "bg-indigo-600 text-white shadow-sm"
                                       : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                                   }`}
                                 >
@@ -4484,7 +4745,7 @@ ${summaryTextInput}` });
                             {!summaryData ? (
                               <div className="flex-grow flex flex-col gap-3.5">
                                 <div className="space-y-0.5">
-                                  <h2 className="text-base font-extrabold text-slate-800 dark:text-white leading-tight">Instant Summarizer</h2>
+                                  <h2 className="dashboard-heading text-base font-extrabold text-slate-800 dark:text-white leading-tight">Instant Summarizer</h2>
                                   <p className="text-[11px] text-slate-400">Generate structured study summaries, concise reviews, and key definition sheets instantly</p>
                                 </div>
 
@@ -4615,7 +4876,7 @@ ${summaryTextInput}` });
                                       {summaryData.subject}
                                     </span>
                                   </div>
-                                  <h3 className="text-sm font-extrabold text-slate-800 dark:text-white leading-tight">
+                                  <h3 className="dashboard-heading text-sm font-extrabold text-slate-800 dark:text-white leading-tight">
                                     {summaryData.title}
                                   </h3>
                                 </div>
@@ -4857,7 +5118,7 @@ ${summaryTextInput}` });
 
                     <div className="text-center space-y-2 pt-2">
                       <span className="text-[11px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest">Score Summary</span>
-                      <h2 className="text-xl md:text-2xl font-extrabold text-slate-900 dark:text-white leading-snug">{quizData.title}</h2>
+                      <h2 className="dashboard-heading text-xl md:text-2xl font-extrabold text-slate-900 dark:text-white leading-snug">{quizData.title}</h2>
                       <div className="text-5xl font-black text-indigo-600 dark:text-indigo-400 py-2">
                         {evaluation.summary.overallPercentage}%
                       </div>
@@ -4902,13 +5163,13 @@ ${summaryTextInput}` });
                             }`}
                           >
                             <div className="flex justify-between items-start gap-2 mb-3">
-                              <span className="text-sm font-bold text-slate-700 dark:text-slate-300">Q{idx + 1}.</span>
+                              <span className="dashboard-label text-sm font-bold text-slate-700 dark:text-slate-300">Q{idx + 1}.</span>
                               <span className="text-[10px] uppercase font-bold text-slate-400 bg-white/70 dark:bg-slate-800 px-2 py-0.5 rounded">
                                 {q.type === 'multiple-choice' ? 'MCQ' : 'Short Answer'}
                               </span>
                             </div>
 
-                            <p className="text-base font-semibold text-slate-900 dark:text-slate-100 mb-4 leading-relaxed">
+                            <p className="dashboard-heading text-base font-semibold text-slate-900 dark:text-slate-100 mb-4 leading-relaxed">
                               {q.question}
                             </p>
 
