@@ -33,7 +33,7 @@
         
       }
     </style>
-    <link rel="apple-touch-icon" href="./apple-touch-icon.png">
+    <link rel="apple-touch-icon" href="./icon.png" />
    <link rel="manifest" href="./manifest.json" />
 
   </head>
@@ -42,7 +42,7 @@
     <script type="module" src="./src/main.tsx"></script>
    <script>
   if ('serviceWorker' in navigator) {
-   navigator.serviceWorker.register('/kojlux-study-hub/sw.js') // Added the dot before /sw.js
+   navigator.serviceWorker.register('/kojlux-study-hub/sw.js')
       .then(() => console.log('Service Worker Registered'));
   }
 </script>
@@ -51,4 +51,3 @@
 
   </body>
 </html>
-

@@ -2256,7 +2256,7 @@ ${summaryTextInput}` });
       >
         <video
           className="w-full h-full object-cover"
-          src="/kojlux-intro.mp4"
+          src="./kojlux-intro.mp4"
           autoPlay
           muted
           playsInline
