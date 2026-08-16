@@ -1,5 +1,14 @@
 // Provide ImportMeta typing for Vite's import.meta.env to satisfy TypeScript
 interface ImportMetaEnv {
+  // Vite's built-in env vars. This interface overrides Vite's default typing
+  // for import.meta.env, so these have to be declared explicitly or
+  // import.meta.env.DEV (used to gate local-only developer tooling) won't
+  // typecheck.
+  readonly DEV: boolean;
+  readonly PROD: boolean;
+  readonly MODE: string;
+  readonly SSR: boolean;
+  readonly BASE_URL: string;
   VITE_FIREBASE_API_KEY: string;
   VITE_FIREBASE_AUTH_DOMAIN: string;
   VITE_FIREBASE_PROJECT_ID: string;

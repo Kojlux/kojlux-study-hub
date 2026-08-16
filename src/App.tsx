@@ -1101,12 +1101,16 @@ export default function App() {
     }
   };
 
-  // Welcome screen splash timeout: auto-hide after 1.7 seconds
+  // Welcome screen splash: normally hidden by the intro video's onEnded/onError
+  // handlers (see the <video> below). This is just a safety net in case
+  // autoplay is blocked by the browser or the video fails to load for some
+  // other reason, so the app is never stuck behind the splash — timed a
+  // little past the video's ~8s runtime.
   useEffect(() => {
-    const splashTimer = setTimeout(() => {
+    const splashSafetyTimer = setTimeout(() => {
       setShowSplash(false);
-    }, 1700);
-    return () => clearTimeout(splashTimer);
+    }, 9000);
+    return () => clearTimeout(splashSafetyTimer);
   }, []);
 
   useEffect(() => {
@@ -2245,11 +2249,20 @@ ${summaryTextInput}` });
   // Show splash screen overlay
   if (showSplash) {
     return (
-      <div className="fixed inset-0 z-[9999] bg-gradient-to-br from-indigo-900 via-slate-900 to-black flex flex-col items-center justify-center">
-        <div className="text-center animate-fade-in">
-          <h1 className="text-4xl font-black text-white mb-2 tracking-tight">KOJLUX</h1>
-          <p className="text-indigo-300 font-semibold">Study Hub</p>
-        </div>
+      <div
+        className="fixed inset-0 z-[9999] bg-white flex items-center justify-center cursor-pointer"
+        onClick={() => setShowSplash(false)}
+        title="Tap to skip"
+      >
+        <video
+          className="w-full h-full object-cover"
+          src="/kojlux-intro.mp4"
+          autoPlay
+          muted
+          playsInline
+          onEnded={() => setShowSplash(false)}
+          onError={() => setShowSplash(false)}
+        />
       </div>
     );
   }
