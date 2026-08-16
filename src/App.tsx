@@ -548,7 +548,10 @@ export default function App() {
   // indigo/slate palette and the Rich Obsidian / Deep Teal / Neon Cyan luxury
   // palette via the `.luxury-theme` CSS scope (see the injected <style> block).
   const [luxuryMode, setLuxuryMode] = useState<boolean>(() => {
-    return localStorage.getItem('kojlux_luxury_mode') === 'true';
+    const storedLuxuryMode = localStorage.getItem('kojlux_luxury_mode');
+    // Default to ON when the user has never explicitly set a preference.
+    if (storedLuxuryMode === null) return true;
+    return storedLuxuryMode === 'true';
   });
   const toggleLuxuryMode = () => {
     setLuxuryMode(prev => {
@@ -1403,7 +1406,12 @@ export default function App() {
 
     try {
       // 1. Build the multimodal prompt from the user's REAL uploaded note data
+      // NOTE: every question's "type" field is pinned to the currently selected
+      // quizType (rather than left as a free "multiple-choice" | "short-answer"
+      // choice) so the model can't silently default every question back to
+      // Multiple Choice when the user picked Short Answer.
       const quizPrompt = `You are Kojlux's AI study assistant. Based on the study notes provided (image and/or text below), generate a ${quizType} quiz with exactly ${questionCount} questions at ${difficulty} difficulty.
+IMPORTANT: The user has selected "${quizType}" as the exercise format. EVERY question in the "questions" array MUST have its "type" field set to exactly "${quizType}" — do not mix formats and do not substitute a different format for any question.
 Return ONLY valid JSON (no markdown fences, no commentary) matching exactly this structure:
 {
   "title": string,
@@ -1411,7 +1419,7 @@ Return ONLY valid JSON (no markdown fences, no commentary) matching exactly this
   "questions": [
     {
       "id": number,
-      "type": "multiple-choice" | "short-answer",
+      "type": "${quizType}",
       "question": string,
       "options": string[] (exactly 4 options, only when type is "multiple-choice"),
       "correctAnswer": string ("A" | "B" | "C" | "D", only when type is "multiple-choice"),
@@ -1461,6 +1469,11 @@ ${textInput}` });
 
     // 5. Parse the verified text structure into your app state
     const data = JSON.parse(resultText);
+    // Safety net: force every question's type to match the user's selected
+    // Exercise Format, in case the model still returns a mismatched type.
+    if (Array.isArray(data?.questions)) {
+      data.questions = data.questions.map((q: QuizQuestion) => ({ ...q, type: quizType }));
+    }
     setQuizData(data);
 
 
@@ -2334,6 +2347,21 @@ ${summaryTextInput}` });
     .luxury-theme [class~="dark:border-white"] { border-color: #1A6B6B66 !important; }
     .luxury-theme [class~="text-indigo-600"] { color: #00FFE0 !important; }
     .luxury-theme [class~="text-slate-700"] { color: #E2E8F0 !important; }
+    /* Low-contrast muted-text sweep: these "label tier" grey shades render
+       against the dark-teal card backgrounds forced elsewhere in this
+       palette, so left unmapped they read as near-invisible dark-on-dark
+       text (e.g. inactive segmented-control tabs like Summary Density
+       Style). Mapped to the same light grey as text-slate-700 above. */
+    .luxury-theme [class~="text-slate-400"] { color: #E2E8F0 !important; }
+    .luxury-theme [class~="text-slate-450"] { color: #E2E8F0 !important; }
+    .luxury-theme [class~="text-slate-500"] { color: #E2E8F0 !important; }
+    .luxury-theme [class~="text-slate-550"] { color: #E2E8F0 !important; }
+    .luxury-theme [class~="text-slate-600"] { color: #E2E8F0 !important; }
+    .luxury-theme [class~="dark:text-slate-300"] { color: #E2E8F0 !important; }
+    .luxury-theme [class~="dark:text-slate-400"] { color: #E2E8F0 !important; }
+    .luxury-theme [class~="dark:text-slate-450"] { color: #E2E8F0 !important; }
+    .luxury-theme [class~="dark:text-slate-500"] { color: #E2E8F0 !important; }
+    .luxury-theme [class~="dark:text-slate-600"] { color: #E2E8F0 !important; }
     .luxury-theme [class~="dark:border-slate-700/35"] { border-color: #1A6B6B59 !important; }
     .luxury-theme [class~="dark:text-indigo-300"] { color: #00FFE0 !important; }
     .luxury-theme [class~="dark:bg-slate-950/20"] { background-color: #004D4D33 !important; }
@@ -2409,22 +2437,26 @@ ${summaryTextInput}` });
     .luxury-theme [class~="bg-indigo-600"][class~="text-white"] { color: #0f172a !important; }
     .luxury-theme [class~="bg-indigo-500/20"][class~="text-white"] { color: #0f172a !important; }
     .luxury-theme [class~="bg-indigo-600/95"][class~="text-white"] { color: #0f172a !important; }
-    /* Canvas-direct text sweep — any header, title, or label that sits straight on
-       the light-teal canvas (or on a pale tinted card, like the emerald/rose
-       question-review cards) instead of inside a solid white/dark-teal card.
-       These classes replace the generic text-slate-800/900/700 → white/near-white
-       overrides above wherever that swap would make text invisible against the
-       new light background. .dashboard-heading = deep navy for primary text.
-       .dashboard-label = muted charcoal for secondary/uppercase micro-labels. */
+    /* Canvas-direct text sweep — any header, title, label, or body copy that
+       sits straight on the light-teal canvas (or on a pale tinted card, like
+       the emerald/rose question-review cards) instead of inside a solid
+       white/dark-teal card. These classes replace the generic
+       text-slate-800/900/700 → white/near-white overrides above wherever
+       that swap would make text invisible against the new light background.
+       .dashboard-heading = deep navy for primary text.
+       .dashboard-label = muted charcoal for secondary/uppercase micro-labels.
+       .dashboard-body = strong dark navy for canvas-direct paragraph/list
+       content (e.g. the Key Takeaways bullets in the generated summary,
+       which render with no card wrapper of their own). */
     .luxury-theme .dashboard-label { color: #64748B !important; }
     .luxury-theme .dashboard-heading { color: #0F172A !important; }
+    .luxury-theme .dashboard-body { color: #1E293B !important; }
 
-    /* Create tab's Quiz Maker / Notes Summarizer switcher track — carved out of
-       the generic bg-slate-100/border-slate-200 overrides above so it stays a
-       clean, crisp light track (not dark teal) even in Dark Mode, with the
-       active pill staying white so it clearly stands out. */
-    .luxury-theme .subtab-track { background-color: #F1F5F9 !important; border-color: #E2E8F0 !important; }
-    .luxury-theme .subtab-track .subtab-active { background-color: #FFFFFF !important; }
+    /* Create tab's Quiz Maker / Notes Summarizer switcher track — the track
+       uses a dark bg-slate-900 base (already staying dark under the generic
+       bg-slate-900 override above) with a solid emerald active pill; emerald
+       isn't remapped by the luxury palette so the pill stays vibrant and
+       high-contrast in both the default and Luxury Dark themes. */
 
     /* Global Light Electric Teal takeover — the app's root background surface
        (both the outer shell and the inner "main application card" wrapper
@@ -2432,6 +2464,21 @@ ${summaryTextInput}` });
        black/navy (#0B0F19) in Dark Mode. It now stays Light Electric Teal
        everywhere, edge-to-edge, eliminating the inner black block. */
     .luxury-theme .app-root-surface { background-color: #E0F7FA !important; }
+
+    /* Text input readability fix — in Luxury Dark Mode, typed text in every
+       text-entry field (text/email/password/url/number/search/tel inputs and
+       textareas) is forced to white so it's legible against the dark teal
+       input backgrounds above. Only applies while .luxury-theme is active;
+       Luxury Dark Mode off leaves all input styling untouched. */
+    .luxury-theme input[type="text"],
+    .luxury-theme input[type="email"],
+    .luxury-theme input[type="password"],
+    .luxury-theme input[type="url"],
+    .luxury-theme input[type="number"],
+    .luxury-theme input[type="search"],
+    .luxury-theme input[type="tel"],
+    .luxury-theme input:not([type]),
+    .luxury-theme textarea { color: #FFFFFF !important; caret-color: #FFFFFF !important; }
       `}</style>
       
       {/* Explicit print stylesheet — belt-and-suspenders alongside the Tailwind
@@ -4473,7 +4520,7 @@ ${summaryTextInput}` });
                   <div className="flex-1 flex flex-col gap-3.5 animate-fade-in">
                     
                     {/* Persistent Side-by-side Dashboard Toggle Controls */}
-                    <div className="subtab-track grid grid-cols-2 bg-slate-100 p-1 rounded-2xl mb-1 border border-slate-200 shadow-xs">
+                    <div className="subtab-track grid grid-cols-2 bg-slate-900 dark:bg-slate-950 p-1.5 rounded-2xl mb-1 border border-slate-800 shadow-md gap-1.5">
                       <button
                         type="button"
                         onClick={() => {
@@ -4482,11 +4529,11 @@ ${summaryTextInput}` });
                         }}
                         className={`py-2 text-[11px] font-extrabold rounded-xl flex items-center justify-center gap-1.5 transition duration-200 ${
                           createSubTab === 'quiz'
-                            ? 'subtab-active bg-white text-indigo-700 shadow-sm font-black'
-                            : 'text-slate-500 hover:text-slate-700 font-extrabold'
+                            ? 'subtab-active bg-emerald-500 text-white shadow-sm font-black'
+                            : 'text-slate-300 hover:text-white hover:bg-white/10 font-extrabold'
                         }`}
                       >
-                        <Brain className="w-3.5 h-3.5 text-indigo-650 dark:text-indigo-400" />
+                        <Brain className={`w-3.5 h-3.5 ${createSubTab === 'quiz' ? 'text-white' : 'text-indigo-400'}`} />
                         Quiz Maker
                       </button>
                       <button
@@ -4497,11 +4544,11 @@ ${summaryTextInput}` });
                         }}
                         className={`py-2 text-[11px] font-extrabold rounded-xl flex items-center justify-center gap-1.5 transition duration-200 ${
                           createSubTab === 'summarizer'
-                            ? 'subtab-active bg-white text-indigo-700 shadow-sm font-black'
-                            : 'text-slate-500 hover:text-slate-700 font-extrabold'
+                            ? 'subtab-active bg-emerald-500 text-white shadow-sm font-black'
+                            : 'text-slate-300 hover:text-white hover:bg-white/10 font-extrabold'
                         }`}
                       >
-                        <Sparkles className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400" />
+                        <Sparkles className={`w-3.5 h-3.5 ${createSubTab === 'summarizer' ? 'text-white' : 'text-rose-400'}`} />
                         Notes Summarizer
                       </button>
                     </div>
@@ -4728,7 +4775,15 @@ ${summaryTextInput}` });
 
                             {/* Active Summary Utility header */}
                             {summaryData && (
-                              <header className="flex justify-end items-center mb-4 border-b border-slate-100 dark:border-slate-850 pb-3">
+                              <header className="flex justify-between items-center mb-4 border-b border-slate-100 dark:border-slate-850 pb-3 gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={downloadSummaryPDF}
+                                  className="p-1 px-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold transition flex items-center gap-1.5 shadow-sm"
+                                  title="Download the summary as a beautiful structured PDF study sheet to review anytime"
+                                >
+                                  <Printer className="w-3 h-3" /> Export PDF
+                                </button>
                                 <div className="flex gap-1.5 ml-auto">
                                   <button 
                                     type="button"
@@ -4900,7 +4955,7 @@ ${summaryTextInput}` });
                                     <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1">Key Takeaways &amp; Conceptual Lessons</h4>
                                     <div className="space-y-1.5 pl-1">
                                       {summaryData.keyTakeaways.map((takeaway, tkIdx) => (
-                                        <div key={tkIdx} className="text-xs text-slate-700 dark:text-slate-300 flex items-start gap-2 leading-relaxed">
+                                        <div key={tkIdx} className="dashboard-body text-xs text-slate-700 dark:text-slate-300 flex items-start gap-2 leading-relaxed font-medium">
                                           <span className="text-indigo-600 dark:text-indigo-400 font-extrabold shrink-0 mt-0.5">▪</span>
                                           <span>{takeaway}</span>
                                         </div>
@@ -4939,24 +4994,12 @@ ${summaryTextInput}` });
 
                                 </div>
 
-                                {/* Summary Export controls */}
-                                <div className="bg-indigo-50/50 dark:bg-slate-850/80 p-3 rounded-2xl border border-indigo-100/50 dark:border-slate-800 space-y-2 mt-2">
-                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Summary Export Companion</span>
-                                  
-                                  <button
-                                    type="button"
-                                    onClick={downloadSummaryPDF}
-                                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
-                                    title="Download the summary as a beautiful structured PDF study sheet to review anytime"
-                                  >
-                                    <Printer className="w-3.5 h-3.5 text-white" />
-                                    <span>Download &amp; Print Summary PDF</span>
-                                  </button>
-                                  
-                                  <div className="flex justify-between items-center text-[9px] text-slate-400 px-1 pt-1 border-t border-slate-100 dark:border-slate-800/80">
-                                    <span className="truncate">Unit: {summaryData.title.slice(0, 24)}...</span>
-                                    <span className="capitalize">{detailLevel} Format style</span>
-                                  </div>
+                                {/* Slim summary metadata strip — the PDF export action now lives in the
+                                    compact header up top (see "Export PDF" next to "New Summary"), so this
+                                    footer no longer needs its own panel, button, or heading. */}
+                                <div className="flex justify-between items-center text-[9px] text-slate-400 px-1 pt-2 border-t border-slate-100 dark:border-slate-800/80 shrink-0">
+                                  <span className="truncate">Unit: {summaryData.title.slice(0, 24)}...</span>
+                                  <span className="capitalize">{detailLevel} Format style</span>
                                 </div>
 
                                 <button
