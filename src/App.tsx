@@ -2256,7 +2256,7 @@ ${summaryTextInput}` });
       >
         <video
           className="w-full h-full object-cover"
-          src="./kojlux-intro.mp4"
+          src="./welcomescreen1_0.mp4"
           autoPlay
           muted
           playsInline
@@ -4542,7 +4542,7 @@ ${summaryTextInput}` });
                         }}
                         className={`py-2 text-[11px] font-extrabold rounded-xl flex items-center justify-center gap-1.5 transition duration-200 ${
                           createSubTab === 'quiz'
-                            ? 'subtab-active bg-emerald-500 text-white shadow-sm font-black'
+                            ? 'subtab-active bg-indigo-600 text-white shadow-sm font-black'
                             : 'text-slate-300 hover:text-white hover:bg-white/10 font-extrabold'
                         }`}
                       >
@@ -4557,7 +4557,7 @@ ${summaryTextInput}` });
                         }}
                         className={`py-2 text-[11px] font-extrabold rounded-xl flex items-center justify-center gap-1.5 transition duration-200 ${
                           createSubTab === 'summarizer'
-                            ? 'subtab-active bg-emerald-500 text-white shadow-sm font-black'
+                            ? 'subtab-active bg-indigo-600 text-white shadow-sm font-black'
                             : 'text-slate-300 hover:text-white hover:bg-white/10 font-extrabold'
                         }`}
                       >
