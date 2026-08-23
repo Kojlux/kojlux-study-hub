@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import {
-  Upload, Sparkles, CheckCircle, XCircle, RefreshCw, Printer,
+  Upload, Camera, Sparkles, CheckCircle, XCircle, RefreshCw, Printer,
   ChevronRight, Trash, Layers,
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
@@ -29,7 +29,8 @@ export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCard
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleFile = (file: File) => {
     const reader = new FileReader();
@@ -67,7 +68,7 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
       parts.push({ text: instructions });
 
       const response = await generateContentWithFallback(GEMINI_KEYS.quiz, {
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.6-flash',
         contents: [{ role: 'user', parts }],
       });
       const parsed = parseJsonResponse<QuizData>(response.text);
@@ -107,7 +108,7 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
           )
           .join('\n')}`;
         const response = await generateContentWithFallback(GEMINI_KEYS.quiz, {
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.6-flash',
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
         });
         const parsed = parseJsonResponse<{ evaluations: any[] }>(response.text);
@@ -288,20 +289,42 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
   // ---- Builder form ----
   return (
     <div className="space-y-5">
-      <div
-        onClick={() => fileInputRef.current?.click()}
-        className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-6 text-center cursor-pointer hover:border-focus-primary transition bg-white dark:bg-slate-900"
-      >
+      <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-6 text-center bg-white dark:bg-slate-900 space-y-3">
         {image ? (
           <img src={image} className="max-h-40 mx-auto rounded-lg object-contain" />
         ) : (
           <div className="space-y-2 text-slate-400">
             <Upload className="w-6 h-6 mx-auto" />
-            <p className="text-xs font-semibold">Upload a photo of your notes or textbook page</p>
+            <p className="text-xs font-semibold">Add a photo of your notes or textbook page</p>
           </div>
         )}
+        <div className="flex gap-2.5">
+          <button
+            type="button"
+            onClick={() => uploadInputRef.current?.click()}
+            className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-focus-primary transition"
+          >
+            <Upload className="w-3.5 h-3.5" /> Upload Photo
+          </button>
+          <button
+            type="button"
+            onClick={() => cameraInputRef.current?.click()}
+            className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-focus-primary transition"
+          >
+            <Camera className="w-3.5 h-3.5" /> Take Photo
+          </button>
+        </div>
+        {/* Upload from gallery/files — no capture attribute so mobile browsers offer the photo library, not just the camera */}
         <input
-          ref={fileInputRef}
+          ref={uploadInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+        />
+        {/* Take a new photo — capture="environment" opens the camera directly */}
+        <input
+          ref={cameraInputRef}
           type="file"
           accept="image/*"
           capture="environment"

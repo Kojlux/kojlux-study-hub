@@ -30,7 +30,7 @@ export default function ReviewQueue({ cards, onUpdateCards }: Props) {
     try {
       const prompt = `A student is reviewing this recall prompt: "${current.prompt}". The target answer is: "${current.answer}". The student wrote, before seeing the answer: "${explanation}". In one short encouraging sentence, tell them what their explanation got right and what (if anything) it missed. Respond ONLY with strict JSON: {"feedback": string}`;
       const response = await generateContentWithFallback(GEMINI_KEYS.recallCoach, {
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.6-flash',
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
       });
       const parsed = parseJsonResponse<{ feedback: string }>(response.text);
