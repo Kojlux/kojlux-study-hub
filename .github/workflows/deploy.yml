@@ -2,7 +2,7 @@ name: Deploy Vite Site to GitHub Pages
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "Study1.0"]
   workflow_dispatch:
 
 permissions:
@@ -49,6 +49,7 @@ jobs:
           VITE_CHAT_KEY: ${{ secrets.VITE_CHAT_KEY }}
           VITE_SUMMARIZER_KEY: ${{ secrets.VITE_SUMMARIZER_KEY }}
           VITE_SUMMARIZER_KEY_ROTATION: ${{ secrets.VITE_SUMMARIZER_KEY_ROTATION }}
+          VITE_RECALL_COACH_KEY: ${{ secrets.VITE_RECALL_COACH_KEY }}
         run: npm run build
 
       - name: Upload artifact
