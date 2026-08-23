@@ -244,12 +244,11 @@ Rules:
 
         onSaveHistory({
           id: Date.now().toString(),
-          itemType: 'visualization',
+          type: 'visualization',
           title: vizResponse.title || `Visualizing ${trimmed}`,
-          subject: `Interactive ${vizResponse.type === 'graph' ? 'Plotter' : vizResponse.type === 'math' ? 'Equation' : 'Animation'}`,
-          savedAt: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          vizPrompt: trimmed,
-          vizResponse
+          createdAt: new Date().toISOString(),
+          sourcePrompt: trimmed,
+          data: vizResponse,
         });
       } else {
         const assistantMsg: VisualizerChatMessage = {

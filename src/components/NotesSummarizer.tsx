@@ -1,0 +1,276 @@
+import React, { useRef, useState } from 'react';
+import { Upload, Sparkles, RefreshCw, BookOpenCheck, Link2, ChevronDown } from 'lucide-react';
+import { SummaryData, HistoryItem, RecallCard, VisualizationResponse } from '../types';
+import { generateContentWithFallback, GEMINI_KEYS, parseJsonResponse } from '../lib/gemini';
+import { makeRecallCard } from '../lib/spacedRepetition';
+
+interface Props {
+  gradeLevel: string;
+  history: HistoryItem[];
+  onSaveHistory: (item: HistoryItem) => void;
+  onAddRecallCards: (cards: RecallCard[]) => void;
+  onError: (msg: string) => void;
+}
+
+export default function NotesSummarizer({ gradeLevel, history, onSaveHistory, onAddRecallCards, onError }: Props) {
+  const [image, setImage] = useState<string | null>(null);
+  const [textInput, setTextInput] = useState('');
+  const [detailLevel, setDetailLevel] = useState<'concise' | 'standard' | 'thorough'>('standard');
+  const [loading, setLoading] = useState(false);
+  const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
+
+  const [linkerOpen, setLinkerOpen] = useState(false);
+  const [linkerBusy, setLinkerBusy] = useState(false);
+  const [linkedCount, setLinkedCount] = useState<number | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const visualizationHistory = history.filter((h) => h.type === 'visualization');
+
+  const handleFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => setImage(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const summarize = async () => {
+    if (!image && !textInput.trim()) {
+      onError('Add a photo of your notes or paste some text first.');
+      return;
+    }
+    setLoading(true);
+    setSummaryData(null);
+    setLinkedCount(null);
+    try {
+      const parts: any[] = [];
+      if (image) {
+        const [meta, data] = image.split(',');
+        const mimeType = meta.match(/data:(.*);base64/)?.[1] || 'image/jpeg';
+        parts.push({ inlineData: { mimeType, data } });
+      }
+      const instructions = `You are helping a ${gradeLevel} student study. Summarize the study material (image and/or text below) at a "${detailLevel}" level of detail. ${
+        textInput.trim() ? `Text material: """${textInput.trim()}"""` : ''
+      }
+Respond ONLY with strict JSON, no markdown fences: {"title": string, "overview": string, "keyPoints": [string, ...], "glossary": [{"term": string, "definition": string}, ...]}`;
+      parts.push({ text: instructions });
+
+      const response = await generateContentWithFallback(GEMINI_KEYS.summarizer, {
+        model: 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts }],
+      });
+      const parsed = parseJsonResponse<SummaryData>(response.text);
+      setSummaryData(parsed);
+
+      onSaveHistory({
+        id: `${Date.now()}`,
+        type: 'summary',
+        title: parsed.title,
+        createdAt: new Date().toISOString(),
+        data: parsed,
+      });
+
+      // Recall Coach: each key point becomes a short-answer style recall
+      // prompt ("What do you know about X?") so summaries get reviewed
+      // through retrieval practice instead of just being read once and
+      // forgotten.
+      const cards = parsed.keyPoints.map((kp) =>
+        makeRecallCard({
+          sourceType: 'summary',
+          sourceTitle: parsed.title,
+          prompt: `In your own words, explain: ${kp}`,
+          answer: kp,
+        })
+      );
+      onAddRecallCards(cards);
+    } catch (err) {
+      console.error(err);
+      onError('Could not summarize that material. Try a clearer photo or more text.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Concept Linker: dual coding. Pairs this text summary with a diagram the
+  // student already generated in the Visualizer, and asks Gemini to write
+  // questions that force the student to connect the visual and the verbal —
+  // e.g. "label this part of the diagram, then explain why it matters."
+  const runConceptLinker = async (viz: HistoryItem) => {
+    if (!summaryData) return;
+    setLinkerBusy(true);
+    try {
+      const vizData = viz.data as VisualizationResponse;
+      const prompt = `A student has both a text summary and a visual diagram on related material. Write 3 short "dual-coding" recall questions that require connecting the diagram to the written explanation (e.g. asking the student to identify a labeled step in the diagram AND explain its significance from the summary). Keep each question to one or two sentences, and give a concise model answer for each.
+
+Summary title: "${summaryData.title}"
+Summary key points: ${summaryData.keyPoints.join('; ')}
+
+Diagram title: "${vizData.title}" (type: ${vizData.type})
+Diagram steps: ${vizData.steps.map((s, i) => `(${i + 1}) ${s.label} — ${s.explanation}`).join('; ')}
+
+Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": string}, ...]}`;
+
+      const response = await generateContentWithFallback(GEMINI_KEYS.recallCoach, {
+        model: 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      });
+      const parsed = parseJsonResponse<{ questions: { prompt: string; answer: string }[] }>(response.text);
+      const cards = parsed.questions.map((q) =>
+        makeRecallCard({
+          sourceType: 'concept-link',
+          sourceTitle: `${summaryData.title} × ${vizData.title}`,
+          prompt: q.prompt,
+          answer: q.answer,
+        })
+      );
+      onAddRecallCards(cards);
+      setLinkedCount(cards.length);
+      setLinkerOpen(false);
+    } catch (err) {
+      console.error(err);
+      onError('Could not link this summary to that diagram — try again.');
+    } finally {
+      setLinkerBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      {!summaryData && (
+        <>
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-6 text-center cursor-pointer hover:border-focus-primary transition bg-white dark:bg-slate-900"
+          >
+            {image ? (
+              <img src={image} className="max-h-40 mx-auto rounded-lg object-contain" />
+            ) : (
+              <div className="space-y-2 text-slate-400">
+                <Upload className="w-6 h-6 mx-auto" />
+                <p className="text-xs font-semibold">Upload a photo of your notes or textbook page</p>
+              </div>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+            />
+          </div>
+
+          <textarea
+            value={textInput}
+            onChange={(e) => setTextInput(e.target.value)}
+            placeholder="Or paste notes / a topic here…"
+            rows={4}
+            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary resize-none"
+          />
+
+          <div>
+            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1.5">Detail level</span>
+            <div className="flex gap-1.5">
+              {(['concise', 'standard', 'thorough'] as const).map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setDetailLevel(d)}
+                  className={`flex-1 py-2 rounded-xl text-[11px] font-bold capitalize border ${
+                    detailLevel === d ? 'bg-focus-primary text-white border-focus-primary' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'
+                  }`}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            onClick={summarize}
+            disabled={loading}
+            className="w-full py-3.5 bg-focus-primary hover:bg-focus-primary-dark text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-60"
+          >
+            {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            {loading ? 'Summarizing…' : 'Summarize'}
+          </button>
+        </>
+      )}
+
+      {summaryData && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-black text-slate-900 dark:text-white">{summaryData.title}</h2>
+            <button onClick={() => { setSummaryData(null); setImage(null); setTextInput(''); }} className="text-xs text-focus-primary font-bold flex items-center gap-1">
+              <RefreshCw className="w-3.5 h-3.5" /> New
+            </button>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">{summaryData.overview}</p>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-2">
+            <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Key points</p>
+            {summaryData.keyPoints.map((kp, i) => (
+              <div key={i} className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-focus-primary mt-1.5 shrink-0" />
+                <span>{kp}</span>
+              </div>
+            ))}
+          </div>
+
+          {summaryData.glossary?.length > 0 && (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-2.5">
+              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Glossary</p>
+              {summaryData.glossary.map((g, i) => (
+                <div key={i}>
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100">{g.term}: </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">{g.definition}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="bg-focus-primary/5 dark:bg-focus-primary/10 border border-focus-primary/20 rounded-2xl p-4 flex items-center gap-2.5">
+            <BookOpenCheck className="w-4.5 h-4.5 text-focus-primary shrink-0" />
+            <p className="text-xs text-slate-600 dark:text-slate-300">Key points added to <span className="font-bold text-focus-primary">Review</span> for spaced repetition.</p>
+          </div>
+
+          {/* Concept Linker */}
+          <div className="border border-slate-200/80 dark:border-slate-800 rounded-2xl overflow-hidden">
+            <button
+              onClick={() => setLinkerOpen((o) => !o)}
+              className="w-full flex items-center justify-between p-4 bg-white dark:bg-slate-900"
+            >
+              <span className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
+                <Link2 className="w-4 h-4 text-focus-primary" /> Link to a Visualizer diagram
+              </span>
+              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${linkerOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {linkerOpen && (
+              <div className="p-4 pt-0 space-y-2 bg-white dark:bg-slate-900">
+                <p className="text-[11px] text-slate-400 mb-1">Pick a diagram you've built — Concept Linker writes questions that connect it to this summary (dual coding).</p>
+                {visualizationHistory.length === 0 && (
+                  <p className="text-xs text-slate-400 italic">No saved diagrams yet — build one in Visualize first.</p>
+                )}
+                {visualizationHistory.map((v) => (
+                  <button
+                    key={v.id}
+                    disabled={linkerBusy}
+                    onClick={() => runConceptLinker(v)}
+                    className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-focus-primary border border-transparent disabled:opacity-60"
+                  >
+                    {linkerBusy ? 'Linking…' : v.title}
+                  </button>
+                ))}
+              </div>
+            )}
+            {linkedCount !== null && (
+              <p className="text-[11px] text-focus-sage-dark dark:text-focus-sage px-4 pb-3 font-semibold">
+                {linkedCount} linking question{linkedCount === 1 ? '' : 's'} added to Review.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
