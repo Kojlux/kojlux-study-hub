@@ -1,6 +1,16 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-focus-primary: #4F46E5;
+  --color-focus-primary-dark: #4338CA;
+  --color-focus-sage: #6EE7B7;
+  --color-focus-sage-dark: #059669;
+  --color-focus-bg: #F8FAFC;
+}
+
 :root {
   scrollbar-width: none;
   -ms-overflow-style: none;
