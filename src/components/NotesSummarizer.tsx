@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Upload, Camera, Sparkles, RefreshCw, BookOpenCheck, Link2, ChevronDown } from 'lucide-react';
+import { Upload, Camera, Sparkles, RefreshCw, BookOpenCheck, Link2, ChevronDown, ArrowRight } from 'lucide-react';
 import { SummaryData, HistoryItem, RecallCard, VisualizationResponse } from '../types';
 import { generateContentWithFallback, GEMINI_KEYS, parseJsonResponse } from '../lib/gemini';
 import { makeRecallCard } from '../lib/spacedRepetition';
@@ -10,9 +10,10 @@ interface Props {
   onSaveHistory: (item: HistoryItem) => void;
   onAddRecallCards: (cards: RecallCard[]) => void;
   onError: (msg: string) => void;
+  onGoToVisualizer: () => void;
 }
 
-export default function NotesSummarizer({ gradeLevel, history, onSaveHistory, onAddRecallCards, onError }: Props) {
+export default function NotesSummarizer({ gradeLevel, history, onSaveHistory, onAddRecallCards, onError, onGoToVisualizer }: Props) {
   const [image, setImage] = useState<string | null>(null);
   const [textInput, setTextInput] = useState('');
   const [detailLevel, setDetailLevel] = useState<'concise' | 'standard' | 'thorough'>('standard');
@@ -70,18 +71,24 @@ Respond ONLY with strict JSON, no markdown fences: {"title": string, "overview":
       });
 
       // Recall Coach: each key point becomes a short-answer style recall
-      // prompt ("What do you know about X?") so summaries get reviewed
-      // through retrieval practice instead of just being read once and
-      // forgotten.
-      const cards = parsed.keyPoints.map((kp) =>
-        makeRecallCard({
+      // prompt. Key points are often phrased "Term: definition" (e.g. "Nouns:
+      // these are naming words") — if we test with the whole string, the
+      // prompt ends up quoting the definition back at the student instead of
+      // asking about the term. When a key point has that shape, test the
+      // term and keep the full sentence as the target answer; otherwise fall
+      // back to testing the whole key point as before.
+      const cards = parsed.keyPoints.map((kp) => {
+        const colonIdx = kp.indexOf(':');
+        const looksLikeTermDefinition = colonIdx > 0 && colonIdx < 40;
+        const term = looksLikeTermDefinition ? kp.slice(0, colonIdx).trim() : null;
+        return makeRecallCard({
           sourceType: 'summary',
           sourceTitle: parsed.title,
-          prompt: `In your own words, explain: ${kp}`,
+          prompt: term ? `In your own words, explain: ${term}` : `In your own words, explain: ${kp}`,
           answer: kp,
           image: image ?? undefined,
-        })
-      );
+        });
+      });
       onAddRecallCards(cards);
     } catch (err) {
       console.error(err);
@@ -278,7 +285,13 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
                   using this summary. The questions get added to Review, just like everything else.
                 </p>
                 {visualizationHistory.length === 0 && (
-                  <p className="text-xs text-slate-400 italic">No saved diagrams yet — build one in Visualize first.</p>
+                  <button
+                    onClick={onGoToVisualizer}
+                    className="w-full text-left px-3.5 py-3 rounded-xl bg-focus-primary/5 border border-focus-primary/20 text-xs font-bold text-focus-primary flex items-center justify-between"
+                  >
+                    Click here to go to the Visualizer screen
+                    <ArrowRight className="w-3.5 h-3.5 shrink-0" />
+                  </button>
                 )}
                 {visualizationHistory.map((v) => {
                   const vizData = v.data as VisualizationResponse;

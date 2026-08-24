@@ -1,8 +1,7 @@
-import React, { useMemo, useState } from 'react';
-import { Brain, RefreshCw, Sparkles, PartyPopper, RotateCw } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Brain, PartyPopper, RotateCw, SkipForward } from 'lucide-react';
 import { RecallCard } from '../types';
 import { scheduleNextReview, isDue, RecallRating } from '../lib/spacedRepetition';
-import { generateContentWithFallback, GEMINI_KEYS, parseJsonResponse } from '../lib/gemini';
 
 interface Props {
   cards: RecallCard[];
@@ -11,47 +10,50 @@ interface Props {
 
 export default function ReviewQueue({ cards, onUpdateCards }: Props) {
   const dueCards = useMemo(() => cards.filter(isDue), [cards]);
-  const [index, setIndex] = useState(0);
+  const dueIds = useMemo(() => dueCards.map((c) => c.id), [dueCards]);
+
+  // Session order is tracked separately from `cards` so that "Skip" can push
+  // a card to the back of today's queue without touching its schedule —
+  // unlike rating, skipping never calls onUpdateCards. Kept in sync with
+  // whichever cards are currently due: newly-due cards are appended, cards
+  // that are no longer due (because they were just rated) drop out.
+  const [sessionQueue, setSessionQueue] = useState<string[]>(() => dueIds);
+  useEffect(() => {
+    setSessionQueue((prev) => {
+      const stillDue = prev.filter((id) => dueIds.includes(id));
+      const newlyDue = dueIds.filter((id) => !prev.includes(id));
+      return [...stillDue, ...newlyDue];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dueIds.join(',')]);
+
   const [explanation, setExplanation] = useState('');
   const [revealed, setRevealed] = useState(false);
-  const [aiFeedback, setAiFeedback] = useState<string | null>(null);
-  const [gradingBusy, setGradingBusy] = useState(false);
 
-  const current = dueCards[index];
+  const current = cards.find((c) => c.id === sessionQueue[0]);
 
-  const reveal = async () => {
-    setRevealed(true);
-    if (!explanation.trim() || !current) return;
-    // Self-explanation effect: before showing the "correct" answer we already
-    // reveal, ask Gemini to give one line of feedback comparing the
-    // student's own explanation to the target — this is the metacognitive
-    // step that plain flashcards skip.
-    setGradingBusy(true);
-    try {
-      const prompt = `A student is reviewing this recall prompt: "${current.prompt}". The target answer is: "${current.answer}". The student wrote, before seeing the answer: "${explanation}". In one short encouraging sentence, tell them what their explanation got right and what (if anything) it missed. Respond ONLY with strict JSON: {"feedback": string}`;
-      const response = await generateContentWithFallback(GEMINI_KEYS.recallCoach, {
-        model: 'gemini-3.6-flash',
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      });
-      const parsed = parseJsonResponse<{ feedback: string }>(response.text);
-      setAiFeedback(parsed.feedback);
-    } catch (err) {
-      console.error(err);
-      // Non-fatal — the card, correct answer, and rating buttons already work
-      // without AI feedback, so we fail silently here.
-    } finally {
-      setGradingBusy(false);
-    }
-  };
+  // Flipping just reveals the target answer — no AI grading step. The
+  // self-written explanation stays on screen next to the target answer so
+  // the student can compare the two themselves.
+  const reveal = () => setRevealed(true);
 
   const rate = (rating: RecallRating) => {
     if (!current) return;
     const updated = scheduleNextReview(current, rating);
     onUpdateCards(cards.map((c) => (c.id === current.id ? updated : c)));
+    setSessionQueue((q) => q.slice(1));
     setExplanation('');
     setRevealed(false);
-    setAiFeedback(null);
-    setIndex((i) => i); // dueCards recomputes; stay at same position since the reviewed card drops out
+  };
+
+  // Skip: move this card to the back of today's session queue, unrated and
+  // unscheduled — it'll come back around later in the same review session
+  // instead of vanishing or being marked as reviewed.
+  const skip = () => {
+    if (!current) return;
+    setSessionQueue((q) => (q.length > 1 ? [...q.slice(1), q[0]] : q));
+    setExplanation('');
+    setRevealed(false);
   };
 
   if (dueCards.length === 0) {
@@ -68,12 +70,13 @@ export default function ReviewQueue({ cards, onUpdateCards }: Props) {
     );
   }
 
-  const displayIndex = dueCards.findIndex((c) => c.id === current?.id);
+  if (!current) return null; // sessionQueue syncing after a rate/skip; renders next tick
+
   // If the material this card came from included a photo (a quiz/summary built
   // from an uploaded image), it rides along on the card so the prompt doesn't
   // feel like a question out of nowhere. Optional — older cards without one
   // just show text, same as before.
-  const cardImage = current?.image;
+  const cardImage = current.image;
 
   return (
     <div className="space-y-5">
@@ -81,7 +84,7 @@ export default function ReviewQueue({ cards, onUpdateCards }: Props) {
         <span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
           <Brain className="w-3.5 h-3.5 text-focus-primary" /> {dueCards.length} due
         </span>
-        <span className="text-[11px] text-slate-400">{current?.sourceTitle}</span>
+        <span className="text-[11px] text-slate-400">{current.sourceTitle}</span>
       </div>
 
       {/* Flip flashcard: front = prompt (+ source image, + your own explanation),
@@ -115,12 +118,22 @@ export default function ReviewQueue({ cards, onUpdateCards }: Props) {
                 rows={4}
                 className="w-full flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary resize-none"
               />
-              <button
-                onClick={reveal}
-                className="mt-3 w-full py-3 bg-focus-primary text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2"
-              >
-                <RotateCw className="w-4 h-4" /> Flip Card
-              </button>
+              <div className="mt-3 flex gap-2.5">
+                <button
+                  onClick={skip}
+                  disabled={sessionQueue.length < 2}
+                  className="py-3 px-4 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 disabled:opacity-40"
+                  title="Come back to this card later — it won't be marked as reviewed"
+                >
+                  <SkipForward className="w-4 h-4" /> Skip
+                </button>
+                <button
+                  onClick={reveal}
+                  className="flex-1 py-3 bg-focus-primary text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                >
+                  <RotateCw className="w-4 h-4" /> Flip Card
+                </button>
+              </div>
             </div>
           </div>
 
@@ -144,15 +157,6 @@ export default function ReviewQueue({ cards, onUpdateCards }: Props) {
                 <p className="text-xs text-slate-600 dark:text-slate-300">{explanation}</p>
               </div>
             )}
-            {gradingBusy && (
-              <p className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-3"><RefreshCw className="w-3 h-3 animate-spin" /> Comparing your explanation…</p>
-            )}
-            {aiFeedback && (
-              <div className="bg-focus-primary/5 border border-focus-primary/20 rounded-xl p-3 flex items-start gap-2 mt-3">
-                <Sparkles className="w-3.5 h-3.5 text-focus-primary shrink-0 mt-0.5" />
-                <p className="text-xs text-slate-600 dark:text-slate-300">{aiFeedback}</p>
-              </div>
-            )}
             <div className="mt-auto pt-4">
               <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-2">How well did you recall it?</p>
               <div className="grid grid-cols-4 gap-2">
@@ -167,8 +171,8 @@ export default function ReviewQueue({ cards, onUpdateCards }: Props) {
       </div>
 
       <div className="flex justify-center gap-1.5">
-        {dueCards.map((_, i) => (
-          <span key={i} className={`h-1.5 rounded-full transition-all ${i === displayIndex ? 'w-6 bg-focus-primary' : 'w-1.5 bg-slate-200 dark:bg-slate-700'}`} />
+        {sessionQueue.map((id, i) => (
+          <span key={id} className={`h-1.5 rounded-full transition-all ${i === 0 ? 'w-6 bg-focus-primary' : 'w-1.5 bg-slate-200 dark:bg-slate-700'}`} />
         ))}
       </div>
     </div>

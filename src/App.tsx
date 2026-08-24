@@ -54,7 +54,10 @@ export default function App() {
   }, []);
 
   // ---- Appearance ----
-  const [darkMode, setDarkMode] = useState<boolean>(() => localStorage.getItem('kojlux_dark_mode') === 'true');
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    const stored = localStorage.getItem('kojlux_dark_mode');
+    return stored === null ? true : stored === 'true'; // dark mode is the default until the user chooses otherwise
+  });
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
     localStorage.setItem('kojlux_dark_mode', String(darkMode));
@@ -155,6 +158,7 @@ export default function App() {
               onSaveHistory={addHistory}
               onAddRecallCards={addRecallCards}
               onError={setErrorMsg}
+              onGoToVisualizer={() => setActiveTab('visualizer')}
             />
           )}
 
@@ -228,6 +232,7 @@ function QuizBuilderOrSummarizer(props: {
   onSaveHistory: (item: HistoryItem) => void;
   onAddRecallCards: (cards: RecallCard[]) => void;
   onError: (msg: string) => void;
+  onGoToVisualizer: () => void;
 }) {
   const [subTab, setSubTab] = useState<'quiz' | 'summarizer'>('quiz');
   return (
@@ -248,7 +253,14 @@ function QuizBuilderOrSummarizer(props: {
       {subTab === 'quiz' ? (
         <QuizBuilder gradeLevel={props.gradeLevel} onSaveHistory={props.onSaveHistory} onAddRecallCards={props.onAddRecallCards} onError={props.onError} />
       ) : (
-        <NotesSummarizer gradeLevel={props.gradeLevel} history={props.history} onSaveHistory={props.onSaveHistory} onAddRecallCards={props.onAddRecallCards} onError={props.onError} />
+        <NotesSummarizer
+          gradeLevel={props.gradeLevel}
+          history={props.history}
+          onSaveHistory={props.onSaveHistory}
+          onAddRecallCards={props.onAddRecallCards}
+          onError={props.onError}
+          onGoToVisualizer={props.onGoToVisualizer}
+        />
       )}
     </div>
   );
