@@ -53,20 +53,20 @@ export default function StudyHome({ username, streak, cards, history, onNavigate
 
       <div className="space-y-2.5">
         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide px-1">Study tools</p>
-        <div className="grid grid-cols-3 gap-2.5 items-end">
-          <ToolTriangle
+        <div className="grid grid-cols-3 gap-2.5">
+          <ToolHex
             icon={FileText}
             label="Quiz Builder"
             colorClasses="bg-focus-primary/10 text-focus-primary"
             onClick={() => onNavigate('quiz')}
           />
-          <ToolTriangle
+          <ToolHex
             icon={Activity}
             label="Visualizer"
             colorClasses="bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400"
             onClick={() => onNavigate('visualizer')}
           />
-          <ToolTriangle
+          <ToolHex
             icon={Brain}
             label="Summarizer"
             colorClasses="bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400"
@@ -102,15 +102,15 @@ export default function StudyHome({ username, streak, cards, history, onNavigate
   );
 }
 
-function ToolTriangle({ icon: Icon, label, colorClasses, onClick }: { icon: any; label: string; colorClasses: string; onClick: () => void }) {
+function ToolHex({ icon: Icon, label, colorClasses, onClick }: { icon: any; label: string; colorClasses: string; onClick: () => void }) {
   return (
     <button onClick={onClick} className="group w-full">
       <div
-        className={`w-full aspect-square flex flex-col items-center justify-end gap-1.5 pb-4 transition-transform duration-150 ease-out group-hover:-translate-y-1 group-active:translate-y-0 group-active:scale-[0.96] ${colorClasses}`}
-        style={{ clipPath: 'polygon(50% 4%, 96% 100%, 4% 100%)' }}
+        className={`w-full aspect-square flex flex-col items-center justify-center gap-1.5 px-2 transition-transform duration-150 ease-out group-hover:-translate-y-1 group-active:translate-y-0 group-active:scale-[0.96] ${colorClasses}`}
+        style={{ clipPath: 'polygon(50% 2%, 98% 26%, 98% 74%, 50% 98%, 2% 74%, 2% 26%)' }}
       >
         <Icon className="w-5 h-5" />
-        <span className="text-[10px] font-bold leading-tight text-center px-1.5">{label}</span>
+        <span className="text-[10px] font-bold leading-tight text-center">{label}</span>
       </div>
     </button>
   );
