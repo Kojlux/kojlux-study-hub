@@ -55,6 +55,9 @@ export interface RecallCard {
   easeFactor: number;
   reps: number;
   lastResult?: 'again' | 'hard' | 'good' | 'easy';
+  // Optional photo the source quiz/summary was built from (data URL). Lets
+  // the review flashcard show the original page instead of a bare question.
+  image?: string;
 }
 
 // One entry in "My Study Space" history — a completed quiz, summary, or

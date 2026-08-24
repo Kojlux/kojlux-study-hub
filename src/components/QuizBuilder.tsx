@@ -28,6 +28,7 @@ export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCard
   const [userAnswers, setUserAnswers] = useState<Record<number, string>>({});
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [currentQ, setCurrentQ] = useState(0);
 
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
@@ -42,6 +43,7 @@ export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCard
     setQuizData(null);
     setUserAnswers({});
     setEvaluation(null);
+    setCurrentQ(0);
   };
 
   const generateQuiz = async () => {
@@ -150,6 +152,7 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
           sourceTitle: quizData.title,
           prompt: q.question,
           answer: q.correctAnswer,
+          image: image ?? undefined,
         })
       );
       onAddRecallCards(cards);
@@ -233,9 +236,14 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
     );
   }
 
-  // ---- Taking the quiz ----
+  // ---- Taking the quiz, one question at a time ----
   if (quizData) {
+    const total = quizData.questions.length;
+    const q = quizData.questions[currentQ];
     const allAnswered = quizData.questions.every((_, i) => (userAnswers[i] || '').trim().length > 0);
+    const isLast = currentQ === total - 1;
+    const currentAnswered = (userAnswers[currentQ] || '').trim().length > 0;
+
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -244,44 +252,93 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
             <Trash className="w-3.5 h-3.5" /> Discard
           </button>
         </div>
-        {quizData.questions.map((q, i) => (
-          <div key={i} className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4">
-            <p className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3">{i + 1}. {q.question}</p>
-            {q.type === 'multiple-choice' && q.options ? (
-              <div className="space-y-2">
-                {q.options.map((opt, oi) => (
-                  <button
-                    key={oi}
-                    onClick={() => setUserAnswers((p) => ({ ...p, [i]: opt }))}
-                    className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-semibold border transition ${
-                      userAnswers[i] === opt
-                        ? 'bg-focus-primary/10 border-focus-primary text-focus-primary'
-                        : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
-                    }`}
-                  >
-                    {opt}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <textarea
-                value={userAnswers[i] || ''}
-                onChange={(e) => setUserAnswers((p) => ({ ...p, [i]: e.target.value }))}
-                placeholder="Type your answer — try to explain it in your own words."
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary resize-none"
-                rows={2}
-              />
-            )}
-          </div>
-        ))}
-        <button
-          onClick={submitQuiz}
-          disabled={!allAnswered || isEvaluating}
-          className="w-full py-3.5 bg-focus-primary text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2"
-        >
-          {isEvaluating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ChevronRight className="w-4 h-4" />}
-          {isEvaluating ? 'Grading…' : 'Submit Quiz'}
-        </button>
+
+        {/* Progress */}
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">
+            Question {currentQ + 1} of {total}
+          </span>
+          <button
+            onClick={exportPdf}
+            className="text-[11px] font-bold text-slate-400 hover:text-focus-primary flex items-center gap-1"
+          >
+            <Printer className="w-3.5 h-3.5" /> Print blank copy
+          </button>
+        </div>
+        <div className="flex gap-1.5">
+          {quizData.questions.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setCurrentQ(i)}
+              className={`h-1.5 flex-1 rounded-full transition-all ${
+                i === currentQ
+                  ? 'bg-focus-primary'
+                  : (userAnswers[i] || '').trim().length > 0
+                  ? 'bg-focus-sage'
+                  : 'bg-slate-200 dark:bg-slate-700'
+              }`}
+            />
+          ))}
+        </div>
+
+        {/* Current question only */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 min-h-[220px] flex flex-col">
+          <p className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3">{currentQ + 1}. {q.question}</p>
+          {q.type === 'multiple-choice' && q.options ? (
+            <div className="space-y-2">
+              {q.options.map((opt, oi) => (
+                <button
+                  key={oi}
+                  onClick={() => setUserAnswers((p) => ({ ...p, [currentQ]: opt }))}
+                  className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-semibold border transition ${
+                    userAnswers[currentQ] === opt
+                      ? 'bg-focus-primary/10 border-focus-primary text-focus-primary'
+                      : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <textarea
+              value={userAnswers[currentQ] || ''}
+              onChange={(e) => setUserAnswers((p) => ({ ...p, [currentQ]: e.target.value }))}
+              placeholder="Type your answer — try to explain it in your own words."
+              className="w-full flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary resize-none"
+              rows={4}
+            />
+          )}
+        </div>
+
+        {/* Nav controls — grading only happens on final Submit, never per-question */}
+        <div className="flex gap-2.5">
+          <button
+            onClick={() => setCurrentQ((i) => Math.max(0, i - 1))}
+            disabled={currentQ === 0}
+            className="py-3 px-5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold disabled:opacity-40"
+          >
+            Back
+          </button>
+          {isLast ? (
+            <button
+              onClick={submitQuiz}
+              disabled={!allAnswered || isEvaluating}
+              className="flex-1 py-3 bg-focus-primary text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isEvaluating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ChevronRight className="w-4 h-4" />}
+              {isEvaluating ? 'Grading…' : allAnswered ? 'Submit Quiz' : 'Answer all questions to submit'}
+            </button>
+          ) : (
+            <button
+              onClick={() => setCurrentQ((i) => Math.min(total - 1, i + 1))}
+              disabled={!currentAnswered}
+              className="flex-1 py-3 bg-focus-primary text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              Next <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
     );
   }

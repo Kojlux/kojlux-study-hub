@@ -49,6 +49,7 @@ export function makeRecallCard(params: {
   sourceTitle: string;
   prompt: string;
   answer: string;
+  image?: string;
 }): RecallCard {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -61,6 +62,7 @@ export function makeRecallCard(params: {
     intervalDays: 0,
     easeFactor: 2.5,
     reps: 0,
+    ...(params.image ? { image: params.image } : {}),
   };
 }
 
