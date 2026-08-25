@@ -1,7 +1,14 @@
 import React, { useRef, useState } from 'react';
-import { Upload, Camera, Sparkles, RefreshCw, BookOpenCheck, Link2, ChevronDown, ArrowRight } from 'lucide-react';
-import { SummaryData, HistoryItem, RecallCard, VisualizationResponse } from '../types';
-import { generateContentWithFallback, GEMINI_KEYS, parseJsonResponse } from '../lib/gemini';
+import { Upload, Camera, Sparkles, RefreshCw, BookOpenCheck, Link2, ChevronDown, ArrowRight, Printer, FileText } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import { SummaryData, HistoryItem, RecallCard, VisualizationResponse, StudyFile } from '../types';
+import {
+  generateContentWithFallback,
+  GEMINI_KEYS,
+  parseJsonResponse,
+  classifyStudyFile,
+  STUDY_FILE_ACCEPT,
+} from '../lib/gemini';
 import { makeRecallCard } from '../lib/spacedRepetition';
 
 interface Props {
@@ -14,7 +21,7 @@ interface Props {
 }
 
 export default function NotesSummarizer({ gradeLevel, history, onSaveHistory, onAddRecallCards, onError, onGoToVisualizer }: Props) {
-  const [image, setImage] = useState<string | null>(null);
+  const [file, setFile] = useState<StudyFile | null>(null);
   const [textInput, setTextInput] = useState('');
   const [detailLevel, setDetailLevel] = useState<'concise' | 'standard' | 'thorough'>('standard');
   const [loading, setLoading] = useState(false);
@@ -28,15 +35,20 @@ export default function NotesSummarizer({ gradeLevel, history, onSaveHistory, on
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const visualizationHistory = history.filter((h) => h.type === 'visualization');
 
-  const handleFile = (file: File) => {
+  const handleFile = (selected: File) => {
+    const kind = classifyStudyFile(selected);
+    if (!kind) {
+      onError("That file type isn't supported yet — try a photo, PDF, or video.");
+      return;
+    }
     const reader = new FileReader();
-    reader.onload = () => setImage(reader.result as string);
-    reader.readAsDataURL(file);
+    reader.onload = () => setFile({ dataUrl: reader.result as string, mimeType: selected.type, kind, name: selected.name });
+    reader.readAsDataURL(selected);
   };
 
   const summarize = async () => {
-    if (!image && !textInput.trim()) {
-      onError('Add a photo of your notes or paste some text first.');
+    if (!file && !textInput.trim()) {
+      onError('Add a photo, PDF, video, or paste some text first.');
       return;
     }
     setLoading(true);
@@ -44,12 +56,13 @@ export default function NotesSummarizer({ gradeLevel, history, onSaveHistory, on
     setLinkedResults({});
     try {
       const parts: any[] = [];
-      if (image) {
-        const [meta, data] = image.split(',');
-        const mimeType = meta.match(/data:(.*);base64/)?.[1] || 'image/jpeg';
-        parts.push({ inlineData: { mimeType, data } });
+      if (file) {
+        // gemini-3.6-flash reads images, PDFs, and video all the same way —
+        // no separate analysis pass, no second AI job.
+        const [, data] = file.dataUrl.split(',');
+        parts.push({ inlineData: { mimeType: file.mimeType, data } });
       }
-      const instructions = `You are helping a ${gradeLevel} student study. Summarize the study material (image and/or text below) at a "${detailLevel}" level of detail. ${
+      const instructions = `You are helping a ${gradeLevel} student study. Summarize the study material (file and/or text below) at a "${detailLevel}" level of detail. ${
         textInput.trim() ? `Text material: """${textInput.trim()}"""` : ''
       }
 Respond ONLY with strict JSON, no markdown fences: {"title": string, "overview": string, "keyPoints": [string, ...], "glossary": [{"term": string, "definition": string}, ...]}`;
@@ -86,13 +99,13 @@ Respond ONLY with strict JSON, no markdown fences: {"title": string, "overview":
           sourceTitle: parsed.title,
           prompt: term ? `In your own words, explain: ${term}` : `In your own words, explain: ${kp}`,
           answer: kp,
-          image: image ?? undefined,
+          image: file?.kind === 'image' ? file.dataUrl : undefined,
         });
       });
       onAddRecallCards(cards);
     } catch (err) {
       console.error(err);
-      onError('Could not summarize that material. Try a clearer photo or more text.');
+      onError('Could not summarize that material. Try a clearer file or more text.');
     } finally {
       setLoading(false);
     }
@@ -128,7 +141,7 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
           sourceTitle: `${summaryData.title} × ${vizData.title}`,
           prompt: q.prompt,
           answer: q.answer,
-          image: image ?? undefined,
+          image: file?.kind === 'image' ? file.dataUrl : undefined,
         })
       );
       onAddRecallCards(cards);
@@ -141,17 +154,92 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
     }
   };
 
+  // Builds an actual downloadable PDF of the summary — window.print() on this
+  // screen used to print blank pages because the app shell is a fixed,
+  // scrollable mobile layout that doesn't reflow into a print stylesheet.
+  // jsPDF draws the content directly onto PDF pages instead, so it always
+  // comes out right regardless of what's on screen or scrolled off it.
+  const exportPdf = () => {
+    if (!summaryData) return;
+    const pdf = new jsPDF();
+    let y = 20;
+
+    const ensureSpace = (needed: number) => {
+      if (y + needed > 280) {
+        pdf.addPage();
+        y = 20;
+      }
+    };
+
+    pdf.setFontSize(16);
+    const titleLines = pdf.splitTextToSize(summaryData.title, 180);
+    pdf.text(titleLines, 15, y);
+    y += titleLines.length * 8 + 4;
+
+    pdf.setFontSize(11);
+    const overviewLines = pdf.splitTextToSize(summaryData.overview, 180);
+    ensureSpace(overviewLines.length * 6);
+    pdf.text(overviewLines, 15, y);
+    y += overviewLines.length * 6 + 8;
+
+    ensureSpace(10);
+    pdf.setFontSize(13);
+    pdf.text('Key Points', 15, y);
+    y += 8;
+    pdf.setFontSize(11);
+    summaryData.keyPoints.forEach((kp) => {
+      const lines = pdf.splitTextToSize(`•  ${kp}`, 175);
+      ensureSpace(lines.length * 6);
+      pdf.text(lines, 15, y);
+      y += lines.length * 6 + 2;
+    });
+
+    if (summaryData.glossary?.length > 0) {
+      y += 4;
+      ensureSpace(10);
+      pdf.setFontSize(13);
+      pdf.text('Glossary', 15, y);
+      y += 8;
+      pdf.setFontSize(11);
+      summaryData.glossary.forEach((g) => {
+        const lines = pdf.splitTextToSize(`${g.term}: ${g.definition}`, 175);
+        ensureSpace(lines.length * 6);
+        pdf.text(lines, 15, y);
+        y += lines.length * 6 + 2;
+      });
+    }
+
+    pdf.save(`${summaryData.title.replace(/\s+/g, '_')}.pdf`);
+  };
+
   return (
     <div className="space-y-5">
       {!summaryData && (
         <>
           <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-6 text-center bg-white dark:bg-slate-900 space-y-3">
-            {image ? (
-              <img src={image} className="max-h-40 mx-auto rounded-lg object-contain" />
+            {file ? (
+              <div className="space-y-2">
+                {file.kind === 'image' && <img src={file.dataUrl} className="max-h-40 mx-auto rounded-lg object-contain" />}
+                {file.kind === 'pdf' && (
+                  <div className="flex items-center justify-center gap-2 text-slate-500 dark:text-slate-400">
+                    <FileText className="w-6 h-6 shrink-0" />
+                    <span className="text-xs font-semibold truncate max-w-[220px]">{file.name}</span>
+                  </div>
+                )}
+                {file.kind === 'video' && (
+                  <div className="space-y-2">
+                    <video src={file.dataUrl} controls className="max-h-40 mx-auto rounded-lg" />
+                    <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate">{file.name}</p>
+                  </div>
+                )}
+                <button type="button" onClick={() => setFile(null)} className="text-[11px] font-bold text-slate-400 hover:text-rose-500">
+                  Remove file
+                </button>
+              </div>
             ) : (
               <div className="space-y-2 text-slate-400">
                 <Upload className="w-6 h-6 mx-auto" />
-                <p className="text-xs font-semibold">Add a photo of your notes or textbook page</p>
+                <p className="text-xs font-semibold">Add a photo, PDF, or video of your notes or textbook page</p>
               </div>
             )}
             <div className="flex gap-2.5">
@@ -160,7 +248,7 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
                 onClick={() => uploadInputRef.current?.click()}
                 className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-focus-primary transition"
               >
-                <Upload className="w-3.5 h-3.5" /> Upload Photo
+                <Upload className="w-3.5 h-3.5" /> Upload File
               </button>
               <button
                 type="button"
@@ -170,15 +258,15 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
                 <Camera className="w-3.5 h-3.5" /> Take Photo
               </button>
             </div>
-            {/* Upload from gallery/files — no capture attribute so mobile browsers offer the photo library, not just the camera */}
+            {/* Upload from files — image, PDF, or video; no capture attribute so mobile browsers offer the full picker, not just the camera */}
             <input
               ref={uploadInputRef}
               type="file"
-              accept="image/*"
+              accept={STUDY_FILE_ACCEPT}
               className="hidden"
               onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
             />
-            {/* Take a new photo — capture="environment" opens the camera directly */}
+            {/* Take a new photo — capture="environment" opens the camera directly. Camera capture is still photo-only. */}
             <input
               ref={cameraInputRef}
               type="file"
@@ -227,11 +315,19 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
 
       {summaryData && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <h2 className="text-base font-black text-slate-900 dark:text-white">{summaryData.title}</h2>
-            <button onClick={() => { setSummaryData(null); setImage(null); setTextInput(''); }} className="text-xs text-focus-primary font-bold flex items-center gap-1">
-              <RefreshCw className="w-3.5 h-3.5" /> New
-            </button>
+            <div className="flex items-center gap-3 shrink-0 print:hidden">
+              <button
+                onClick={exportPdf}
+                className="text-xs text-slate-400 hover:text-focus-primary font-bold flex items-center gap-1"
+              >
+                <Printer className="w-3.5 h-3.5" /> PDF
+              </button>
+              <button onClick={() => { setSummaryData(null); setFile(null); setTextInput(''); }} className="text-xs text-focus-primary font-bold flex items-center gap-1">
+                <RefreshCw className="w-3.5 h-3.5" /> New
+              </button>
+            </div>
           </div>
 
           <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4">
@@ -260,13 +356,13 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
             </div>
           )}
 
-          <div className="bg-focus-primary/5 dark:bg-focus-primary/10 border border-focus-primary/20 rounded-2xl p-4 flex items-center gap-2.5">
+          <div className="bg-focus-primary/5 dark:bg-focus-primary/10 border border-focus-primary/20 rounded-2xl p-4 flex items-center gap-2.5 print:hidden">
             <BookOpenCheck className="w-4.5 h-4.5 text-focus-primary shrink-0" />
             <p className="text-xs text-slate-600 dark:text-slate-300">Key points added to <span className="font-bold text-focus-primary">Review</span> for spaced repetition.</p>
           </div>
 
           {/* Concept Linker */}
-          <div className="border border-slate-200/80 dark:border-slate-800 rounded-2xl overflow-hidden">
+          <div className="border border-slate-200/80 dark:border-slate-800 rounded-2xl overflow-hidden print:hidden">
             <button
               onClick={() => setLinkerOpen((o) => !o)}
               className="w-full flex items-center justify-between p-4 bg-white dark:bg-slate-900"

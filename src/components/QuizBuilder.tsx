@@ -1,11 +1,17 @@
 import React, { useRef, useState } from 'react';
 import {
   Upload, Camera, Sparkles, CheckCircle, XCircle, RefreshCw, Printer,
-  ChevronRight, Trash, Layers,
+  ChevronRight, Trash, Layers, FileText,
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { QuizData, QuizQuestion, EvaluationResult, HistoryItem } from '../types';
-import { generateContentWithFallback, GEMINI_KEYS, parseJsonResponse } from '../lib/gemini';
+import { QuizData, QuizQuestion, EvaluationResult, HistoryItem, StudyFile } from '../types';
+import {
+  generateContentWithFallback,
+  GEMINI_KEYS,
+  parseJsonResponse,
+  classifyStudyFile,
+  STUDY_FILE_ACCEPT,
+} from '../lib/gemini';
 import { makeRecallCard } from '../lib/spacedRepetition';
 import { RecallCard } from '../types';
 
@@ -17,14 +23,26 @@ interface Props {
 }
 
 export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCards, onError }: Props) {
-  const [image, setImage] = useState<string | null>(null);
+  const [file, setFile] = useState<StudyFile | null>(null);
   const [textInput, setTextInput] = useState('');
-  const [questionCount, setQuestionCount] = useState(5);
+  // number | '' rather than always-a-number so the field can genuinely go
+  // empty while typing (e.g. backspacing to retype) instead of snapping
+  // back to its old value — that snapping was what made typing feel broken
+  // and pushed people onto the up/down spinner arrows instead.
+  const [questionCount, setQuestionCount] = useState<number | ''>(5);
   const [quizType, setQuizType] = useState<'multiple-choice' | 'short-answer'>('multiple-choice');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
 
   const [loading, setLoading] = useState(false);
   const [quizData, setQuizData] = useState<QuizData | null>(null);
+  // Snapshot of the source file's image (when it was an image) taken at
+  // generation time. The upload form is hidden once a quiz exists, so `file`
+  // itself can't change out from under a quiz in normal use — but every
+  // question's recall card is built from this snapshot rather than the live
+  // `file` state, so each quiz's cards always keep the photo they were
+  // actually generated from, not whatever happens to be in the uploader
+  // later. PDFs/videos aren't image data, so they never populate this.
+  const [quizSourceImage, setQuizSourceImage] = useState<string | null>(null);
   const [userAnswers, setUserAnswers] = useState<Record<number, string>>({});
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
@@ -33,34 +51,46 @@ export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCard
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleFile = (file: File) => {
+  const handleFile = (selected: File) => {
+    const kind = classifyStudyFile(selected);
+    if (!kind) {
+      onError("That file type isn't supported yet — try a photo, PDF, or video.");
+      return;
+    }
     const reader = new FileReader();
-    reader.onload = () => setImage(reader.result as string);
-    reader.readAsDataURL(file);
+    reader.onload = () => setFile({ dataUrl: reader.result as string, mimeType: selected.type, kind, name: selected.name });
+    reader.readAsDataURL(selected);
   };
 
   const resetQuiz = () => {
     setQuizData(null);
+    setQuizSourceImage(null);
     setUserAnswers({});
     setEvaluation(null);
     setCurrentQ(0);
   };
 
   const generateQuiz = async () => {
-    if (!image && !textInput.trim()) {
-      onError('Add a photo of your notes or paste some text first.');
+    if (!file && !textInput.trim()) {
+      onError('Add a photo, PDF, video, or paste some text first.');
+      return;
+    }
+    const count = questionCount === '' ? 0 : questionCount;
+    if (count < 1) {
+      onError("Choose at least 1 question — 0 won't generate a quiz.");
       return;
     }
     setLoading(true);
     resetQuiz();
     try {
       const parts: any[] = [];
-      if (image) {
-        const [meta, data] = image.split(',');
-        const mimeType = meta.match(/data:(.*);base64/)?.[1] || 'image/jpeg';
-        parts.push({ inlineData: { mimeType, data } });
+      if (file) {
+        // gemini-3.6-flash reads images, PDFs, and video all the same way —
+        // no separate analysis pass, no second AI job.
+        const [, data] = file.dataUrl.split(',');
+        parts.push({ inlineData: { mimeType: file.mimeType, data } });
       }
-      const instructions = `You are an expert ${gradeLevel} teacher. Create a ${difficulty} difficulty quiz with exactly ${questionCount} ${quizType === 'multiple-choice' ? 'multiple-choice' : 'short-answer'} questions based on the study material provided (image and/or text below). ${
+      const instructions = `You are an expert ${gradeLevel} teacher. Create a ${difficulty} difficulty quiz with exactly ${count} ${quizType === 'multiple-choice' ? 'multiple-choice' : 'short-answer'} questions based on the study material provided (file and/or text below). ${
         textInput.trim() ? `Text material: """${textInput.trim()}"""` : ''
       }
 Respond ONLY with strict JSON, no markdown fences, in this exact shape:
@@ -75,9 +105,10 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
       });
       const parsed = parseJsonResponse<QuizData>(response.text);
       setQuizData(parsed);
+      setQuizSourceImage(file?.kind === 'image' ? file.dataUrl : null);
     } catch (err) {
       console.error(err);
-      onError('Could not generate a quiz from that material. Try a clearer photo or more text.');
+      onError('Could not generate a quiz from that material. Try a clearer file or more text.');
     } finally {
       setLoading(false);
     }
@@ -152,7 +183,7 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
           sourceTitle: quizData.title,
           prompt: q.question,
           answer: q.correctAnswer,
-          image: image ?? undefined,
+          image: quizSourceImage ?? undefined,
         })
       );
       onAddRecallCards(cards);
@@ -191,6 +222,71 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
     pdf.save(`${quizData.title.replace(/\s+/g, '_')}.pdf`);
   };
 
+  // Same layout as exportPdf, but for after grading: includes the student's
+  // own answers, a correct/incorrect mark, the right answer when they missed
+  // it, and any feedback — so this is a printable record of how they did,
+  // not just a blank copy of the quiz.
+  const exportGradedPdf = () => {
+    if (!quizData || !evaluation) return;
+    const pdf = new jsPDF();
+    let y = 20;
+    pdf.setFontSize(16);
+    pdf.text(quizData.title, 15, y);
+    y += 8;
+    pdf.setFontSize(11);
+    pdf.text(`Score: ${evaluation.score}/${evaluation.totalQuestions}`, 15, y);
+    y += 10;
+    pdf.setFontSize(11);
+
+    const ensureSpace = (needed: number) => {
+      if (y + needed > 280) {
+        pdf.addPage();
+        y = 20;
+      }
+    };
+
+    quizData.questions.forEach((q, i) => {
+      const ev = evaluation.evaluations.find((e) => e.questionIndex === i);
+      ensureSpace(14);
+      const qLines = pdf.splitTextToSize(`${i + 1}. ${q.question}`, 180);
+      pdf.text(qLines, 15, y);
+      y += qLines.length * 6 + 2;
+
+      if (q.type === 'multiple-choice' && q.options) {
+        q.options.forEach((opt, oi) => {
+          ensureSpace(6);
+          pdf.text(`   ${String.fromCharCode(65 + oi)}. ${opt}`, 15, y);
+          y += 6;
+        });
+      }
+
+      ensureSpace(6);
+      pdf.text(`   Your answer: ${userAnswers[i] || '(blank)'}`, 15, y);
+      y += 6;
+
+      ensureSpace(6);
+      pdf.text(`   Result: ${ev?.isCorrect ? 'Correct' : 'Incorrect'}`, 15, y);
+      y += 6;
+
+      if (!ev?.isCorrect) {
+        const correctLines = pdf.splitTextToSize(`   Correct answer: ${q.correctAnswer}`, 180);
+        ensureSpace(correctLines.length * 6);
+        pdf.text(correctLines, 15, y);
+        y += correctLines.length * 6;
+      }
+
+      const feedbackText = ev?.feedback || q.explanation;
+      if (feedbackText) {
+        const fbLines = pdf.splitTextToSize(`   Feedback: ${feedbackText}`, 180);
+        ensureSpace(fbLines.length * 6);
+        pdf.text(fbLines, 15, y);
+        y += fbLines.length * 6;
+      }
+      y += 4;
+    });
+    pdf.save(`${quizData.title.replace(/\s+/g, '_')}_graded.pdf`);
+  };
+
   // ---- Results view ----
   if (quizData && evaluation) {
     return (
@@ -224,13 +320,18 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
             );
           })}
         </div>
-        <div className="flex gap-2.5">
-          <button onClick={resetQuiz} className="flex-1 py-3 bg-focus-primary text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+        <div className="space-y-2.5">
+          <button onClick={resetQuiz} className="w-full py-3 bg-focus-primary text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2">
             <RefreshCw className="w-4 h-4" /> New Quiz
           </button>
-          <button onClick={exportPdf} className="py-3 px-4 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-bold flex items-center gap-2">
-            <Printer className="w-4 h-4" /> PDF
-          </button>
+          <div className="flex gap-2.5">
+            <button onClick={exportPdf} className="flex-1 py-3 px-4 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+              <Printer className="w-4 h-4" /> PDF
+            </button>
+            <button onClick={exportGradedPdf} className="flex-1 py-3 px-4 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+              <Printer className="w-4 h-4" /> Print Graded Work
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -347,12 +448,29 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
   return (
     <div className="space-y-5">
       <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-6 text-center bg-white dark:bg-slate-900 space-y-3">
-        {image ? (
-          <img src={image} className="max-h-40 mx-auto rounded-lg object-contain" />
+        {file ? (
+          <div className="space-y-2">
+            {file.kind === 'image' && <img src={file.dataUrl} className="max-h-40 mx-auto rounded-lg object-contain" />}
+            {file.kind === 'pdf' && (
+              <div className="flex items-center justify-center gap-2 text-slate-500 dark:text-slate-400">
+                <FileText className="w-6 h-6 shrink-0" />
+                <span className="text-xs font-semibold truncate max-w-[220px]">{file.name}</span>
+              </div>
+            )}
+            {file.kind === 'video' && (
+              <div className="space-y-2">
+                <video src={file.dataUrl} controls className="max-h-40 mx-auto rounded-lg" />
+                <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate">{file.name}</p>
+              </div>
+            )}
+            <button type="button" onClick={() => setFile(null)} className="text-[11px] font-bold text-slate-400 hover:text-rose-500">
+              Remove file
+            </button>
+          </div>
         ) : (
           <div className="space-y-2 text-slate-400">
             <Upload className="w-6 h-6 mx-auto" />
-            <p className="text-xs font-semibold">Add a photo of your notes or textbook page</p>
+            <p className="text-xs font-semibold">Add a photo, PDF, or video of your notes or textbook page</p>
           </div>
         )}
         <div className="flex gap-2.5">
@@ -361,7 +479,7 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
             onClick={() => uploadInputRef.current?.click()}
             className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-focus-primary transition"
           >
-            <Upload className="w-3.5 h-3.5" /> Upload Photo
+            <Upload className="w-3.5 h-3.5" /> Upload File
           </button>
           <button
             type="button"
@@ -371,15 +489,15 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
             <Camera className="w-3.5 h-3.5" /> Take Photo
           </button>
         </div>
-        {/* Upload from gallery/files — no capture attribute so mobile browsers offer the photo library, not just the camera */}
+        {/* Upload from files — image, PDF, or video; no capture attribute so mobile browsers offer the full picker, not just the camera */}
         <input
           ref={uploadInputRef}
           type="file"
-          accept="image/*"
+          accept={STUDY_FILE_ACCEPT}
           className="hidden"
           onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
         />
-        {/* Take a new photo — capture="environment" opens the camera directly */}
+        {/* Take a new photo — capture="environment" opens the camera directly. Camera capture is still photo-only. */}
         <input
           ref={cameraInputRef}
           type="file"
@@ -400,8 +518,33 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1.5">Questions: {questionCount}</span>
-          <input type="range" min={3} max={10} value={questionCount} onChange={(e) => setQuestionCount(Number(e.target.value))} className="w-full accent-focus-primary" />
+          <div className="flex items-center justify-between mb-1.5 gap-2">
+            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase">Questions: {questionCount}</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={50}
+              value={questionCount}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw === '') { setQuestionCount(''); return; }
+                const parsed = Number(raw);
+                if (!Number.isNaN(parsed)) setQuestionCount(Math.round(parsed));
+              }}
+              onBlur={() => setQuestionCount((c) => Math.min(50, Math.max(0, c === '' ? 0 : c)))}
+              aria-label="Question count"
+              className="w-14 py-1 text-center text-xs font-bold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+          </div>
+          <input
+            type="range"
+            min={3}
+            max={10}
+            value={questionCount === '' ? 3 : Math.min(10, Math.max(3, questionCount))}
+            onChange={(e) => setQuestionCount(Number(e.target.value))}
+            className="w-full accent-focus-primary"
+          />
         </div>
         <div>
           <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1.5">Difficulty</span>

@@ -50,15 +50,30 @@ export function makeRecallCard(params: {
   prompt: string;
   answer: string;
   image?: string;
+  // When true, the card is due right away instead of after the usual
+  // 5–10 hour delay. Used for Recall Coach batches built from Recents (the
+  // student picked material they already studied), since there's no need
+  // for a first-exposure gap the way there is for a brand-new quiz/summary.
+  immediate?: boolean;
 }): RecallCard {
+  const createdAt = new Date();
+  // First review lands 5–10 hours after creation (randomized within that
+  // window) rather than immediately. This spaces a freshly-generated batch
+  // of cards out instead of dumping the whole quiz back into Review the
+  // second it's made, and lines the first repetition up with when a
+  // "reviews are ready" notification would actually be useful.
+  const dueAt = params.immediate
+    ? createdAt
+    : new Date(createdAt.getTime() + (5 + Math.random() * 5) * 60 * 60 * 1000);
+
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     sourceType: params.sourceType,
     sourceTitle: params.sourceTitle,
     prompt: params.prompt,
     answer: params.answer,
-    createdAt: new Date().toISOString(),
-    dueAt: new Date().toISOString(), // new cards are due immediately
+    createdAt: createdAt.toISOString(),
+    dueAt: dueAt.toISOString(),
     intervalDays: 0,
     easeFactor: 2.5,
     reps: 0,

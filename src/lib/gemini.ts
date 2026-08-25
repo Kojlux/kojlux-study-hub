@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { StudyFileKind } from '../types';
 
 // Tries the primary key first; on failure (rate limit, transient error, etc.)
 // automatically retries with the rotation/fallback key. Never put a literal
@@ -44,4 +45,25 @@ export function parseJsonResponse<T>(rawText: string | undefined): T {
   }
   const cleaned = rawText.replace(/```json\s*|\s*```/g, '').trim();
   return JSON.parse(cleaned) as T;
+}
+
+// ---------------------------------------------------------------------------
+// Study file ingestion (images, PDFs, video)
+// ---------------------------------------------------------------------------
+// Quiz Builder and Notes Summarizer accept more than photos now. gemini-3.6-
+// flash reads images, PDFs, and video all the same way — as an inlineData
+// part on the quiz/summarizer/visualizer call itself — so there's no
+// separate analysis pass for any file kind, and no second AI job involved in
+// getting a file's content in front of the model. Recall Coach (below) is
+// reserved for its own job: grading self-explanations, the Concept Linker,
+// and — see AiCoach.tsx — building flashcards out of a batch of Recents.
+
+// Accept attribute shared by every "add study material" file input.
+export const STUDY_FILE_ACCEPT = 'image/*,application/pdf,video/*';
+
+export function classifyStudyFile(file: File): StudyFileKind | null {
+  if (file.type.startsWith('image/')) return 'image';
+  if (file.type === 'application/pdf') return 'pdf';
+  if (file.type.startsWith('video/')) return 'video';
+  return null;
 }

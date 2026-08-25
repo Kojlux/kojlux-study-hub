@@ -20,6 +20,20 @@ export interface QuizData {
   questions: QuizQuestion[];
 }
 
+// A study-material file the user attached to a quiz/summary request, staged
+// client-side before it's sent to Gemini. `kind` determines whether the main
+// quiz/summarizer/visualizer model can read it directly (image, pdf) or
+// needs a first pass through Recall Coach first (video) — see
+// isDirectlyReadable / describeFileWithRecallCoach in lib/gemini.ts.
+export type StudyFileKind = 'image' | 'pdf' | 'video';
+
+export interface StudyFile {
+  dataUrl: string;
+  mimeType: string;
+  kind: StudyFileKind;
+  name: string;
+}
+
 export interface QuestionEvaluation {
   questionIndex: number;
   isCorrect: boolean;
