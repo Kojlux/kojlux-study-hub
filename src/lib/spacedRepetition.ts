@@ -55,16 +55,22 @@ export function makeRecallCard(params: {
   // student picked material they already studied), since there's no need
   // for a first-exposure gap the way there is for a brand-new quiz/summary.
   immediate?: boolean;
+  // Optional collection to file this card into right away (only meaningful
+  // when the card is saved — see `saved` below).
+  collectionId?: string;
 }): RecallCard {
+  // Hand-typed cards are kept by default — there's no AI output to review
+  // before deciding whether it's worth keeping. Every other source starts
+  // unsaved; the student saves it explicitly from the Review screen.
+  const saved = params.sourceType === 'manual';
   const createdAt = new Date();
-  // First review lands 5–10 hours after creation (randomized within that
-  // window) rather than immediately. This spaces a freshly-generated batch
-  // of cards out instead of dumping the whole quiz back into Review the
-  // second it's made, and lines the first repetition up with when a
-  // "reviews are ready" notification would actually be useful.
-  const dueAt = params.immediate
-    ? createdAt
-    : new Date(createdAt.getTime() + (5 + Math.random() * 5) * 60 * 60 * 1000);
+  // First review lands exactly 3 hours after creation rather than
+  // immediately. This spaces a freshly-generated batch of cards out instead
+  // of dumping the whole quiz back into Review the second it's made, and
+  // lines the first repetition up with when a "reviews are ready"
+  // notification would actually be useful.
+  const FIRST_REVIEW_DELAY_MS = 3 * 60 * 60 * 1000;
+  const dueAt = params.immediate ? createdAt : new Date(createdAt.getTime() + FIRST_REVIEW_DELAY_MS);
 
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -78,7 +84,16 @@ export function makeRecallCard(params: {
     easeFactor: 2.5,
     reps: 0,
     ...(params.image ? { image: params.image } : {}),
+    saved,
+    ...(saved && params.collectionId ? { collectionId: params.collectionId } : {}),
   };
+}
+
+// Small helper for lib/collections.ts style ID generation, reused wherever
+// a new Collection needs an id (kept here since RecallCard ids already use
+// this exact shape and there's no reason for a second convention).
+export function makeId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 export function isDue(card: RecallCard): boolean {

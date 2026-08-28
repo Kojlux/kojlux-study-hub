@@ -20,12 +20,26 @@ interface Props {
   onGoToVisualizer: () => void;
 }
 
+// Distinguishes a bare topic name ("Algebra 1", "Photosynthesis") from
+// actual pasted notes. Short, punctuation-free input is treated as "just a
+// topic" and gets a confirmation step first, since summarizing from a
+// one- or two-word topic usually means the student meant to describe what
+// to summarize, not paste the material itself.
+function looksLikeTopicPhrase(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  const words = trimmed.split(/\s+/);
+  const hasSentencePunctuation = /[.!?;:,]/.test(trimmed);
+  return words.length <= 4 && trimmed.length <= 40 && !hasSentencePunctuation;
+}
+
 export default function NotesSummarizer({ gradeLevel, history, onSaveHistory, onAddRecallCards, onError, onGoToVisualizer }: Props) {
   const [file, setFile] = useState<StudyFile | null>(null);
   const [textInput, setTextInput] = useState('');
   const [detailLevel, setDetailLevel] = useState<'concise' | 'standard' | 'thorough'>('standard');
   const [loading, setLoading] = useState(false);
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
+  const [topicConfirmOpen, setTopicConfirmOpen] = useState(false);
 
   const [linkerOpen, setLinkerOpen] = useState(false);
   const [linkerBusy, setLinkerBusy] = useState<string | null>(null); // id of diagram currently being linked
@@ -44,6 +58,21 @@ export default function NotesSummarizer({ gradeLevel, history, onSaveHistory, on
     const reader = new FileReader();
     reader.onload = () => setFile({ dataUrl: reader.result as string, mimeType: selected.type, kind, name: selected.name });
     reader.readAsDataURL(selected);
+  };
+
+  // Gate in front of summarize: catches a bare topic phrase (no file
+  // attached, so there's nothing but that short phrase to work from) and
+  // asks the student to confirm before spending a generation on it.
+  const handleSummarizeClick = () => {
+    if (!file && !textInput.trim()) {
+      onError('Add a photo, PDF, video, or paste some text first.');
+      return;
+    }
+    if (!file && looksLikeTopicPhrase(textInput)) {
+      setTopicConfirmOpen(true);
+      return;
+    }
+    summarize();
   };
 
   const summarize = async () => {
@@ -303,13 +332,49 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
           </div>
 
           <button
-            onClick={summarize}
+            onClick={handleSummarizeClick}
             disabled={loading}
             className="w-full py-3.5 bg-focus-primary hover:bg-focus-primary-dark text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-60"
           >
             {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             {loading ? 'Summarizing…' : 'Summarize'}
           </button>
+
+          {topicConfirmOpen && (
+            <div
+              className="fixed inset-0 z-[200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-5"
+              onClick={() => setTopicConfirmOpen(false)}
+            >
+              <div
+                className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800 p-6 text-center space-y-5"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="space-y-1.5">
+                  <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">Confirm topic</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Did you mean to generate a summary based on the topic "{textInput.trim()}"?
+                  </p>
+                </div>
+                <div className="flex gap-2.5">
+                  <button
+                    onClick={() => setTopicConfirmOpen(false)}
+                    className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold rounded-2xl transition"
+                  >
+                    Go back
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTopicConfirmOpen(false);
+                      summarize();
+                    }}
+                    className="flex-1 py-3 bg-focus-primary hover:bg-focus-primary-dark text-white text-xs font-bold rounded-2xl transition"
+                  >
+                    Yes, generate
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
 

@@ -43,7 +43,6 @@ function describeHistoryItem(item: HistoryItem, index: number): string {
 // pass instead of resummarizing them one at a time.
 export default function AiCoach({ items, requestedCount, onComplete, onError, onDismiss }: Props) {
   const [status, setStatus] = useState<'idle' | 'working' | 'done'>('idle');
-  const [resultCount, setResultCount] = useState(0);
   const runningFor = useRef<HistoryItem[] | null>(null);
 
   useEffect(() => {
@@ -77,12 +76,11 @@ export default function AiCoach({ items, requestedCount, onComplete, onError, on
             immediate: true,
           })
         );
-        setResultCount(cards.length);
         setStatus('done');
         onComplete(cards);
       } catch (err) {
         console.error(err);
-        onError('AI Coach could not build flashcards from those items — try again.');
+        onError('Could not build flashcards from those items — try again.');
         runningFor.current = null;
         setStatus('idle');
       }
@@ -108,9 +106,7 @@ export default function AiCoach({ items, requestedCount, onComplete, onError, on
           <CheckCircle2 className="w-4 h-4 text-focus-sage shrink-0" />
         )}
         <p className="flex-1 text-xs font-semibold leading-relaxed">
-          {status === 'working'
-            ? `AI Coach is building flashcards from ${items?.length ?? 0} item${(items?.length ?? 0) === 1 ? '' : 's'}…`
-            : `Added ${resultCount} flashcard${resultCount === 1 ? '' : 's'} to Review.`}
+          {status === 'working' ? 'Cards getting ready…' : 'Done'}
         </p>
         <button onClick={onDismiss} className="shrink-0 text-white/60 hover:text-white" aria-label="Dismiss">
           <X className="w-3.5 h-3.5" />

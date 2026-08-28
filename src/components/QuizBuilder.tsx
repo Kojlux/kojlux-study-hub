@@ -22,6 +22,19 @@ interface Props {
   onError: (msg: string) => void;
 }
 
+// Distinguishes a bare topic name ("Algebra 1", "Photosynthesis") from
+// actual pasted notes. Short, punctuation-free input is treated as "just a
+// topic" and gets a confirmation step first, since generating a quiz from a
+// one- or two-word topic usually means the student meant to describe what
+// to quiz them on, not paste the material itself.
+function looksLikeTopicPhrase(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  const words = trimmed.split(/\s+/);
+  const hasSentencePunctuation = /[.!?;:,]/.test(trimmed);
+  return words.length <= 4 && trimmed.length <= 40 && !hasSentencePunctuation;
+}
+
 export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCards, onError }: Props) {
   const [file, setFile] = useState<StudyFile | null>(null);
   const [textInput, setTextInput] = useState('');
@@ -48,6 +61,8 @@ export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCard
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [currentQ, setCurrentQ] = useState(0);
 
+  const [topicConfirmOpen, setTopicConfirmOpen] = useState(false);
+
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -68,6 +83,21 @@ export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCard
     setUserAnswers({});
     setEvaluation(null);
     setCurrentQ(0);
+  };
+
+  // Gate in front of generateQuiz: catches a bare topic phrase (no file
+  // attached, so there's nothing but that short phrase to work from) and
+  // asks the student to confirm before spending a generation on it.
+  const handleGenerateClick = () => {
+    if (!file && !textInput.trim()) {
+      onError('Add a photo, PDF, video, or paste some text first.');
+      return;
+    }
+    if (!file && looksLikeTopicPhrase(textInput)) {
+      setTopicConfirmOpen(true);
+      return;
+    }
+    generateQuiz();
   };
 
   const generateQuiz = async () => {
@@ -199,23 +229,40 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
     if (!quizData) return;
     const pdf = new jsPDF();
     let y = 20;
+
+    // Long question blocks, option labels, and other text items must wrap
+    // dynamically and cleanly push to the next page rather than overflow
+    // the side or bottom margin — so every line is measured with
+    // splitTextToSize and space is checked before each individual line is
+    // drawn, not just once per question.
+    const ensureSpace = (needed: number) => {
+      if (y + needed > 280) {
+        pdf.addPage();
+        y = 20;
+      }
+    };
+    const writeWrapped = (text: string, indent: number, maxWidth: number, lineHeight = 6) => {
+      const lines = pdf.splitTextToSize(text, maxWidth);
+      ensureSpace(lines.length * lineHeight);
+      pdf.text(lines, indent, y);
+      y += lines.length * lineHeight;
+    };
+
     pdf.setFontSize(16);
-    pdf.text(quizData.title, 15, y);
-    y += 10;
+    const titleLines = pdf.splitTextToSize(quizData.title, 180);
+    pdf.text(titleLines, 15, y);
+    y += titleLines.length * 8 + 2;
     pdf.setFontSize(11);
+
     quizData.questions.forEach((q, i) => {
-      if (y > 270) { pdf.addPage(); y = 20; }
-      const lines = pdf.splitTextToSize(`${i + 1}. ${q.question}`, 180);
-      pdf.text(lines, 15, y);
-      y += lines.length * 6 + 2;
+      writeWrapped(`${i + 1}. ${q.question}`, 15, 180);
+      y += 2;
       if (q.type === 'multiple-choice' && q.options) {
         q.options.forEach((opt, oi) => {
-          pdf.text(`   ${String.fromCharCode(65 + oi)}. ${opt}`, 15, y);
-          y += 6;
+          writeWrapped(`${String.fromCharCode(65 + oi)}. ${opt}`, 20, 170);
         });
       } else {
-        pdf.text('   Answer: _______________________________', 15, y);
-        y += 6;
+        writeWrapped('Answer: _______________________________', 20, 170);
       }
       y += 4;
     });
@@ -230,13 +277,6 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
     if (!quizData || !evaluation) return;
     const pdf = new jsPDF();
     let y = 20;
-    pdf.setFontSize(16);
-    pdf.text(quizData.title, 15, y);
-    y += 8;
-    pdf.setFontSize(11);
-    pdf.text(`Score: ${evaluation.score}/${evaluation.totalQuestions}`, 15, y);
-    y += 10;
-    pdf.setFontSize(11);
 
     const ensureSpace = (needed: number) => {
       if (y + needed > 280) {
@@ -244,43 +284,47 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
         y = 20;
       }
     };
+    // Every line — question, option, answer, result, feedback — is wrapped
+    // and space-checked individually so nothing gets clipped at the side of
+    // the page or cut off at a page break; a block that doesn't fit pushes
+    // cleanly to the next page instead.
+    const writeWrapped = (text: string, indent: number, maxWidth: number, lineHeight = 6) => {
+      const lines = pdf.splitTextToSize(text, maxWidth);
+      ensureSpace(lines.length * lineHeight);
+      pdf.text(lines, indent, y);
+      y += lines.length * lineHeight;
+    };
+
+    pdf.setFontSize(16);
+    const titleLines = pdf.splitTextToSize(quizData.title, 180);
+    pdf.text(titleLines, 15, y);
+    y += titleLines.length * 8;
+    pdf.setFontSize(11);
+    y += 2;
+    writeWrapped(`Score: ${evaluation.score}/${evaluation.totalQuestions}`, 15, 180);
+    y += 4;
 
     quizData.questions.forEach((q, i) => {
       const ev = evaluation.evaluations.find((e) => e.questionIndex === i);
-      ensureSpace(14);
-      const qLines = pdf.splitTextToSize(`${i + 1}. ${q.question}`, 180);
-      pdf.text(qLines, 15, y);
-      y += qLines.length * 6 + 2;
+      writeWrapped(`${i + 1}. ${q.question}`, 15, 180);
+      y += 2;
 
       if (q.type === 'multiple-choice' && q.options) {
         q.options.forEach((opt, oi) => {
-          ensureSpace(6);
-          pdf.text(`   ${String.fromCharCode(65 + oi)}. ${opt}`, 15, y);
-          y += 6;
+          writeWrapped(`${String.fromCharCode(65 + oi)}. ${opt}`, 20, 170);
         });
       }
 
-      ensureSpace(6);
-      pdf.text(`   Your answer: ${userAnswers[i] || '(blank)'}`, 15, y);
-      y += 6;
-
-      ensureSpace(6);
-      pdf.text(`   Result: ${ev?.isCorrect ? 'Correct' : 'Incorrect'}`, 15, y);
-      y += 6;
+      writeWrapped(`Your answer: ${userAnswers[i] || '(blank)'}`, 20, 170);
+      writeWrapped(`Result: ${ev?.isCorrect ? 'Correct' : 'Incorrect'}`, 20, 170);
 
       if (!ev?.isCorrect) {
-        const correctLines = pdf.splitTextToSize(`   Correct answer: ${q.correctAnswer}`, 180);
-        ensureSpace(correctLines.length * 6);
-        pdf.text(correctLines, 15, y);
-        y += correctLines.length * 6;
+        writeWrapped(`Correct answer: ${q.correctAnswer}`, 20, 170);
       }
 
       const feedbackText = ev?.feedback || q.explanation;
       if (feedbackText) {
-        const fbLines = pdf.splitTextToSize(`   Feedback: ${feedbackText}`, 180);
-        ensureSpace(fbLines.length * 6);
-        pdf.text(fbLines, 15, y);
-        y += fbLines.length * 6;
+        writeWrapped(`Feedback: ${feedbackText}`, 20, 170);
       }
       y += 4;
     });
@@ -579,13 +623,49 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
       </div>
 
       <button
-        onClick={generateQuiz}
+        onClick={handleGenerateClick}
         disabled={loading}
         className="w-full py-3.5 bg-focus-primary hover:bg-focus-primary-dark text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-60"
       >
         {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
         {loading ? 'Building your quiz…' : 'Generate Quiz'}
       </button>
+
+      {topicConfirmOpen && (
+        <div
+          className="fixed inset-0 z-[200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-5"
+          onClick={() => setTopicConfirmOpen(false)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800 p-6 text-center space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-1.5">
+              <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">Confirm topic</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Did you mean to generate questions based on the topic "{textInput.trim()}"?
+              </p>
+            </div>
+            <div className="flex gap-2.5">
+              <button
+                onClick={() => setTopicConfirmOpen(false)}
+                className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold rounded-2xl transition"
+              >
+                Go back
+              </button>
+              <button
+                onClick={() => {
+                  setTopicConfirmOpen(false);
+                  generateQuiz();
+                }}
+                className="flex-1 py-3 bg-focus-primary hover:bg-focus-primary-dark text-white text-xs font-bold rounded-2xl transition"
+              >
+                Yes, generate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

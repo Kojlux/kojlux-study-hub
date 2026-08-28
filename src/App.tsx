@@ -1,20 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { onAuthStateChanged, type User } from 'firebase/auth';
+import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { AlertCircle, X, ArrowLeft, GraduationCap, Camera, Bell } from 'lucide-react';
+import { AlertCircle, X, ArrowLeft, GraduationCap, Camera, Bell, CalendarDays } from 'lucide-react';
 
-import { HistoryItem, RecallCard } from './types';
-import { loadLocal, saveLocal } from './lib/storage';
+import { HistoryItem, RecallCard, ExamEvent, Collection } from './types';
+import { loadLocal, saveLocal, scopedKey } from './lib/storage';
 import { isDue } from './lib/spacedRepetition';
+import { isReminderDue } from './lib/examReminders';
 import {
   isNotificationSupported,
   getNotificationPermission,
   requestNotificationPermission,
   notifyReviewsReady,
+  notifyExamReminder,
   NotificationSupportState,
 } from './lib/notifications';
 import { GRADE_LEVEL_OPTIONS } from './constants';
+import { registerPushForUser } from './lib/push';
 
 import AuthScreen from './components/AuthScreen';
 import StudyHome from './components/StudyHome';
@@ -23,6 +26,7 @@ import NotesSummarizer from './components/NotesSummarizer';
 import ReviewQueue from './components/ReviewQueue';
 import ProfileScreen from './components/ProfileScreen';
 import VisualizerScreen from './components/VisualizerScreen';
+import CalendarScreen from './components/CalendarScreen';
 import BottomNav, { NavTab } from './components/BottomNav';
 
 const SCREEN_TITLES: Record<NavTab, string> = {
@@ -37,8 +41,8 @@ export default function App() {
   // ---- Auth ----
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [gradeLevel, setGradeLevel] = useState<string>(() => loadLocal('kojlux_grade_level', GRADE_LEVEL_OPTIONS[2]));
-  const [streak, setStreak] = useState<number>(() => loadLocal('kojlux_streak', 0));
+  const [gradeLevel, setGradeLevel] = useState<string>(GRADE_LEVEL_OPTIONS[2]);
+  const [streak, setStreak] = useState<number>(0);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -79,6 +83,17 @@ export default function App() {
 
   const [guestBannerDismissed, setGuestBannerDismissed] = useState(false);
 
+  // ---- Account-scoped data ----
+  // `scopeId` identifies whose data is currently active: a signed-in user's
+  // uid, the literal 'guest' while browsing without an account, or null
+  // while that isn't decided yet (auth still resolving, or the Welcome gate
+  // is showing). All per-account state below (history, recall cards, streak,
+  // grade level, total reviews) is namespaced under this id so switching
+  // accounts — or moving between guest and signed-in — never shows one
+  // person's data to another.
+  const scopeId = user ? user.uid : guestMode ? 'guest' : null;
+  const loadedScopeRef = useRef<string | null>(null);
+
   // ---- Review-ready notifications ----
   // No service worker/push backend here, so this only works while the app is
   // open: poll for cards that just became due and fire a local notification.
@@ -87,22 +102,72 @@ export default function App() {
   const [notifBannerDismissed, setNotifBannerDismissed] = useState(false);
 
   const recallCardsRef = useRef<RecallCard[]>([]);
+  // Seeded from localStorage (scoped per account) rather than starting null
+  // every time the app mounts. Without this, closing the tab and reopening
+  // it after a card's 3-hour delay had already passed meant the very next
+  // check silently "seeded" on that card instead of notifying — the
+  // notification was effectively dropped for anything that became due while
+  // the tab was closed. Persisting the set across reloads means a newly-due
+  // card is still recognized as newly due whenever the app next checks.
   const previouslyDueIdsRef = useRef<Set<string> | null>(null);
+  const previouslyDueScopeRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (scopeId && previouslyDueScopeRef.current !== scopeId) {
+      previouslyDueScopeRef.current = scopeId;
+      const stored = loadLocal<string[]>(scopedKey('kojlux_previously_due_ids', scopeId), []);
+      previouslyDueIdsRef.current = new Set(stored);
+    }
+  }, [scopeId]);
+
   useEffect(() => {
     const checkForNewlyDueCards = () => {
       const currentlyDue = recallCardsRef.current.filter(isDue);
       const currentlyDueIds = currentlyDue.map((c) => c.id);
-      // Skip notifying on the very first check — that's just seeding state
-      // with whatever was already due when the app loaded, not "new".
       if (previouslyDueIdsRef.current) {
         const newlyDue = currentlyDueIds.filter((id) => !previouslyDueIdsRef.current!.has(id));
         if (newlyDue.length > 0) notifyReviewsReady(newlyDue.length);
       }
       previouslyDueIdsRef.current = new Set(currentlyDueIds);
+      if (previouslyDueScopeRef.current) {
+        saveLocal(scopedKey('kojlux_previously_due_ids', previouslyDueScopeRef.current), currentlyDueIds);
+      }
+    };
+    // Same shape as checkForNewlyDueCards above, but exams track their own
+    // "already notified" flag (`reminderSent`) directly instead of a
+    // separate previously-seen id set, since each reminder only ever fires
+    // once in an exam's lifetime rather than repeatedly like a due card
+    // does. NOTE: this only runs while the app is open — see the reliability
+    // note in lib/examReminders.ts for why a fully closed tab won't get one.
+    const checkExamReminders = () => {
+      const due = examEventsRef.current.filter((e) => !e.reminderSent && isReminderDue(e));
+      if (due.length === 0) return;
+      due.forEach((exam) => notifyExamReminder(exam.title, exam.id));
+      const dueIds = new Set(due.map((e) => e.id));
+      setExamEvents((prev) => prev.map((e) => (dueIds.has(e.id) ? { ...e, reminderSent: true } : e)));
     };
     checkForNewlyDueCards();
-    const interval = setInterval(checkForNewlyDueCards, 60_000);
-    return () => clearInterval(interval);
+    checkExamReminders();
+    // The interval is what catches a card becoming due while the tab is
+    // open; the visibilitychange listener catches one becoming due while
+    // the tab was backgrounded/minimized, since browsers throttle or fully
+    // suspend setInterval in that state and the timer alone can't be relied
+    // on to fire promptly once the tab is foregrounded again.
+    const interval = setInterval(() => {
+      checkForNewlyDueCards();
+      checkExamReminders();
+    }, 60_000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkForNewlyDueCards();
+        checkExamReminders();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, []);
 
   // ---- Appearance ----
@@ -119,19 +184,114 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
 
   // ---- Shared study data: history + spaced-repetition cards ----
-  const [history, setHistory] = useState<HistoryItem[]>(() => loadLocal('kojlux_history', []));
-  const [recallCards, setRecallCards] = useState<RecallCard[]>(() => loadLocal('kojlux_recall_cards', []));
-  const [totalReviews, setTotalReviews] = useState<number>(() => loadLocal('kojlux_total_reviews', 0));
+  // Start empty; the load effect below fills these in as soon as scopeId is
+  // known, so nothing from a previous scope is ever visible even briefly.
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [recallCards, setRecallCards] = useState<RecallCard[]>([]);
+  const [totalReviews, setTotalReviews] = useState<number>(0);
+  const [examEvents, setExamEvents] = useState<ExamEvent[]>([]);
+  const examEventsRef = useRef<ExamEvent[]>([]);
+  // Student-named folders of saved cards (e.g. "Bio Midterm") — see
+  // types.ts Collection and RecallCard.collectionId/.saved.
+  const [collections, setCollections] = useState<Collection[]>([]);
+  // Which day the standalone Calendar overlay should open on next (see the
+  // `showCalendar` overlay near the end of this component — there's no
+  // bottom-nav tab for it, since the nav bar is already full). Passed to
+  // CalendarScreen as a React `key` (not just a prop) so tapping a
+  // different exam from the Profile preview forces a fresh mount that
+  // actually jumps there, instead of being ignored by Calendar's own
+  // internal "selected day" state once it's already mounted.
+  const [calendarInitialDate, setCalendarInitialDate] = useState<string | null>(null);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const openCalendar = (date?: string) => {
+    setCalendarInitialDate(date ?? null);
+    setShowCalendar(true);
+  };
 
-  useEffect(() => saveLocal('kojlux_history', history), [history]);
-  useEffect(() => saveLocal('kojlux_recall_cards', recallCards), [recallCards]);
-  useEffect(() => saveLocal('kojlux_total_reviews', totalReviews), [totalReviews]);
+  // Load this scope's data exactly once when it first becomes active (a new
+  // sign-in, or dropping into guest mode). Re-running only on a genuine
+  // scope change — not on every render — is what keeps this from re-loading
+  // (and clobbering in-progress edits) on unrelated re-renders.
+  useEffect(() => {
+    if (!scopeId || loadedScopeRef.current === scopeId) return;
+    loadedScopeRef.current = scopeId;
+    setHistory(loadLocal(scopedKey('kojlux_history', scopeId), []));
+    setRecallCards(loadLocal(scopedKey('kojlux_recall_cards', scopeId), []));
+    setTotalReviews(loadLocal(scopedKey('kojlux_total_reviews', scopeId), 0));
+    setExamEvents(loadLocal(scopedKey('kojlux_exam_events', scopeId), []));
+    setCollections(loadLocal(scopedKey('kojlux_collections', scopeId), []));
+    setGradeLevel(loadLocal(scopedKey('kojlux_grade_level', scopeId), GRADE_LEVEL_OPTIONS[2]));
+    setStreak(loadLocal(scopedKey('kojlux_streak', scopeId), 0));
+  }, [scopeId]);
+
+  useEffect(() => {
+    if (!scopeId) return;
+    saveLocal(scopedKey('kojlux_history', scopeId), history);
+  }, [history, scopeId]);
+  useEffect(() => {
+    if (!scopeId) return;
+    saveLocal(scopedKey('kojlux_recall_cards', scopeId), recallCards);
+  }, [recallCards, scopeId]);
+  useEffect(() => {
+    if (!scopeId) return;
+    saveLocal(scopedKey('kojlux_total_reviews', scopeId), totalReviews);
+  }, [totalReviews, scopeId]);
+  useEffect(() => {
+    if (!scopeId) return;
+    saveLocal(scopedKey('kojlux_exam_events', scopeId), examEvents);
+  }, [examEvents, scopeId]);
+  useEffect(() => {
+    if (!scopeId) return;
+    saveLocal(scopedKey('kojlux_collections', scopeId), collections);
+  }, [collections, scopeId]);
+
+  // ---- Server-side mirror for closed-browser push notifications ----
+  // Everything above is local-first (localStorage), which a closed browser
+  // can't read. For a Cloud Function to send a push at the right moment, it
+  // needs the due dates in Firestore instead. Deliberately kept minimal —
+  // no prompt/answer/image text, just what's needed to decide *when* and
+  // *what to say* — since these documents are re-written on every change.
+  // Guests have no account to attach this to, so this is sign-in only; see
+  // PUSH_NOTIFICATIONS_SETUP.md for what a guest gets instead.
+  useEffect(() => {
+    if (!user) return;
+    const dueDates = recallCards.map((c) => ({ id: c.id, dueAt: c.dueAt, sourceTitle: c.sourceTitle }));
+    setDoc(doc(db, 'users', user.uid), { recallCardDueDates: dueDates }, { merge: true }).catch((err) =>
+      console.error('Failed to sync recall card due dates', err)
+    );
+  }, [recallCards, user]);
+  useEffect(() => {
+    if (!user) return;
+    const examReminders = examEvents
+      .filter((e) => !e.reminderSent)
+      .map((e) => ({ id: e.id, title: e.title, date: e.date }));
+    setDoc(doc(db, 'users', user.uid), { examReminders }, { merge: true }).catch((err) =>
+      console.error('Failed to sync exam reminders', err)
+    );
+  }, [examEvents, user]);
   useEffect(() => {
     recallCardsRef.current = recallCards;
   }, [recallCards]);
+  useEffect(() => {
+    examEventsRef.current = examEvents;
+  }, [examEvents]);
 
   const addHistory = (item: HistoryItem) => setHistory((prev) => [item, ...prev].slice(0, 50));
   const addRecallCards = (cards: RecallCard[]) => setRecallCards((prev) => [...prev, ...cards]);
+  const addExam = (exam: ExamEvent) => setExamEvents((prev) => [...prev, exam]);
+  const updateExam = (exam: ExamEvent) => setExamEvents((prev) => prev.map((e) => (e.id === exam.id ? exam : e)));
+  const deleteExam = (id: string) => setExamEvents((prev) => prev.filter((e) => e.id !== id));
+  const addCollection = (collection: Collection) => setCollections((prev) => [...prev, collection]);
+  const renameCollection = (id: string, name: string) =>
+    setCollections((prev) => prev.map((c) => (c.id === id ? { ...c, name } : c)));
+  // Deleting a collection never deletes the cards inside it — they just
+  // become un-filed (collectionId cleared) but stay in the saved library.
+  const deleteCollection = (id: string) => {
+    setCollections((prev) => prev.filter((c) => c.id !== id));
+    setRecallCards((prev) => prev.map((c) => (c.collectionId === id ? { ...c, collectionId: undefined } : c)));
+  };
+  const updateRecallCard = (updated: RecallCard) =>
+    setRecallCards((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
   const updateRecallCards = (updated: RecallCard[]) => {
     setRecallCards(updated);
     setTotalReviews((n) => n + 1);
@@ -150,7 +310,7 @@ export default function App() {
     const nextStreak = wasYesterday ? streak + 1 : 1;
     setStreak(nextStreak);
     localStorage.setItem('kojlux_last_active_day', todayKey);
-    saveLocal('kojlux_streak', nextStreak);
+    if (scopeId) saveLocal(scopedKey('kojlux_streak', scopeId), nextStreak);
     if (user) {
       updateDoc(doc(db, 'users', user.uid), { streak: nextStreak }).catch((err) =>
         console.error('Failed to sync streak', err)
@@ -160,12 +320,38 @@ export default function App() {
 
   const handleGradeLevelChange = (g: string) => {
     setGradeLevel(g);
-    saveLocal('kojlux_grade_level', g);
+    if (scopeId) saveLocal(scopedKey('kojlux_grade_level', scopeId), g);
     if (user) {
       setDoc(doc(db, 'users', user.uid), { gradeLevel: g }, { merge: true }).catch((err) =>
         console.error('Failed to sync grade level', err)
       );
     }
+  };
+
+  // Explicit sign-out: distinct from onAuthStateChanged simply seeing `user`
+  // go null (which also happens transiently while auth is still resolving).
+  // Clears every piece of active, user-specific state immediately — history,
+  // recall cards, streak, grade level — so nothing from the account that
+  // just signed out is visible even for a frame, and resets scope tracking
+  // so the next sign-in (or guest session) loads its own data fresh instead
+  // of quietly reusing whatever is still sitting in memory.
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error('Sign out failed', err);
+    }
+    setHistory([]);
+    setRecallCards([]);
+    setTotalReviews(0);
+    setExamEvents([]);
+    setCollections([]);
+    setStreak(0);
+    setGradeLevel(GRADE_LEVEL_OPTIONS[2]);
+    setGuestMode(false);
+    setShowAuthScreen(false);
+    setGuestBannerDismissed(false);
+    loadedScopeRef.current = null;
   };
 
   // ---- Errors ----
@@ -182,30 +368,39 @@ export default function App() {
     );
   }
 
+  if (!user && showAuthScreen) {
+    return (
+      <div className="relative min-h-screen">
+        <button
+          onClick={() => setShowAuthScreen(false)}
+          className="absolute top-4 left-4 z-50 flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 bg-white/90 dark:bg-slate-900/90 backdrop-blur px-3 py-2 rounded-full shadow-sm"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Back
+        </button>
+        <AuthScreen />
+      </div>
+    );
+  }
   if (!user && !guestMode) {
-    if (showAuthScreen) {
-      return (
-        <div className="relative min-h-screen">
-          <button
-            onClick={() => setShowAuthScreen(false)}
-            className="absolute top-4 left-4 z-50 flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 bg-white/90 dark:bg-slate-900/90 backdrop-blur px-3 py-2 rounded-full shadow-sm"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" /> Back
-          </button>
-          <AuthScreen />
-        </div>
-      );
-    }
     return <WelcomeGate onSkip={() => setGuestMode(true)} onSignIn={() => setShowAuthScreen(true)} />;
   }
 
   return (
     <div className={`min-h-screen bg-focus-bg dark:bg-slate-950 ${darkMode ? 'dark' : ''}`}>
       <div className="max-w-md mx-auto min-h-screen flex flex-col">
-        <header className="sticky top-0 z-30 bg-focus-bg/90 dark:bg-slate-950/90 backdrop-blur-md px-5 pt-6 pb-3">
+        <header className="sticky top-0 z-30 bg-focus-bg/90 dark:bg-slate-950/90 backdrop-blur-md px-5 pt-6 pb-3 flex items-center justify-between gap-3">
           <h1 className="text-sm font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
             {SCREEN_TITLES[activeTab]}
           </h1>
+          {activeTab === 'home' && (
+            <button
+              onClick={() => openCalendar()}
+              aria-label="Study Calendar"
+              className="shrink-0 w-8 h-8 rounded-full bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center justify-center"
+            >
+              <CalendarDays className="w-4 h-4 text-focus-primary" />
+            </button>
+          )}
         </header>
 
         {!user && !guestBannerDismissed && (
@@ -233,7 +428,14 @@ export default function App() {
                 </p>
                 <div className="flex gap-4 mt-1.5">
                   <button
-                    onClick={async () => setNotifPermission(await requestNotificationPermission())}
+                    onClick={async () => {
+                      const permission = await requestNotificationPermission();
+                      setNotifPermission(permission);
+                      // Only signed-in users have a Firestore doc for the
+                      // backend to push to — see the sync effects above and
+                      // PUSH_NOTIFICATIONS_SETUP.md.
+                      if (permission === 'granted' && user) registerPushForUser(user.uid);
+                    }}
                     className="text-[11px] font-bold text-focus-primary"
                   >
                     Enable Notifications
@@ -283,8 +485,13 @@ export default function App() {
             <ReviewQueue
               cards={recallCards}
               onUpdateCards={updateRecallCards}
+              onUpdateCard={updateRecallCard}
               history={history}
               onAddRecallCards={addRecallCards}
+              collections={collections}
+              onAddCollection={addCollection}
+              onRenameCollection={renameCollection}
+              onDeleteCollection={deleteCollection}
               onError={setErrorMsg}
             />
           )}
@@ -299,12 +506,52 @@ export default function App() {
               onToggleDarkMode={() => setDarkMode((d) => !d)}
               streak={streak}
               totalReviews={totalReviews}
+              isGuest={!user}
+              onSignOut={handleSignOut}
+              onSignIn={() => setShowAuthScreen(true)}
+              exams={examEvents}
+              onOpenCalendar={openCalendar}
+              onDeleteExam={deleteExam}
             />
           )}
         </main>
 
         <BottomNav active={activeTab} dueCount={dueCount} onChange={setActiveTab} />
       </div>
+
+      {/* Study Calendar isn't a bottom-nav tab — there's no room left on that
+          bar — so it opens as a full-screen overlay from the icon button in
+          the Home header instead, the same pattern already used below for
+          errorMsg and for AuthScreen earlier in this file. */}
+      {showCalendar && (
+        <div className="fixed inset-0 z-[150] bg-focus-bg dark:bg-slate-950 overflow-y-auto">
+          <div className="max-w-md mx-auto min-h-screen flex flex-col">
+            <header className="sticky top-0 z-10 bg-focus-bg/90 dark:bg-slate-950/90 backdrop-blur-md px-5 pt-6 pb-3 flex items-center gap-3">
+              <button
+                onClick={() => setShowCalendar(false)}
+                aria-label="Back"
+                className="shrink-0 w-9 h-9 rounded-full bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center justify-center"
+              >
+                <ArrowLeft className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+              </button>
+              <h1 className="text-sm font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                Study Calendar
+              </h1>
+            </header>
+            <main className="flex-1 px-5 pb-10">
+              <CalendarScreen
+                key={calendarInitialDate ?? 'calendar-default'}
+                exams={examEvents}
+                history={history}
+                onAddExam={addExam}
+                onUpdateExam={updateExam}
+                onDeleteExam={deleteExam}
+                initialDate={calendarInitialDate}
+              />
+            </main>
+          </div>
+        </div>
+      )}
 
       {errorMsg && (
         <div

@@ -1,21 +1,42 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft, Brain, Maximize2, PartyPopper, RotateCw, SkipForward, ZoomIn, ZoomOut,
-  Sparkles, Check,
+  Sparkles, Check, Plus, Image as ImageIcon, X as XIcon, Bookmark, BookmarkCheck,
+  FolderOpen, Folder, ChevronDown, ChevronUp,
 } from 'lucide-react';
-import { RecallCard, HistoryItem } from '../types';
-import { scheduleNextReview, isDue, RecallRating } from '../lib/spacedRepetition';
+import { RecallCard, HistoryItem, Collection } from '../types';
+import { scheduleNextReview, isDue, RecallRating, makeRecallCard } from '../lib/spacedRepetition';
+import { makeCollection } from '../lib/collections';
 import AiCoach from './AiCoach';
 
 interface Props {
   cards: RecallCard[];
   onUpdateCards: (cards: RecallCard[]) => void;
+  // Single-card update — used for saving/unsaving/re-filing a card into a
+  // collection, which shouldn't also bump totalReviews/streak the way
+  // onUpdateCards (rating a card) does.
+  onUpdateCard: (card: RecallCard) => void;
   history: HistoryItem[];
   onAddRecallCards: (cards: RecallCard[]) => void;
+  collections: Collection[];
+  onAddCollection: (collection: Collection) => void;
+  onRenameCollection: (id: string, name: string) => void;
+  onDeleteCollection: (id: string) => void;
   onError: (msg: string) => void;
 }
 
-export default function ReviewQueue({ cards, onUpdateCards, history, onAddRecallCards, onError }: Props) {
+export default function ReviewQueue({
+  cards,
+  onUpdateCards,
+  onUpdateCard,
+  history,
+  onAddRecallCards,
+  collections,
+  onAddCollection,
+  onRenameCollection,
+  onDeleteCollection,
+  onError,
+}: Props) {
   const dueCards = useMemo(() => cards.filter(isDue), [cards]);
   const dueIds = useMemo(() => dueCards.map((c) => c.id), [dueCards]);
 
@@ -90,6 +111,7 @@ export default function ReviewQueue({ cards, onUpdateCards, history, onAddRecall
             Nothing due right now. New cards appear here automatically from your quizzes and summaries — come back later for spaced review.
           </p>
         </div>
+        <ManualFlashcardSection onAdd={onAddRecallCards} collections={collections} onAddCollection={onAddCollection} />
         <RecentsSection history={history} onBulkGenerate={startCoachRun} onError={onError} busy={coachItems !== null} />
         <AiCoach
           items={coachItems}
@@ -97,6 +119,12 @@ export default function ReviewQueue({ cards, onUpdateCards, history, onAddRecall
           onComplete={(newCards) => onAddRecallCards(newCards)}
           onError={onError}
           onDismiss={dismissCoachRun}
+        />
+        <SavedCardsSection
+          cards={cards}
+          collections={collections}
+          onRenameCollection={onRenameCollection}
+          onDeleteCollection={onDeleteCollection}
         />
       </div>
     );
@@ -220,7 +248,10 @@ export default function ReviewQueue({ cards, onUpdateCards, history, onAddRecall
             </div>
             {/* Pinned footer — always visible, never scrolls out of view. */}
             <div className="shrink-0 p-6 pt-3 border-t border-slate-100 dark:border-slate-800">
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-2">How well did you recall it?</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">How well did you recall it?</p>
+                <SaveCardControl card={current} collections={collections} onUpdateCard={onUpdateCard} onAddCollection={onAddCollection} />
+              </div>
               <div className="grid grid-cols-4 gap-2">
                 <RateButton label="Again" color="rose" onClick={() => rate('again')} />
                 <RateButton label="Hard" color="amber" onClick={() => rate('hard')} />
@@ -238,6 +269,7 @@ export default function ReviewQueue({ cards, onUpdateCards, history, onAddRecall
         ))}
       </div>
 
+      <ManualFlashcardSection onAdd={onAddRecallCards} collections={collections} onAddCollection={onAddCollection} />
       <RecentsSection history={history} onBulkGenerate={startCoachRun} onError={onError} busy={coachItems !== null} />
       <AiCoach
         items={coachItems}
@@ -246,8 +278,222 @@ export default function ReviewQueue({ cards, onUpdateCards, history, onAddRecall
         onError={onError}
         onDismiss={dismissCoachRun}
       />
+      <SavedCardsSection
+        cards={cards}
+        collections={collections}
+        onRenameCollection={onRenameCollection}
+        onDeleteCollection={onDeleteCollection}
+      />
 
       {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
+    </div>
+  );
+}
+
+// Manual flashcard wizard: lets a student build a card by hand — typing
+// their own Front (prompt) and Back (answer) text — instead of relying
+// solely on automated generation from a quiz/summary/photo. Cards made this
+// way are due immediately (there's no "first exposure" gap to protect,
+// since the student just wrote it themselves) and are tagged sourceType
+// 'manual' so they're distinguishable from AI-generated cards elsewhere.
+function ManualFlashcardSection({
+  onAdd,
+  collections,
+  onAddCollection,
+}: {
+  onAdd: (cards: RecallCard[]) => void;
+  collections: Collection[];
+  onAddCollection: (collection: Collection) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [front, setFront] = useState('');
+  const [back, setBack] = useState('');
+  const [label, setLabel] = useState('');
+  // Which collection (if any) to file this card into right away — hand-typed
+  // cards are already saved by default, so this just decides whether they
+  // land in "Uncategorized" or a named folder from the start.
+  const [collectionId, setCollectionId] = useState('');
+  const [newCollectionName, setNewCollectionName] = useState('');
+  // Optional photo to ride along with a hand-written card, same as quiz/
+  // summary-generated cards already support — e.g. a snapshot of the actual
+  // diagram or textbook page the card is testing, so the prompt doesn't
+  // feel disconnected from the source material.
+  const [image, setImage] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+
+  const reset = () => {
+    setFront('');
+    setBack('');
+    setLabel('');
+    setImage(null);
+    setCollectionId('');
+    setNewCollectionName('');
+  };
+
+  const handleImageFile = (selected: File) => {
+    const reader = new FileReader();
+    reader.onload = () => setImage(reader.result as string);
+    reader.readAsDataURL(selected);
+  };
+
+  const canSubmit = front.trim().length > 0 && back.trim().length > 0;
+
+  const submit = () => {
+    if (!canSubmit) return;
+    // A typed name in "new collection" wins over picking an existing one —
+    // create it first so the card can be filed into it immediately.
+    let finalCollectionId = collectionId || undefined;
+    if (newCollectionName.trim()) {
+      const created = makeCollection(newCollectionName);
+      onAddCollection(created);
+      finalCollectionId = created.id;
+    }
+    const card = makeRecallCard({
+      sourceType: 'manual',
+      sourceTitle: label.trim() || 'Custom flashcard',
+      prompt: front.trim(),
+      answer: back.trim(),
+      image: image ?? undefined,
+      immediate: true,
+      collectionId: finalCollectionId,
+    });
+    onAdd([card]);
+    reset();
+    setOpen(false);
+  };
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-xs font-bold hover:border-focus-primary hover:text-focus-primary transition"
+      >
+        <Plus className="w-4 h-4" /> Add custom flashcard
+      </button>
+
+      {open && (
+        <div
+          className="fixed inset-0 z-[200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-5"
+          onClick={() => {
+            setOpen(false);
+            reset();
+          }}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800 p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">New flashcard</h3>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Front</label>
+              <textarea
+                value={front}
+                onChange={(e) => setFront(e.target.value)}
+                placeholder="Question or prompt"
+                rows={2}
+                autoFocus
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary resize-none"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Back</label>
+              <textarea
+                value={back}
+                onChange={(e) => setBack(e.target.value)}
+                placeholder="Answer"
+                rows={2}
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary resize-none"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Image (optional)</label>
+              {image ? (
+                <div className="relative inline-block">
+                  <img src={image} className="max-h-28 rounded-xl object-contain border border-slate-200 dark:border-slate-700" />
+                  <button
+                    type="button"
+                    onClick={() => setImage(null)}
+                    className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-slate-900 text-white flex items-center justify-center shadow"
+                    aria-label="Remove image"
+                  >
+                    <XIcon className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-focus-primary transition"
+                >
+                  <ImageIcon className="w-3.5 h-3.5" /> Add photo
+                </button>
+              )}
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => e.target.files?.[0] && handleImageFile(e.target.files[0])}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Label (optional)</label>
+              <input
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="e.g. Spanish Vocab"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Collection (optional)</label>
+              {collections.length > 0 && (
+                <select
+                  value={newCollectionName ? '' : collectionId}
+                  onChange={(e) => {
+                    setCollectionId(e.target.value);
+                    setNewCollectionName('');
+                  }}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary"
+                >
+                  <option value="">Uncategorized</option>
+                  {collections.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              )}
+              <input
+                value={newCollectionName}
+                onChange={(e) => {
+                  setNewCollectionName(e.target.value);
+                  if (e.target.value) setCollectionId('');
+                }}
+                placeholder="Or create a new collection…"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary"
+              />
+            </div>
+            <div className="flex gap-2.5">
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  reset();
+                }}
+                className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold rounded-2xl"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submit}
+                disabled={!canSubmit}
+                className="flex-1 py-3 bg-focus-primary text-white text-xs font-bold rounded-2xl disabled:opacity-50"
+              >
+                Add card
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -527,6 +773,283 @@ function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
       <p className="text-center text-[10px] text-white/40 font-semibold pb-4 shrink-0">
         Scroll or use the buttons to zoom {scale > 1 ? '· drag to pan' : ''}
       </p>
+    </div>
+  );
+}
+
+// Bookmark control shown on the back of a card, next to the rating prompt.
+// Unsaved (AI-generated) cards show an outline bookmark + "Save"; tapping it
+// opens a small popover to pick an existing collection, type a new one, or
+// save with no collection at all. Already-saved cards show a filled
+// bookmark + "Saved"; tapping that reopens the same popover (to re-file the
+// card into a different collection) plus a "Remove from saved" option.
+function SaveCardControl({
+  card,
+  collections,
+  onUpdateCard,
+  onAddCollection,
+}: {
+  card: RecallCard;
+  collections: Collection[];
+  onUpdateCard: (card: RecallCard) => void;
+  onAddCollection: (collection: Collection) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+
+  const saveTo = (collectionId?: string) => {
+    onUpdateCard({ ...card, saved: true, collectionId });
+    setOpen(false);
+    setNewName('');
+  };
+  const createAndSave = () => {
+    if (!newName.trim()) return;
+    const created = makeCollection(newName);
+    onAddCollection(created);
+    saveTo(created.id);
+  };
+  const unsave = () => {
+    onUpdateCard({ ...card, saved: false, collectionId: undefined });
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg transition ${
+          card.saved
+            ? 'text-focus-primary bg-focus-primary/10'
+            : 'text-slate-400 hover:text-focus-primary hover:bg-focus-primary/10'
+        }`}
+      >
+        {card.saved ? <BookmarkCheck className="w-3.5 h-3.5" /> : <Bookmark className="w-3.5 h-3.5" />}
+        {card.saved ? 'Saved' : 'Save'}
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[160]" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-1.5 z-[170] w-56 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xl p-2.5 space-y-2">
+            {card.saved && (
+              <button
+                type="button"
+                onClick={unsave}
+                className="w-full text-left px-2.5 py-2 rounded-lg text-[11px] font-bold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+              >
+                Remove from saved
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => saveTo(undefined)}
+              className="w-full text-left px-2.5 py-2 rounded-lg text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+            >
+              Save without a collection
+            </button>
+            {collections.length > 0 && (
+              <div className="max-h-32 overflow-y-auto space-y-0.5">
+                {collections.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => saveTo(c.id)}
+                    className="w-full flex items-center gap-1.5 text-left px-2.5 py-2 rounded-lg text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                  >
+                    <Folder className="w-3.5 h-3.5 text-focus-primary shrink-0" /> {c.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-800">
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="New collection…"
+                className="flex-1 min-w-0 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-[11px] text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary"
+              />
+              <button
+                type="button"
+                onClick={createAndSave}
+                disabled={!newName.trim()}
+                className="shrink-0 px-2.5 py-1.5 rounded-lg bg-focus-primary text-white text-[11px] font-bold disabled:opacity-40"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Browsing view for saved cards: a checklist of collections (plus a
+// synthetic "Uncategorized" bucket for saved cards with no collectionId) —
+// checking one or more shows every saved card from the checked set combined
+// together below, so a student can review e.g. "Bio Midterm" + "Chem Final"
+// side by side instead of one folder at a time.
+function SavedCardsSection({
+  cards,
+  collections,
+  onRenameCollection,
+  onDeleteCollection,
+}: {
+  cards: RecallCard[];
+  collections: Collection[];
+  onRenameCollection: (id: string, name: string) => void;
+  onDeleteCollection: (id: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [flipped, setFlipped] = useState<Set<string>>(new Set());
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+
+  const savedCards = useMemo(() => cards.filter((c) => c.saved), [cards]);
+  const UNCATEGORIZED = '__uncategorized__';
+  const uncategorizedCount = savedCards.filter((c) => !c.collectionId).length;
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const toggleFlip = (id: string) =>
+    setFlipped((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const visibleCards = savedCards.filter((c) =>
+    selected.has(c.collectionId ?? UNCATEGORIZED)
+  );
+
+  if (savedCards.length === 0) return null;
+
+  return (
+    <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="w-full flex items-center justify-between px-4 py-3.5"
+      >
+        <span className="flex items-center gap-2 text-xs font-extrabold text-slate-800 dark:text-slate-100">
+          <FolderOpen className="w-4 h-4 text-focus-primary" /> Saved Cards ({savedCards.length})
+        </span>
+        {expanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4 space-y-3">
+          <p className="text-[11px] text-slate-400">Pick one or more collections to display their cards together.</p>
+          <div className="space-y-1.5">
+            {collections.map((c) => {
+              const count = savedCards.filter((sc) => sc.collectionId === c.id).length;
+              const isRenaming = renamingId === c.id;
+              return (
+                <div
+                  key={c.id}
+                  className={`flex items-center gap-2 rounded-xl border px-3 py-2 transition ${
+                    selected.has(c.id)
+                      ? 'border-focus-primary bg-focus-primary/5'
+                      : 'border-slate-200 dark:border-slate-800'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(c.id)}
+                    onChange={() => toggle(c.id)}
+                    className="w-4 h-4 accent-focus-primary shrink-0"
+                  />
+                  {isRenaming ? (
+                    <input
+                      autoFocus
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onBlur={() => {
+                        if (renameValue.trim()) onRenameCollection(c.id, renameValue.trim());
+                        setRenamingId(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                      }}
+                      className="flex-1 min-w-0 bg-white dark:bg-slate-800 border border-focus-primary rounded-lg px-2 py-1 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRenamingId(c.id);
+                        setRenameValue(c.name);
+                      }}
+                      className="flex-1 min-w-0 text-left text-xs font-bold text-slate-700 dark:text-slate-200 truncate"
+                    >
+                      {c.name} <span className="text-slate-400 font-semibold">({count})</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onDeleteCollection(c.id)}
+                    aria-label={`Delete ${c.name}`}
+                    className="shrink-0 text-slate-300 hover:text-rose-500"
+                  >
+                    <XIcon className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+            {uncategorizedCount > 0 && (
+              <label
+                className={`flex items-center gap-2 rounded-xl border px-3 py-2 cursor-pointer transition ${
+                  selected.has(UNCATEGORIZED)
+                    ? 'border-focus-primary bg-focus-primary/5'
+                    : 'border-slate-200 dark:border-slate-800'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(UNCATEGORIZED)}
+                  onChange={() => toggle(UNCATEGORIZED)}
+                  className="w-4 h-4 accent-focus-primary shrink-0"
+                />
+                <span className="flex-1 text-xs font-bold text-slate-700 dark:text-slate-200">
+                  Uncategorized <span className="text-slate-400 font-semibold">({uncategorizedCount})</span>
+                </span>
+              </label>
+            )}
+          </div>
+
+          {visibleCards.length > 0 && (
+            <div className="space-y-2 pt-1">
+              {visibleCards.map((c) => {
+                const isFlipped = flipped.has(c.id);
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => toggleFlip(c.id)}
+                    className="w-full text-left bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3"
+                  >
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">
+                      {isFlipped ? 'Answer' : c.sourceTitle}
+                    </p>
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                      {isFlipped ? c.answer : c.prompt}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
