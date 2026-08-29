@@ -87,11 +87,21 @@ export default function AiCoach({ items, requestedCount, onComplete, onError, on
     })();
   }, [items]);
 
-  // Auto-dismiss the "done" toast a few seconds after it lands, so it
-  // doesn't linger — but only while nothing new has been queued since.
+  // Dismissing (whether the student taps the X, or the auto-timer below
+  // fires) needs to do two things: reset our own `status` back to 'idle' so
+  // the toast actually disappears, and let the parent know via onDismiss.
+  // Previously only the latter happened, which is why the X button looked
+  // broken — the toast stayed on screen no matter what was clicked.
+  const dismiss = () => {
+    setStatus('idle');
+    onDismiss();
+  };
+
+  // Auto-dismiss the "done" toast a couple seconds after it lands, so it
+  // doesn't linger and nobody has to tap the X at all.
   useEffect(() => {
     if (status !== 'done') return;
-    const timer = setTimeout(() => onDismiss(), 4000);
+    const timer = setTimeout(dismiss, 2000);
     return () => clearTimeout(timer);
   }, [status, onDismiss]);
 
@@ -108,7 +118,7 @@ export default function AiCoach({ items, requestedCount, onComplete, onError, on
         <p className="flex-1 text-xs font-semibold leading-relaxed">
           {status === 'working' ? 'Cards getting ready…' : 'Done'}
         </p>
-        <button onClick={onDismiss} className="shrink-0 text-white/60 hover:text-white" aria-label="Dismiss">
+        <button onClick={dismiss} className="shrink-0 text-white/60 hover:text-white" aria-label="Dismiss">
           <X className="w-3.5 h-3.5" />
         </button>
       </div>

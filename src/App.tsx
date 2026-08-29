@@ -300,11 +300,31 @@ export default function App() {
   // Small helpers used by the mutators below — write (or delete) exactly
   // one item's document in one of the per-account subcollections. No-ops
   // for guests, who have no account/uid to write to.
+  //
+  // Firestore's setDoc throws *synchronously* (not just a rejected promise)
+  // when a field is literally `undefined` — which some callers produce on
+  // purpose for empty optional fields (e.g. an exam's subject/notes/
+  // linkedHistoryId). Callers depend on this function running to completion
+  // before they do their own thing next (e.g. ExamSheet's Save handler
+  // closes the modal right after calling onAddExam/onUpdateExam) — a
+  // synchronous throw here would abort mid-call and leave the UI stuck open.
+  // Stripping undefined values avoids that case entirely, and the try/catch
+  // is a second line of defense so no cloud write, bad or otherwise, can
+  // ever block the UI. The write is best-effort; local state is what the
+  // rest of the app can always count on.
+  const stripUndefined = (data: unknown): unknown => {
+    if (data === null || typeof data !== 'object' || Array.isArray(data)) return data;
+    return Object.fromEntries(Object.entries(data as Record<string, unknown>).filter(([, v]) => v !== undefined));
+  };
   const upsertCloudItem = (sub: string, id: string, data: unknown) => {
     if (!user) return;
-    setDoc(doc(db, 'users', user.uid, sub, id), data as object).catch((err) =>
-      console.error(`Failed to sync ${sub} item`, err)
-    );
+    try {
+      setDoc(doc(db, 'users', user.uid, sub, id), stripUndefined(data) as object).catch((err) =>
+        console.error(`Failed to sync ${sub} item`, err)
+      );
+    } catch (err) {
+      console.error(`Failed to sync ${sub} item`, err);
+    }
   };
   const deleteCloudItem = (sub: string, id: string) => {
     if (!user) return;
@@ -753,9 +773,9 @@ export default function App() {
             </div>
             <button
               onClick={() => setErrorMsg(null)}
-              className="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-2xl transition shadow-sm flex items-center justify-center gap-2"
+              className="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-2xl transition shadow-sm"
             >
-              <X className="w-3.5 h-3.5" /> Dismiss
+              Dismiss
             </button>
           </div>
         </div>
