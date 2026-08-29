@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 
 // Same project as before — Kojlux Study Hub. Video upload/post helpers
 // (uploadBase64File, createVideoPost) have been removed: the "Trending
@@ -20,4 +20,11 @@ const firebaseConfig = {
 export const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+// ExamEvent, RecallCard, and HistoryItem all have optional fields (subject,
+// notes, linkedHistoryId, image, collectionId, sourcePrompt, etc.) that get
+// left as `undefined` in JS whenever the student doesn't fill them in.
+// Firestore's default setDoc() rejects any field set to `undefined` outright
+// ("Unsupported field value: undefined") — ignoreUndefinedProperties tells
+// it to just skip those fields instead of throwing, which is what we want:
+// an exam with no notes should save fine, not fail to save at all.
+export const db = initializeFirestore(app, { ignoreUndefinedProperties: true });
