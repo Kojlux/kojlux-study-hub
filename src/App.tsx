@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection as fsCollection, increment } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { AlertCircle, X, ArrowLeft, GraduationCap, Camera, Bell, CalendarDays } from 'lucide-react';
 
@@ -208,6 +208,112 @@ export default function App() {
     setShowCalendar(true);
   };
 
+  // ---- Cross-device cloud sync ----
+  // Local state is still saved to localStorage first (instant, works
+  // offline), but for a signed-in user it's now ALSO mirrored to Firestore
+  // and kept live in sync with every other device signed into the same
+  // account. With classmates all sharing this app — often from more than
+  // one device each — each history item, recall card, exam, and collection
+  // is its own document in a subcollection (users/{uid}/historyItems/{id},
+  // /recallCards/{id}, /examEvents/{id}, /collections/{id}) rather than one
+  // giant array crammed into a single field. That matters: with one array
+  // field, if two devices happened to save around the same moment, the one
+  // that landed second would silently overwrite everything the first one
+  // had just changed. With separate documents per item, two devices editing
+  // *different* cards, exams, or history entries at the same time simply
+  // both succeed — only an edit to the exact same item can collide, and
+  // even then it only affects that one item, never anyone else's data.
+  // gradeLevel/streak/totalReviews are simple counters/values, small enough
+  // that a single shared profile document (users/{uid}) is fine for them —
+  // totalReviews uses Firestore's atomic increment() below specifically so
+  // two devices finishing a review at the same moment both get counted
+  // instead of one overwriting the other's count.
+  const lastCloudTotalReviewsRef = useRef<number | null>(null);
+  const lastCloudStreakRef = useRef<number | null>(null);
+  const lastCloudGradeLevelRef = useRef<string | null>(null);
+
+  // Small profile fields (gradeLevel, streak, totalReviews) — one shared doc.
+  useEffect(() => {
+    if (!user) return;
+    const unsubscribe = onSnapshot(
+      doc(db, 'users', user.uid),
+      (snap) => {
+        const data = snap.data();
+        if (!data) return;
+        if (typeof data.totalReviews === 'number' && data.totalReviews !== lastCloudTotalReviewsRef.current) {
+          lastCloudTotalReviewsRef.current = data.totalReviews;
+          setTotalReviews(data.totalReviews);
+        }
+        if (typeof data.streak === 'number' && data.streak !== lastCloudStreakRef.current) {
+          lastCloudStreakRef.current = data.streak;
+          setStreak(data.streak);
+        }
+        if (typeof data.gradeLevel === 'string' && data.gradeLevel !== lastCloudGradeLevelRef.current) {
+          lastCloudGradeLevelRef.current = data.gradeLevel;
+          setGradeLevel(data.gradeLevel);
+        }
+      },
+      (err) => console.error('Profile sync listener failed', err)
+    );
+    return () => unsubscribe();
+  }, [user]);
+
+  // Per-item collections — history, recall cards, exams, saved-card folders.
+  // Each listener just replaces local state with whatever's currently in
+  // that subcollection; individual mutators (addExam, updateRecallCard,
+  // etc., defined further down) write straight to the matching document the
+  // moment the user does something, so there's no array-diffing here.
+  useEffect(() => {
+    if (!user) return;
+    const unsubHistory = onSnapshot(
+      fsCollection(db, 'users', user.uid, 'historyItems'),
+      (snap) => {
+        const items = snap.docs.map((d) => d.data() as HistoryItem);
+        items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        setHistory(items.slice(0, 50));
+      },
+      (err) => console.error('History sync failed', err)
+    );
+    const unsubRecall = onSnapshot(
+      fsCollection(db, 'users', user.uid, 'recallCards'),
+      (snap) => setRecallCards(snap.docs.map((d) => d.data() as RecallCard)),
+      (err) => console.error('Recall card sync failed', err)
+    );
+    const unsubExams = onSnapshot(
+      fsCollection(db, 'users', user.uid, 'examEvents'),
+      (snap) => setExamEvents(snap.docs.map((d) => d.data() as ExamEvent)),
+      (err) => console.error('Exam sync failed', err)
+    );
+    const unsubCollections = onSnapshot(
+      fsCollection(db, 'users', user.uid, 'collections'),
+      (snap) => setCollections(snap.docs.map((d) => d.data() as Collection)),
+      (err) => console.error('Collections sync failed', err)
+    );
+    return () => {
+      unsubHistory();
+      unsubRecall();
+      unsubExams();
+      unsubCollections();
+    };
+  }, [user]);
+
+  // Small helpers used by the mutators below — write (or delete) exactly
+  // one item's document in one of the per-account subcollections. No-ops
+  // for guests, who have no account/uid to write to.
+  const upsertCloudItem = (sub: string, id: string, data: unknown) => {
+    if (!user) return;
+    setDoc(doc(db, 'users', user.uid, sub, id), data as object).catch((err) =>
+      console.error(`Failed to sync ${sub} item`, err)
+    );
+  };
+  const deleteCloudItem = (sub: string, id: string) => {
+    if (!user) return;
+    deleteDoc(doc(db, 'users', user.uid, sub, id)).catch((err) =>
+      console.error(`Failed to delete ${sub} item`, err)
+    );
+  };
+
+
   // Load this scope's data exactly once when it first becomes active (a new
   // sign-in, or dropping into guest mode). Re-running only on a genuine
   // scope change — not on every render — is what keeps this from re-loading
@@ -224,6 +330,9 @@ export default function App() {
     setStreak(loadLocal(scopedKey('kojlux_streak', scopeId), 0));
   }, [scopeId]);
 
+  // These just keep the local offline cache warm — actual cloud sync now
+  // happens per-item inside the mutators below (addExam, updateRecallCard,
+  // etc.), not by watching these arrays and pushing the whole thing.
   useEffect(() => {
     if (!scopeId) return;
     saveLocal(scopedKey('kojlux_history', scopeId), history);
@@ -276,27 +385,93 @@ export default function App() {
     examEventsRef.current = examEvents;
   }, [examEvents]);
 
-  const addHistory = (item: HistoryItem) => setHistory((prev) => [item, ...prev].slice(0, 50));
-  const addRecallCards = (cards: RecallCard[]) => setRecallCards((prev) => [...prev, ...cards]);
-  const addExam = (exam: ExamEvent) => setExamEvents((prev) => [...prev, exam]);
-  const updateExam = (exam: ExamEvent) => setExamEvents((prev) => prev.map((e) => (e.id === exam.id ? exam : e)));
-  const deleteExam = (id: string) => setExamEvents((prev) => prev.filter((e) => e.id !== id));
-  const addCollection = (collection: Collection) => setCollections((prev) => [...prev, collection]);
-  const renameCollection = (id: string, name: string) =>
-    setCollections((prev) => prev.map((c) => (c.id === id ? { ...c, name } : c)));
+  const addHistory = (item: HistoryItem) => {
+    setHistory((prev) => {
+      const combined = [item, ...prev];
+      const next = combined.slice(0, 50);
+      // Anything that falls off the 50-item cap should stop existing in the
+      // cloud too, or it would just sit there taking up space forever.
+      combined.slice(50).forEach((h) => deleteCloudItem('historyItems', h.id));
+      return next;
+    });
+    upsertCloudItem('historyItems', item.id, item);
+  };
+  const addRecallCards = (cards: RecallCard[]) => {
+    setRecallCards((prev) => [...prev, ...cards]);
+    cards.forEach((c) => upsertCloudItem('recallCards', c.id, c));
+  };
+  const addExam = (exam: ExamEvent) => {
+    setExamEvents((prev) => [...prev, exam]);
+    upsertCloudItem('examEvents', exam.id, exam);
+  };
+  const updateExam = (exam: ExamEvent) => {
+    setExamEvents((prev) => prev.map((e) => (e.id === exam.id ? exam : e)));
+    upsertCloudItem('examEvents', exam.id, exam);
+  };
+  const deleteExam = (id: string) => {
+    setExamEvents((prev) => prev.filter((e) => e.id !== id));
+    deleteCloudItem('examEvents', id);
+  };
+  const addCollection = (collection: Collection) => {
+    setCollections((prev) => [...prev, collection]);
+    upsertCloudItem('collections', collection.id, collection);
+  };
+  const renameCollection = (id: string, name: string) => {
+    setCollections((prev) => {
+      const next = prev.map((c) => (c.id === id ? { ...c, name } : c));
+      const renamed = next.find((c) => c.id === id);
+      if (renamed) upsertCloudItem('collections', id, renamed);
+      return next;
+    });
+  };
   // Deleting a collection never deletes the cards inside it — they just
   // become un-filed (collectionId cleared) but stay in the saved library.
   const deleteCollection = (id: string) => {
     setCollections((prev) => prev.filter((c) => c.id !== id));
-    setRecallCards((prev) => prev.map((c) => (c.collectionId === id ? { ...c, collectionId: undefined } : c)));
+    deleteCloudItem('collections', id);
+    setRecallCards((prev) =>
+      prev.map((c) => {
+        if (c.collectionId !== id) return c;
+        const updated = { ...c, collectionId: undefined };
+        upsertCloudItem('recallCards', updated.id, updated);
+        return updated;
+      })
+    );
   };
-  const updateRecallCard = (updated: RecallCard) =>
+  const updateRecallCard = (updated: RecallCard) => {
     setRecallCards((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+    upsertCloudItem('recallCards', updated.id, updated);
+  };
+  // ReviewQueue hands back the whole post-review array rather than a single
+  // changed card, so this diffs it against what's currently in state to
+  // find just the cards that actually changed (or were added/removed) and
+  // only writes those — not the entire set on every review.
   const updateRecallCards = (updated: RecallCard[]) => {
+    const prevById = new Map(recallCards.map((c) => [c.id, c]));
+    const updatedIds = new Set(updated.map((c) => c.id));
+    updated.forEach((c) => {
+      const prev = prevById.get(c.id);
+      if (!prev || JSON.stringify(prev) !== JSON.stringify(c)) {
+        upsertCloudItem('recallCards', c.id, c);
+      }
+    });
+    recallCards.forEach((c) => {
+      if (!updatedIds.has(c.id)) deleteCloudItem('recallCards', c.id);
+    });
     setRecallCards(updated);
     setTotalReviews((n) => n + 1);
+    if (user) {
+      // Firestore's atomic increment() — not "read totalReviews, add one,
+      // write it back" — so two devices finishing a review at the same
+      // moment both actually get counted instead of one clobbering the
+      // other's count.
+      setDoc(doc(db, 'users', user.uid), { totalReviews: increment(1) }, { merge: true }).catch((err) =>
+        console.error('Failed to sync total reviews', err)
+      );
+    }
     bumpStreak();
   };
+
 
   // A day counts toward the streak the first time the student completes any
   // review or quiz that day — tracked by date string, not a running timer.
@@ -312,6 +487,7 @@ export default function App() {
     localStorage.setItem('kojlux_last_active_day', todayKey);
     if (scopeId) saveLocal(scopedKey('kojlux_streak', scopeId), nextStreak);
     if (user) {
+      lastCloudStreakRef.current = nextStreak;
       updateDoc(doc(db, 'users', user.uid), { streak: nextStreak }).catch((err) =>
         console.error('Failed to sync streak', err)
       );
@@ -322,6 +498,7 @@ export default function App() {
     setGradeLevel(g);
     if (scopeId) saveLocal(scopedKey('kojlux_grade_level', scopeId), g);
     if (user) {
+      lastCloudGradeLevelRef.current = g;
       setDoc(doc(db, 'users', user.uid), { gradeLevel: g }, { merge: true }).catch((err) =>
         console.error('Failed to sync grade level', err)
       );
@@ -352,6 +529,9 @@ export default function App() {
     setShowAuthScreen(false);
     setGuestBannerDismissed(false);
     loadedScopeRef.current = null;
+    lastCloudTotalReviewsRef.current = null;
+    lastCloudStreakRef.current = null;
+    lastCloudGradeLevelRef.current = null;
   };
 
   // ---- Errors ----
@@ -510,7 +690,9 @@ export default function App() {
               onSignOut={handleSignOut}
               onSignIn={() => setShowAuthScreen(true)}
               exams={examEvents}
-              onOpenCalendar={openCalendar}
+              history={history}
+              onAddExam={addExam}
+              onUpdateExam={updateExam}
               onDeleteExam={deleteExam}
             />
           )}
