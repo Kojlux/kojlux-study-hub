@@ -61,7 +61,7 @@ export default function ProfileScreen({
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4">
           <Flame className="w-4.5 h-4.5 text-focus-primary" />
           <p className="text-xl font-black mt-1.5 text-slate-900 dark:text-white">{streak}</p>
@@ -105,7 +105,7 @@ export default function ProfileScreen({
           onClick={() => setMenuOpen(false)}
         />
         <div
-          className={`absolute top-0 right-0 h-full w-[82%] max-w-xs bg-focus-bg dark:bg-slate-950 shadow-2xl flex flex-col transition-transform duration-300 ease-out ${
+          className={`absolute top-0 right-0 h-full w-[82%] max-w-xs sm:max-w-sm bg-focus-bg dark:bg-slate-950 shadow-2xl flex flex-col transition-transform duration-300 ease-out ${
             menuOpen ? 'translate-x-0' : 'translate-x-full'
           }`}
         >

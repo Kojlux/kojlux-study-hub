@@ -36,7 +36,7 @@ export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCard
   // that's the more common first action; a file attachment hides this
   // toggle entirely (see TopicPicker's hasFile prop) since the file is
   // always the source material once one's attached.
-  const [inputMode, setInputMode] = useState<'topic' | 'notes'>('topic');
+  const [inputMode, setInputMode] = useState<'topic' | 'notes'>('notes');
   const [subject, setSubject] = useState<Subject>('general');
   // number | '' rather than always-a-number so the field can genuinely go
   // empty while typing (e.g. backspacing to retype) instead of snapping
@@ -367,7 +367,7 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
             <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">{quizData.passage}</p>
           </div>
         )}
-        <div className="space-y-3">
+        <div className="space-y-3 md:space-y-0 md:grid md:grid-cols-2 md:gap-3">
           {quizData.questions.map((q, i) => {
             const ev = evaluation.evaluations.find((e) => e.questionIndex === i);
             return (

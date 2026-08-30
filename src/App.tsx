@@ -22,7 +22,7 @@ import { registerPushForUser } from './lib/push';
 import AuthScreen from './components/AuthScreen';
 import StudyHome from './components/StudyHome';
 import QuizBuilder from './components/QuizBuilder';
-import NotesSummarizer from './components/NotesSummarizer';
+import NoteCraft from './components/NoteCraft';
 import ReviewQueue from './components/ReviewQueue';
 import ProfileScreen from './components/ProfileScreen';
 import VisualizerScreen from './components/VisualizerScreen';
@@ -34,7 +34,7 @@ const SCREEN_TITLES: Record<NavTab, string> = {
   quiz: 'Create',
   visualizer: 'Concept Visualizer',
   review: 'Review',
-  profile: 'Profile',
+  profile: 'Dashboard',
 };
 
 export default function App() {
@@ -587,7 +587,17 @@ export default function App() {
 
   return (
     <div className={`min-h-screen bg-focus-bg dark:bg-slate-950 ${darkMode ? 'dark' : ''}`}>
-      <div className="max-w-md mx-auto min-h-screen flex flex-col">
+      {/* Nav renders itself as a bottom bar on phones and a left rail from
+          md up — see BottomNav.tsx. It's fixed/full-height on desktop, so
+          it lives outside the centered content column below. */}
+      <BottomNav active={activeTab} dueCount={dueCount} onChange={setActiveTab} />
+
+      <div className="md:pl-20 lg:pl-56 min-h-screen flex flex-col">
+        {/* Content stays a comfortable single reading column on phones
+            (max-w-md) and gradually claims more of the available width as
+            the viewport grows, instead of staying pinned to phone-width on
+            every screen size. */}
+        <div className="w-full max-w-md md:max-w-3xl lg:max-w-5xl xl:max-w-6xl mx-auto min-h-screen flex flex-col">
         <header className="sticky top-0 z-30 bg-focus-bg/90 dark:bg-slate-950/90 backdrop-blur-md px-5 pt-6 pb-3 flex items-center justify-between gap-3">
           <h1 className="text-sm font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
             {SCREEN_TITLES[activeTab]}
@@ -649,7 +659,7 @@ export default function App() {
           </div>
         )}
 
-        <main className="flex-1 px-5 pb-28">
+        <main className="flex-1 px-5 pb-28 md:pb-10">
           {activeTab === 'home' && (
             <StudyHome
               username={username}
@@ -717,8 +727,7 @@ export default function App() {
             />
           )}
         </main>
-
-        <BottomNav active={activeTab} dueCount={dueCount} onChange={setActiveTab} />
+        </div>
       </div>
 
       {/* Study Calendar isn't a bottom-nav tab — there's no room left on that
@@ -726,8 +735,8 @@ export default function App() {
           the Home header instead, the same pattern already used below for
           errorMsg and for AuthScreen earlier in this file. */}
       {showCalendar && (
-        <div className="fixed inset-0 z-[150] bg-focus-bg dark:bg-slate-950 overflow-y-auto">
-          <div className="max-w-md mx-auto min-h-screen flex flex-col">
+        <div className="fixed inset-0 z-[150] bg-focus-bg dark:bg-slate-950 overflow-y-auto md:pl-20 lg:pl-56">
+          <div className="max-w-md md:max-w-3xl lg:max-w-5xl mx-auto min-h-screen flex flex-col">
             <header className="sticky top-0 z-10 bg-focus-bg/90 dark:bg-slate-950/90 backdrop-blur-md px-5 pt-6 pb-3 flex items-center gap-3">
               <button
                 onClick={() => setShowCalendar(false)}
@@ -784,8 +793,8 @@ export default function App() {
   );
 }
 
-// The Quiz tab hosts both the Quiz Builder and, via an in-screen toggle, the
-// Notes Summarizer — the two started as separate nav destinations in the old
+// The Quiz tab hosts both the Quiz Builder and, via an in-screen toggle,
+// NoteCraft — the two started as separate nav destinations in the old
 // five-tab layout, but user testing on educational apps consistently shows
 // two closely related "create study material" flows are easier to find
 // bundled with a sub-toggle than as separate top-level destinations that
@@ -798,11 +807,11 @@ function QuizBuilderOrSummarizer(props: {
   onError: (msg: string) => void;
   onGoToVisualizer: () => void;
 }) {
-  const [subTab, setSubTab] = useState<'quiz' | 'summarizer'>('quiz');
+  const [subTab, setSubTab] = useState<'quiz' | 'notecraft'>('quiz');
   return (
     <div className="space-y-5">
       <div className="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
-        {(['quiz', 'summarizer'] as const).map((t) => (
+        {(['quiz', 'notecraft'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setSubTab(t)}
@@ -810,14 +819,14 @@ function QuizBuilderOrSummarizer(props: {
               subTab === t ? 'bg-white dark:bg-slate-700 text-focus-primary shadow-sm' : 'text-slate-500 dark:text-slate-400'
             }`}
           >
-            {t === 'quiz' ? 'Quiz Builder' : 'Summarizer'}
+            {t === 'quiz' ? 'Quiz Builder' : 'NoteCraft'}
           </button>
         ))}
       </div>
       {subTab === 'quiz' ? (
         <QuizBuilder gradeLevel={props.gradeLevel} onSaveHistory={props.onSaveHistory} onAddRecallCards={props.onAddRecallCards} onError={props.onError} />
       ) : (
-        <NotesSummarizer
+        <NoteCraft
           gradeLevel={props.gradeLevel}
           history={props.history}
           onSaveHistory={props.onSaveHistory}

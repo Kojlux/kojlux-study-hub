@@ -849,7 +849,7 @@ Rules:
   return (
     <div className="flex-1 flex flex-col gap-3 animate-fade-in text-left h-full min-h-[640px]">
       {/* Mobile-only toggle tabs — desktop shows chat and visualization side by side */}
-      <div className="md:hidden flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800 shrink-0">
+      <div className="lg:hidden flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-900 rounded-2xl border border-slate-200/60 dark:border-slate-800 shrink-0">
         <button
           type="button"
           onClick={() => setMobileView('chat')}
@@ -877,10 +877,10 @@ Rules:
         </button>
       </div>
 
-      <div className="flex-1 flex flex-col md:flex-row gap-3 min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row gap-3 min-h-0">
 
         {/* ===================== CHAT PANE ===================== */}
-        <div className={`${mobileView === 'chat' ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-[400px] lg:w-[440px] md:shrink-0 min-h-0 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl overflow-hidden`}>
+        <div className={`${mobileView === 'chat' ? 'flex' : 'hidden'} lg:flex flex-col w-full lg:w-[380px] xl:w-[440px] lg:shrink-0 min-h-0 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl overflow-hidden`}>
 
           {/* Chat header */}
           <div className="shrink-0 flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-100 dark:border-slate-800">
@@ -1046,7 +1046,7 @@ Rules:
         </div>
 
         {/* ===================== VISUALIZATION PANE ===================== */}
-        <div className={`${mobileView === 'visualization' ? 'flex' : 'hidden'} md:flex flex-col flex-1 min-h-0 bg-slate-50/60 dark:bg-slate-950/40 border border-slate-200/60 dark:border-slate-800 rounded-3xl overflow-hidden`}>
+        <div className={`${mobileView === 'visualization' ? 'flex' : 'hidden'} lg:flex flex-col flex-1 min-h-0 bg-slate-50/60 dark:bg-slate-950/40 border border-slate-200/60 dark:border-slate-800 rounded-3xl overflow-hidden`}>
           {vizData ? (
             <div className="flex-1 flex flex-col gap-4 p-4 overflow-y-auto">
 

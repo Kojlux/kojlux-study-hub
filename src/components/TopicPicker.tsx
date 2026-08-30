@@ -5,7 +5,7 @@ import { Subject, SUBJECT_OPTIONS } from '../lib/subjects';
 // ---------------------------------------------------------------------------
 // SubjectChips — a row of tappable subject chips. Used standalone in the
 // Visualizer (a chat, where a "topic vs. notes" mode toggle doesn't apply)
-// and embedded inside TopicPicker below for Quiz Builder / Notes Summarizer.
+// and embedded inside TopicPicker below for Quiz Builder / NoteCraft.
 // ---------------------------------------------------------------------------
 export function SubjectChips({
   subject,
@@ -37,7 +37,7 @@ export function SubjectChips({
 
 // ---------------------------------------------------------------------------
 // TopicPicker — the dedicated topic/notes entry point for Quiz Builder and
-// Notes Summarizer, replacing a single plain textarea + a length/punctuation
+// NoteCraft, replacing a single plain textarea + a length/punctuation
 // guess (looksLikeTopicPhrase) about what the student meant. Instead the
 // student explicitly picks:
 //   - "Describe a topic": what to generate material ABOUT (an instruction) —
@@ -48,7 +48,7 @@ export function SubjectChips({
 // previously anything over ~4 words/40 characters was silently treated as
 // source material to summarize/quiz FROM rather than a description of what
 // to generate, no matter how clearly it read as an instruction. Now the
-// mode is explicit, so the caller (QuizBuilder/NotesSummarizer) can send an
+// mode is explicit, so the caller (QuizBuilder/NoteCraft) can send an
 // entirely different, correctly-phrased instruction to the AI for each case
 // instead of guessing.
 // ---------------------------------------------------------------------------
@@ -84,8 +84,8 @@ export default function TopicPicker({
         <div className="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
           {(
             [
-              { id: 'topic' as const, label: 'Describe a topic', icon: Type },
               { id: 'notes' as const, label: 'Paste notes', icon: FileText },
+              { id: 'topic' as const, label: 'Describe a topic', icon: Type },
             ]
           ).map(({ id, label, icon: Icon }) => (
             <button

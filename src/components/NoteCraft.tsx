@@ -22,12 +22,12 @@ interface Props {
   onGoToVisualizer: () => void;
 }
 
-export default function NotesSummarizer({ gradeLevel, history, onSaveHistory, onAddRecallCards, onError, onGoToVisualizer }: Props) {
+export default function NoteCraft({ gradeLevel, history, onSaveHistory, onAddRecallCards, onError, onGoToVisualizer }: Props) {
   const [file, setFile] = useState<StudyFile | null>(null);
   const [textInput, setTextInput] = useState('');
   // See TopicPicker.tsx for why this replaced the old length/punctuation
   // guess about whether textInput was a topic or pasted notes.
-  const [inputMode, setInputMode] = useState<'topic' | 'notes'>('topic');
+  const [inputMode, setInputMode] = useState<'topic' | 'notes'>('notes');
   const [subject, setSubject] = useState<Subject>('general');
   const [detailLevel, setDetailLevel] = useState<'concise' | 'standard' | 'thorough'>('standard');
   const [loading, setLoading] = useState(false);
@@ -456,27 +456,29 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
             </div>
           )}
 
-          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-2">
-            <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Key points</p>
-            {summaryData.keyPoints.map((kp, i) => (
-              <div key={i} className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300">
-                <span className="w-1.5 h-1.5 rounded-full bg-focus-primary mt-1.5 shrink-0" />
-                <span>{kp}</span>
-              </div>
-            ))}
-          </div>
-
-          {summaryData.glossary?.length > 0 && (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-2.5">
-              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Glossary</p>
-              {summaryData.glossary.map((g, i) => (
-                <div key={i}>
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100">{g.term}: </span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">{g.definition}</span>
+          <div className="md:grid md:grid-cols-2 md:gap-4 md:items-start space-y-4 md:space-y-0">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-2">
+              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Key points</p>
+              {summaryData.keyPoints.map((kp, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-focus-primary mt-1.5 shrink-0" />
+                  <span>{kp}</span>
                 </div>
               ))}
             </div>
-          )}
+
+            {summaryData.glossary?.length > 0 && (
+              <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-2.5">
+                <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Glossary</p>
+                {summaryData.glossary.map((g, i) => (
+                  <div key={i}>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100">{g.term}: </span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{g.definition}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="bg-focus-primary/5 dark:bg-focus-primary/10 border border-focus-primary/20 rounded-2xl p-4 flex items-center gap-2.5 print:hidden">
             <BookOpenCheck className="w-4.5 h-4.5 text-focus-primary shrink-0" />
