@@ -6,6 +6,9 @@ import {
   MessageCircle, Send, Bot, User as UserIcon
 } from 'lucide-react';
 import { VisualizationResponse, HistoryItem } from '../types';
+import { Subject, subjectPromptHint, DIAGRAM_NODE_IDS } from '../lib/subjects';
+import { SubjectChips } from './TopicPicker';
+import { renderDiagramNode } from './DiagramAssets';
 
 interface VisualizerProps {
   darkMode: boolean;
@@ -53,9 +56,11 @@ async function generateContentWithFallback(apiKeys: (string | undefined)[], requ
 
 const DEMO_PRESETS = [
   { label: "Solar eclipse simulation", query: "How does a solar eclipse happen" },
-  { label: "Photosynthesis cycle", query: "How does photosynthesis happen" },
+  { label: "Label a plant's parts", query: "Diagram the parts of a plant: roots, stem, leaves, flower" },
   { label: "Solve a quadratic equation", query: "Solve: x^2 - 5x + 6 = 0" },
-  { label: "Plot an algebraic function", query: "Graph: y = -2x + 4" }
+  { label: "Plot an algebraic function", query: "Graph: y = -2x + 4" },
+  { label: "Map a historical route", query: "Map the major stops along the Silk Road" },
+  { label: "Chart population growth", query: "Chart world population growth by decade since 1950" },
 ];
 
 export default function VisualizerScreen({
@@ -82,6 +87,13 @@ export default function VisualizerScreen({
   // Mobile-only toggle between the chat and the visualization panel — desktop
   // shows both side by side, so this only matters below the md breakpoint.
   const [mobileView, setMobileView] = useState<'chat' | 'visualization'>('chat');
+
+  // Subject-Aware Content Engine: a chip picker above the composer, same
+  // component/vocabulary as Quiz Builder and Notes Summarizer (see
+  // lib/subjects.ts). No topic/notes mode toggle here — this is a chat, so
+  // every message is already unambiguously "what to do next", not source
+  // material to paste in.
+  const [subject, setSubject] = useState<Subject>('general');
 
   // Reports a failure to the app-wide blocking error modal (falls back to console
   // logging only if no handler was supplied by the parent).
@@ -163,10 +175,19 @@ export default function VisualizerScreen({
       // Schema mirrors VisualizationResponse / VizStep / SVGShape / MathHighlight /
       // GraphConfig exactly as defined in types.ts, so a "visualization" turn
       // never fails to satisfy what the renderers below expect.
+      const subjectClause = subjectPromptHint(subject);
+      // Token-efficient realistic graphics: the model NEVER returns raw
+      // SVG/markup for a diagram — only a "node" shape pointing at a fixed,
+      // pre-built local asset id (rendered by components/DiagramAssets.tsx).
+      // Adding a nicer-looking asset later costs zero extra output tokens,
+      // since the schema the model fills in never changes.
+      const nodeIdList = DIAGRAM_NODE_IDS.join(', ');
+
       const systemInstruction = `You are Kojlux's AI concept visualizer and tutor, in a continuous chat with a "${gradeLevel}" level student.
 ${activeVizContext}
+${subjectClause}
 For every message the student sends, choose exactly one response type:
-- "visualization": the student is asking you to build, show, graph, solve, or animate a NEW concept, equation, or system — including asking for something different than what's currently loaded.
+- "visualization": the student is asking you to build, show, graph, solve, diagram, map, chart, or animate a NEW concept, equation, or system — including asking for something different than what's currently loaded.
 - "text": the student is asking a follow-up or clarifying question about the visualization CURRENTLY on screen (e.g. "why does that happen", "explain step 2 more simply", "give a real-world example"). Do not rebuild the visualization for these — just explain, in plain conversational language appropriate for their level.
 Return ONLY valid JSON (no markdown fences, no commentary) matching exactly this TypeScript shape:
 {
@@ -174,13 +195,13 @@ Return ONLY valid JSON (no markdown fences, no commentary) matching exactly this
   "textReply": string,
   "visualization": {
     "title": string,
-    "type": "animation" | "math" | "graph",
+    "type": "animation" | "math" | "graph" | "diagram" | "map" | "dataset",
     "steps": [
       {
         "label": string,
         "explanation": string,
         "visualElements": {
-          "shapes": [ { "type": "circle" | "rect" | "line" | "arrow" | "text", "cx": number, "cy": number, "r": number, "x": number, "y": number, "width": number, "height": number, "x1": number, "y1": number, "x2": number, "y2": number, "color": string, "label": string, "text": string, "strokeWidth": number } ],
+          "shapes": [ { "type": "circle" | "rect" | "line" | "arrow" | "text" | "node", "cx": number, "cy": number, "r": number, "x": number, "y": number, "width": number, "height": number, "x1": number, "y1": number, "x2": number, "y2": number, "color": string, "label": string, "text": string, "strokeWidth": number, "nodeId": string } ],
           "mathHighlight": { "expression": string, "highlight": string, "note": string }
         }
       }
@@ -189,14 +210,22 @@ Return ONLY valid JSON (no markdown fences, no commentary) matching exactly this
       "equation": string,
       "xMin": number, "xMax": number, "yMin": number, "yMax": number,
       "points": [ { "x": number, "y": number, "label": string } ]
-    }
+    },
+    "regions": [ { "id": string, "name": string, "lat": number, "lng": number, "note": string } ],
+    "dataset": { "chartType": "bar" | "line" | "scatter", "labels": [string, ...], "series": [ { "name": string, "values": [number, ...] } ] }
   }
 }
 Rules:
 - "textReply" is always included: a short (1-3 sentence) reply, even when responseType is "visualization" (e.g. "Here's how photosynthesis works, step by step.").
 - Include the top-level "visualization" key ONLY when responseType is "visualization" — omit it entirely for "text".
-- Within "visualization": include 3-6 steps that build on each other; shape coordinates sit within a 300x200 canvas; include "visualElements.shapes" only for type "animation" and "visualElements.mathHighlight" only for type "math" (omit the other); include "graphConfig" only when type is "graph".
-- Never invent extra top-level fields.`;
+- Within "visualization": include 3-6 steps that build on each other; shape coordinates sit within a 300x200 canvas.
+- Use type "diagram" for a realistic labeled diagram of a system/process (biology, chemistry, anatomy, etc.) — for these steps, use ONLY "node" shapes, and "nodeId" MUST be chosen from exactly this list (never invent a new id, never return raw SVG or markup): ${nodeIdList}. Position/scale nodes with x/y/width/height only; do not set "color" on a node unless you want to override its default look.
+- Use type "animation" for a general step-by-step process using plain circle/rect/line/arrow/text shapes (no nodeId) — include "visualElements.shapes" for these.
+- Use type "math" for solving/rearranging an equation — include "visualElements.mathHighlight" only.
+- Use type "graph" for plotting a function/data on x-y axes — include "graphConfig" only.
+- Use type "map" for geography content — include top-level "regions" (2-6 real places with approximate real coordinates), and omit "graphConfig"/"dataset"/shapes.
+- Use type "dataset" for a numeric table/chart (math/data science) — include top-level "dataset", and omit the others.
+- Never invent extra top-level fields beyond what's shown above.`;
 
       const contents = [
         { role: 'user', parts: [{ text: systemInstruction }] },
@@ -587,9 +616,184 @@ Rules:
                 );
               }
 
+              // Token-efficient realistic graphics: the model sends only a
+              // nodeId + coordinates; the actual detailed rendering (a real
+              // stem/root/leaf/atom/etc. instead of a plain colored bar)
+              // lives entirely client-side — see components/DiagramAssets.tsx.
+              if (shape.type === 'node' && shape.nodeId) {
+                return renderDiagramNode(
+                  shape.nodeId,
+                  {
+                    x: shape.x ?? 0,
+                    y: shape.y ?? 0,
+                    width: shape.width ?? 40,
+                    height: shape.height ?? 40,
+                    label: shape.label,
+                    color: shape.color,
+                    darkMode,
+                  },
+                  key
+                );
+              }
+
               return null;
             })}
           </svg>
+        </div>
+      </div>
+    );
+  };
+
+  // GEOGRAPHY: lightweight region/coordinate plotter. No map tile library
+  // involved — regions are real lat/lng from the AI, projected with a
+  // simple equirectangular formula onto a flat SVG canvas locally. This is
+  // the same "AI sends coordinates, client renders" pattern as the graph
+  // and node-diagram widgets: no map imagery ever comes from the model.
+  const renderMapWidget = () => {
+    if (!vizData?.regions || vizData.regions.length === 0) return null;
+    const width = 300;
+    const height = 200;
+    // Equirectangular projection, auto-framed to the regions present so a
+    // handful of nearby places aren't lost in a full world view.
+    const lats = vizData.regions.map((r) => r.lat);
+    const lngs = vizData.regions.map((r) => r.lng);
+    const latPad = 8;
+    const lngPad = 8;
+    const minLat = Math.min(...lats) - latPad;
+    const maxLat = Math.max(...lats) + latPad;
+    const minLng = Math.min(...lngs) - lngPad;
+    const maxLng = Math.max(...lngs) + lngPad;
+    const projX = (lng: number) => ((lng - minLng) / (maxLng - minLng || 1)) * width;
+    const projY = (lat: number) => height - ((lat - minLat) / (maxLat - minLat || 1)) * height;
+
+    return (
+      <div className="w-full flex flex-col items-center gap-3">
+        <div className="relative w-full aspect-[3/2] max-w-md bg-sky-50 dark:bg-slate-950 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-2 flex items-center justify-center overflow-hidden">
+          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full">
+            {/* Faint lat/lng grid for orientation, not a real map base layer */}
+            {[0.25, 0.5, 0.75].map((f) => (
+              <React.Fragment key={f}>
+                <line x1={width * f} y1={0} x2={width * f} y2={height} stroke={darkMode ? '#1e293b' : '#e0f2fe'} strokeWidth={1} />
+                <line x1={0} y1={height * f} x2={width} y2={height * f} stroke={darkMode ? '#1e293b' : '#e0f2fe'} strokeWidth={1} />
+              </React.Fragment>
+            ))}
+            {vizData.regions.map((r, i) => {
+              const px = projX(r.lng);
+              const py = projY(r.lat);
+              return (
+                <g key={r.id || i}>
+                  <circle cx={px} cy={py} r={5} fill="#ef4444" stroke="#7f1d1d" strokeWidth={1} />
+                  <circle cx={px} cy={py} r={9} fill="#ef4444" opacity={0.15} />
+                  <text x={px} y={py - 11} textAnchor="middle" className="text-[8.5px] font-extrabold select-none" fill={darkMode ? '#f1f5f9' : '#0f172a'}>
+                    {r.name}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+        <div className="w-full max-w-md space-y-1.5">
+          {vizData.regions.map((r, i) => (
+            <div key={r.id || i} className="flex items-start gap-2 text-xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1.5 shrink-0" />
+              <span>
+                <span className="font-bold text-slate-700 dark:text-slate-200">{r.name}</span>
+                {r.note ? <span className="text-slate-400"> — {r.note}</span> : null}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // MATH/DATA SCIENCE: small numeric dataset rendered as a local bar/line/
+  // scatter chart. Only the numbers/labels come from the AI — the chart
+  // drawing itself is plain local SVG, same pattern as the graph plotter.
+  const renderDatasetWidget = () => {
+    const ds = vizData?.dataset;
+    if (!ds || ds.series.length === 0) return null;
+    const width = 300;
+    const height = 200;
+    const padding = { top: 10, right: 10, bottom: 24, left: 28 };
+    const plotW = width - padding.left - padding.right;
+    const plotH = height - padding.top - padding.bottom;
+    const allValues = ds.series.flatMap((s) => s.values);
+    const maxVal = Math.max(...allValues, 0);
+    const minVal = Math.min(...allValues, 0);
+    const scaleY = (v: number) => padding.top + plotH - ((v - minVal) / (maxVal - minVal || 1)) * plotH;
+    const seriesColors = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#0ea5e9'];
+    const n = ds.labels.length || 1;
+    const groupWidth = plotW / n;
+
+    return (
+      <div className="w-full flex flex-col items-center gap-3">
+        <div className="relative w-full aspect-[3/2] max-w-md bg-white dark:bg-slate-950 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-2 flex items-center justify-center overflow-hidden">
+          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full">
+            <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + plotH} stroke={darkMode ? '#334155' : '#cbd5e1'} strokeWidth={1} />
+            <line x1={padding.left} y1={padding.top + plotH} x2={width - padding.right} y2={padding.top + plotH} stroke={darkMode ? '#334155' : '#cbd5e1'} strokeWidth={1} />
+
+            {ds.chartType === 'bar' &&
+              ds.series.map((s, si) =>
+                s.values.map((v, i) => {
+                  const barW = (groupWidth * 0.7) / ds.series.length;
+                  const gx = padding.left + i * groupWidth + groupWidth * 0.15 + si * barW;
+                  const y0 = scaleY(0);
+                  const y1 = scaleY(v);
+                  return (
+                    <rect
+                      key={`${si}-${i}`}
+                      x={gx}
+                      y={Math.min(y0, y1)}
+                      width={Math.max(barW - 1.5, 1)}
+                      height={Math.max(Math.abs(y1 - y0), 1)}
+                      fill={seriesColors[si % seriesColors.length]}
+                      rx={1.5}
+                    />
+                  );
+                })
+              )}
+
+            {ds.chartType !== 'bar' &&
+              ds.series.map((s, si) => {
+                const points = s.values.map((v, i) => {
+                  const gx = padding.left + i * groupWidth + groupWidth / 2;
+                  return `${gx},${scaleY(v)}`;
+                });
+                return (
+                  <g key={si}>
+                    {ds.chartType === 'line' && (
+                      <polyline points={points.join(' ')} fill="none" stroke={seriesColors[si % seriesColors.length]} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+                    )}
+                    {s.values.map((v, i) => {
+                      const gx = padding.left + i * groupWidth + groupWidth / 2;
+                      return <circle key={i} cx={gx} cy={scaleY(v)} r={3} fill={seriesColors[si % seriesColors.length]} />;
+                    })}
+                  </g>
+                );
+              })}
+
+            {ds.labels.map((l, i) => (
+              <text
+                key={i}
+                x={padding.left + i * groupWidth + groupWidth / 2}
+                y={height - 6}
+                textAnchor="middle"
+                className="text-[7px] font-mono select-none"
+                fill={darkMode ? '#94a3b8' : '#64748b'}
+              >
+                {l.length > 8 ? `${l.slice(0, 7)}…` : l}
+              </text>
+            ))}
+          </svg>
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 justify-center">
+          {ds.series.map((s, si) => (
+            <div key={si} className="flex items-center gap-1.5 text-[10.5px] font-semibold text-slate-500 dark:text-slate-400">
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: seriesColors[si % seriesColors.length] }} />
+              {s.name}
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -719,6 +923,14 @@ Rules:
             </select>
           </div>
 
+          {/* Subject picker — see lib/subjects.ts; same chips as Quiz Builder
+              and Notes Summarizer. Steers content (e.g. "diagram" mode with
+              realistic node assets for Science) without requiring the
+              student to phrase it themselves every time. */}
+          <div className="shrink-0 px-4 py-2.5 border-b border-slate-100 dark:border-slate-800">
+            <SubjectChips subject={subject} onChange={setSubject} />
+          </div>
+
           {/* Message thread */}
           <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0">
             {messages.length === 0 ? (
@@ -845,9 +1057,25 @@ Rules:
                       ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-450'
                       : vizData.type === 'math'
                         ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-450'
+                        : vizData.type === 'diagram'
+                        ? 'bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-450'
+                        : vizData.type === 'map'
+                        ? 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-450'
+                        : vizData.type === 'dataset'
+                        ? 'bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-450'
                         : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-450'
                   }`}>
-                    {vizData.type === 'graph' ? 'Coordinate Plotter' : vizData.type === 'math' ? 'Equation Steps' : 'Physics/Science Loop'}
+                    {vizData.type === 'graph'
+                      ? 'Coordinate Plotter'
+                      : vizData.type === 'math'
+                      ? 'Equation Steps'
+                      : vizData.type === 'diagram'
+                      ? 'Labeled Diagram'
+                      : vizData.type === 'map'
+                      ? 'Map'
+                      : vizData.type === 'dataset'
+                      ? 'Data Chart'
+                      : 'Physics/Science Loop'}
                   </span>
                   <h3 className="text-sm font-extrabold text-slate-800 dark:text-white mt-1 leading-tight truncate">{vizData.title}</h3>
                 </div>
@@ -862,8 +1090,10 @@ Rules:
 
               <div className="flex-1 flex flex-col items-center justify-center gap-4">
                 {vizData.type === 'graph' && renderGraphWidget()}
-                {vizData.type === 'animation' && renderAnimationWidget()}
+                {(vizData.type === 'animation' || vizData.type === 'diagram') && renderAnimationWidget()}
                 {vizData.type === 'math' && renderMathWidget()}
+                {vizData.type === 'map' && renderMapWidget()}
+                {vizData.type === 'dataset' && renderDatasetWidget()}
               </div>
 
               {/* Chronological steps narrative deck */}

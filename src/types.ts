@@ -15,8 +15,37 @@ export interface QuizQuestion {
   explanation?: string;
 }
 
+// Subject-Aware Content Engine: which of the picker's subjects this
+// item was generated for. Drives which of the optional structured fields
+// below (passage/diagramNodes/regions/dataset) is populated, if any —
+// 'general' items populate none of them and behave exactly as before.
+export type Subject = 'general' | 'english' | 'science' | 'geography' | 'math';
+
+// Geography: a real-world place with an approximate coordinate, meant for
+// local map rendering (see components/MapWidget in VisualizerScreen) —
+// never a rendered map image, just the lightweight coordinate data.
+export interface MapRegion {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  note?: string;
+}
+
+// Math/Data Science: a small numeric dataset shaped for local chart
+// rendering (Recharts/Chart.js) rather than an AI-generated chart image.
+export interface NumericDataset {
+  chartType: 'bar' | 'line' | 'scatter';
+  labels: string[];
+  series: { name: string; values: number[] }[];
+}
+
 export interface QuizData {
   title: string;
+  subject?: Subject;
+  // English & Literature: a short original reading passage the questions
+  // are drawn from, shown to the student above the questions.
+  passage?: string;
   questions: QuizQuestion[];
 }
 
@@ -49,9 +78,22 @@ export interface EvaluationResult {
 
 export interface SummaryData {
   title: string;
+  subject?: Subject;
   overview: string;
   keyPoints: string[];
   glossary: GlossaryItem[];
+  // English & Literature: short original passage the summary is based on.
+  passage?: string;
+  // Science & Biology: named, diagram-able parts of the system/process
+  // being summarized (e.g. plant anatomy) — ids drawn from the same fixed
+  // vocabulary the Visualizer's diagram nodes use (see lib/subjects.ts),
+  // so the same local asset library can render them for an interactive
+  // labeling task.
+  diagramNodes?: { nodeId: string; label: string }[];
+  // Geography: real places relevant to the material, for map display.
+  regions?: MapRegion[];
+  // Math & Data Science: a small numeric dataset relevant to the material.
+  dataset?: NumericDataset;
 }
 
 // A single node in the spaced-repetition queue. Generated automatically from
@@ -143,10 +185,27 @@ export interface MathHighlight {
   note?: string;
 }
 
+// A single shape/element within an animation or diagram step. `type: "node"`
+// is the Subject-Aware / realistic-graphics case: rather than the AI
+// describing a plain circle/rect, it points at a pre-built local asset by
+// id (see lib/subjects.ts DIAGRAM_NODE_IDS and components/DiagramAssets.tsx)
+// using the SAME lightweight coordinate fields (x/y/width/height/label/
+// color) every other shape already uses — no raw SVG or markup ever comes
+// from the model, only this small JSON pointer.
+export interface VisualizationShape {
+  type: 'circle' | 'rect' | 'line' | 'arrow' | 'text' | 'node';
+  cx?: number; cy?: number; r?: number;
+  x?: number; y?: number; width?: number; height?: number;
+  x1?: number; y1?: number; x2?: number; y2?: number;
+  color?: string; label?: string; text?: string; strokeWidth?: number;
+  // Required when type is "node" — one of DIAGRAM_NODE_IDS.
+  nodeId?: string;
+}
+
 export interface VisualizationStep {
   label: string;
   explanation: string;
-  visualElements?: { shapes?: any[]; mathHighlight?: MathHighlight };
+  visualElements?: { shapes?: VisualizationShape[]; mathHighlight?: MathHighlight };
   svg?: string;
 }
 
@@ -161,8 +220,16 @@ export interface VisualizationGraphConfig {
 
 export interface VisualizationResponse {
   title: string;
-  type: 'graph' | 'math' | 'animation';
+  // 'diagram' = realistic node-based diagram (Subject-Aware Science/Bio);
+  // 'map' = geography regions/coordinates; 'dataset' = a math/data chart.
+  // The original 'animation' type still works exactly as before (plain
+  // shapes) — 'diagram' is the same rendering path with `node` shapes.
+  type: 'graph' | 'math' | 'animation' | 'diagram' | 'map' | 'dataset';
   subject?: string;
   steps: VisualizationStep[];
   graphConfig?: VisualizationGraphConfig;
+  // Populated when type is "map".
+  regions?: MapRegion[];
+  // Populated when type is "dataset".
+  dataset?: NumericDataset;
 }

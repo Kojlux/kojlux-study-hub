@@ -10,6 +10,8 @@ import {
   STUDY_FILE_ACCEPT,
 } from '../lib/gemini';
 import { makeRecallCard } from '../lib/spacedRepetition';
+import { Subject, subjectPromptHint } from '../lib/subjects';
+import TopicPicker from './TopicPicker';
 
 interface Props {
   gradeLevel: string;
@@ -20,26 +22,16 @@ interface Props {
   onGoToVisualizer: () => void;
 }
 
-// Distinguishes a bare topic name ("Algebra 1", "Photosynthesis") from
-// actual pasted notes. Short, punctuation-free input is treated as "just a
-// topic" and gets a confirmation step first, since summarizing from a
-// one- or two-word topic usually means the student meant to describe what
-// to summarize, not paste the material itself.
-function looksLikeTopicPhrase(text: string): boolean {
-  const trimmed = text.trim();
-  if (!trimmed) return false;
-  const words = trimmed.split(/\s+/);
-  const hasSentencePunctuation = /[.!?;:,]/.test(trimmed);
-  return words.length <= 4 && trimmed.length <= 40 && !hasSentencePunctuation;
-}
-
 export default function NotesSummarizer({ gradeLevel, history, onSaveHistory, onAddRecallCards, onError, onGoToVisualizer }: Props) {
   const [file, setFile] = useState<StudyFile | null>(null);
   const [textInput, setTextInput] = useState('');
+  // See TopicPicker.tsx for why this replaced the old length/punctuation
+  // guess about whether textInput was a topic or pasted notes.
+  const [inputMode, setInputMode] = useState<'topic' | 'notes'>('topic');
+  const [subject, setSubject] = useState<Subject>('general');
   const [detailLevel, setDetailLevel] = useState<'concise' | 'standard' | 'thorough'>('standard');
   const [loading, setLoading] = useState(false);
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
-  const [topicConfirmOpen, setTopicConfirmOpen] = useState(false);
 
   const [linkerOpen, setLinkerOpen] = useState(false);
   const [linkerBusy, setLinkerBusy] = useState<string | null>(null); // id of diagram currently being linked
@@ -60,16 +52,9 @@ export default function NotesSummarizer({ gradeLevel, history, onSaveHistory, on
     reader.readAsDataURL(selected);
   };
 
-  // Gate in front of summarize: catches a bare topic phrase (no file
-  // attached, so there's nothing but that short phrase to work from) and
-  // asks the student to confirm before spending a generation on it.
   const handleSummarizeClick = () => {
     if (!file && !textInput.trim()) {
-      onError('Add a photo, PDF, video, or paste some text first.');
-      return;
-    }
-    if (!file && looksLikeTopicPhrase(textInput)) {
-      setTopicConfirmOpen(true);
+      onError('Add a photo, PDF, video, or describe a topic / paste notes first.');
       return;
     }
     summarize();
@@ -77,7 +62,7 @@ export default function NotesSummarizer({ gradeLevel, history, onSaveHistory, on
 
   const summarize = async () => {
     if (!file && !textInput.trim()) {
-      onError('Add a photo, PDF, video, or paste some text first.');
+      onError('Add a photo, PDF, video, or describe a topic / paste notes first.');
       return;
     }
     setLoading(true);
@@ -91,10 +76,49 @@ export default function NotesSummarizer({ gradeLevel, history, onSaveHistory, on
         const [, data] = file.dataUrl.split(',');
         parts.push({ inlineData: { mimeType: file.mimeType, data } });
       }
-      const instructions = `You are helping a ${gradeLevel} student study. Summarize the study material (file and/or text below) at a "${detailLevel}" level of detail. ${
-        textInput.trim() ? `Text material: """${textInput.trim()}"""` : ''
-      }
-Respond ONLY with strict JSON, no markdown fences: {"title": string, "overview": string, "keyPoints": [string, ...], "glossary": [{"term": string, "definition": string}, ...]}`;
+      // Same explicit topic-vs-notes framing as QuizBuilder — see
+      // TopicPicker.tsx and lib/subjects.ts for why. A long topic
+      // description is sent verbatim as an instruction, never mistaken for
+      // (and never silently reinterpreted as) source material.
+      const materialClause = !textInput.trim()
+        ? ''
+        : file
+        ? `Additional focus/instructions from the student: """${textInput.trim()}"""`
+        : inputMode === 'topic'
+        ? `Summarize this topic (this is an instruction of what to cover, not source text to quote): """${textInput.trim()}"""`
+        : `Text material to summarize: """${textInput.trim()}"""`;
+
+      const subjectClause = subjectPromptHint(subject);
+      // Each subject contributes one optional field to the JSON shape (name
+      // for the schema line) plus a one-line rule explaining how to fill it
+      // (kept out of the schema line itself so the shape stays readable).
+      const extraField: { schema: string; rule: string } | null =
+        subject === 'english'
+          ? { schema: '"passage": string', rule: '"passage" is a short 120-220 word original reading passage the summary is based on.' }
+          : subject === 'science'
+          ? {
+              schema: '"diagramNodes": [{"nodeId": string, "label": string}, ...]',
+              rule:
+                '"diagramNodes" lists 3-6 concrete, nameable parts of the system/process, with nodeId chosen ONLY from: plant-root, plant-stem, plant-leaf, plant-flower, plant-soil, plant-sun, plant-water, cell-membrane, cell-nucleus, cell-mitochondria, atom-nucleus, atom-electron-orbit, organ-heart, organ-lung, organ-brain, generic-circle, generic-box. Omit the field entirely if none genuinely fit.',
+            }
+          : subject === 'geography'
+          ? {
+              schema: '"regions": [{"id": string, "name": string, "lat": number, "lng": number, "note": string}, ...]',
+              rule: '"regions" lists 2-6 real places relevant to the material with approximate real coordinates.',
+            }
+          : subject === 'math'
+          ? {
+              schema: '"dataset": {"chartType": "bar"|"line"|"scatter", "labels": [string,...], "series": [{"name": string, "values": [number,...]}]}',
+              rule: '"dataset" is a small numeric dataset relevant to the material.',
+            }
+          : null;
+
+      const instructions = `You are helping a ${gradeLevel} student study. Summarize the study material (file and/or text below) at a "${detailLevel}" level of detail.
+${materialClause}
+${subjectClause}
+Respond ONLY with strict JSON, no markdown fences: {"title": string, "subject": "${subject}", "overview": string, "keyPoints": [string, ...], "glossary": [{"term": string, "definition": string}, ...]${
+        extraField ? `, ${extraField.schema}` : ''
+      }}${extraField ? `\n${extraField.rule}` : ''}`;
       parts.push({ text: instructions });
 
       const response = await generateContentWithFallback(GEMINI_KEYS.summarizer, {
@@ -206,6 +230,12 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
     y += titleLines.length * 8 + 4;
 
     pdf.setFontSize(11);
+    if (summaryData.passage) {
+      const passageLines = pdf.splitTextToSize(summaryData.passage, 180);
+      ensureSpace(passageLines.length * 6);
+      pdf.text(passageLines, 15, y);
+      y += passageLines.length * 6 + 8;
+    }
     const overviewLines = pdf.splitTextToSize(summaryData.overview, 180);
     ensureSpace(overviewLines.length * 6);
     pdf.text(overviewLines, 15, y);
@@ -306,12 +336,14 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
             />
           </div>
 
-          <textarea
+          <TopicPicker
+            subject={subject}
+            onSubjectChange={setSubject}
+            mode={inputMode}
+            onModeChange={setInputMode}
             value={textInput}
-            onChange={(e) => setTextInput(e.target.value)}
-            placeholder="Or paste notes / a topic here…"
-            rows={4}
-            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary resize-none"
+            onValueChange={setTextInput}
+            hasFile={!!file}
           />
 
           <div>
@@ -339,42 +371,6 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
             {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             {loading ? 'Summarizing…' : 'Summarize'}
           </button>
-
-          {topicConfirmOpen && (
-            <div
-              className="fixed inset-0 z-[200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-5"
-              onClick={() => setTopicConfirmOpen(false)}
-            >
-              <div
-                className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800 p-6 text-center space-y-5"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="space-y-1.5">
-                  <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">Confirm topic</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                    Did you mean to generate a summary based on the topic "{textInput.trim()}"?
-                  </p>
-                </div>
-                <div className="flex gap-2.5">
-                  <button
-                    onClick={() => setTopicConfirmOpen(false)}
-                    className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold rounded-2xl transition"
-                  >
-                    Go back
-                  </button>
-                  <button
-                    onClick={() => {
-                      setTopicConfirmOpen(false);
-                      summarize();
-                    }}
-                    className="flex-1 py-3 bg-focus-primary hover:bg-focus-primary-dark text-white text-xs font-bold rounded-2xl transition"
-                  >
-                    Yes, generate
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </>
       )}
 
@@ -395,9 +391,70 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
             </div>
           </div>
 
+          {summaryData.passage && (
+            <div className="bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/60 rounded-2xl p-4">
+              <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-1.5">Reading Passage</p>
+              <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">{summaryData.passage}</p>
+            </div>
+          )}
+
           <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4">
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">{summaryData.overview}</p>
           </div>
+
+          {summaryData.diagramNodes && summaryData.diagramNodes.length > 0 && (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-2">
+              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Diagram parts to know</p>
+              <div className="flex flex-wrap gap-1.5">
+                {summaryData.diagramNodes.map((n, i) => (
+                  <span key={i} className="px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-900 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                    {n.label}
+                  </span>
+                ))}
+              </div>
+              <p className="text-[10.5px] text-slate-400 leading-relaxed pt-1">
+                Ask the Visualizer to diagram "{summaryData.title}" to see these labeled interactively.
+              </p>
+            </div>
+          )}
+
+          {summaryData.regions && summaryData.regions.length > 0 && (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-2">
+              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Places</p>
+              {summaryData.regions.map((r, i) => (
+                <div key={i} className="text-xs text-slate-600 dark:text-slate-300">
+                  <span className="font-bold text-slate-800 dark:text-slate-100">{r.name}</span>
+                  {r.note ? <span className="text-slate-400"> — {r.note}</span> : null}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {summaryData.dataset && summaryData.dataset.series.length > 0 && (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-2 overflow-x-auto">
+              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Data</p>
+              <table className="text-xs w-full min-w-[280px]">
+                <thead>
+                  <tr>
+                    <th className="text-left text-slate-400 font-semibold pb-1"> </th>
+                    {summaryData.dataset.labels.map((l, i) => (
+                      <th key={i} className="text-left text-slate-400 font-semibold pb-1 px-2">{l}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {summaryData.dataset.series.map((s, i) => (
+                    <tr key={i}>
+                      <td className="font-bold text-slate-700 dark:text-slate-200 pr-2">{s.name}</td>
+                      {s.values.map((v, vi) => (
+                        <td key={vi} className="text-slate-600 dark:text-slate-300 px-2">{v}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-2">
             <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Key points</p>

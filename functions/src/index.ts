@@ -74,13 +74,9 @@ export const checkDueReminders = onSchedule('every 15 minutes', async () => {
 
     if (newlyDueCards.length === 0 && newlyDueExams.length === 0) continue;
 
-    const sends: Promise<unknown>[] = [];
+    const sends: Promise<admin.messaging.BatchResponse>[] = [];
 
     if (newlyDueCards.length > 0) {
-     // const title =
-        newlyDueCards.length === 1
-          ? `A review is ready`
-          : `${newlyDueCards.length} reviews are ready`;
       sends.push(
         messaging.sendEachForMulticast({
           tokens,
@@ -108,12 +104,36 @@ export const checkDueReminders = onSchedule('every 15 minutes', async () => {
       );
     }
 
-    await Promise.all(sends);
+    const responses = await Promise.all(sends);
+
+    // Prune dead tokens (uninstalled app, cleared site data, revoked
+    // permission, etc.) instead of leaving them in fcmTokens forever.
+    // sendEachForMulticast reports per-token failures in the same order the
+    // tokens were passed in, so index i of every response maps back to
+    // tokens[i] here. Without this, a token that will never succeed again
+    // stays in the array indefinitely, and on a multi-device account it can
+    // also mask a *different* real, working token's send failing for an
+    // unrelated transient reason during log review.
+    const deadTokens = new Set<string>();
+    for (const response of responses) {
+      response.responses.forEach((r, i) => {
+        const code = r.error?.code;
+        if (
+          code === 'messaging/registration-token-not-registered' ||
+          code === 'messaging/invalid-registration-token'
+        ) {
+          deadTokens.add(tokens[i]);
+        }
+      });
+    }
 
     await userDoc.ref.set(
       {
         notifiedCardIds: [...notifiedCardIds, ...newlyDueCards.map((c) => c.id)],
         notifiedExamIds: [...notifiedExamIds, ...newlyDueExams.map((e) => e.id)],
+        ...(deadTokens.size > 0
+          ? { fcmTokens: tokens.filter((t) => !deadTokens.has(t)) }
+          : {}),
       },
       { merge: true }
     );

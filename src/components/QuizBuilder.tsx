@@ -14,6 +14,8 @@ import {
 } from '../lib/gemini';
 import { makeRecallCard } from '../lib/spacedRepetition';
 import { RecallCard } from '../types';
+import { Subject, subjectPromptHint } from '../lib/subjects';
+import TopicPicker from './TopicPicker';
 
 interface Props {
   gradeLevel: string;
@@ -22,22 +24,20 @@ interface Props {
   onError: (msg: string) => void;
 }
 
-// Distinguishes a bare topic name ("Algebra 1", "Photosynthesis") from
-// actual pasted notes. Short, punctuation-free input is treated as "just a
-// topic" and gets a confirmation step first, since generating a quiz from a
-// one- or two-word topic usually means the student meant to describe what
-// to quiz them on, not paste the material itself.
-function looksLikeTopicPhrase(text: string): boolean {
-  const trimmed = text.trim();
-  if (!trimmed) return false;
-  const words = trimmed.split(/\s+/);
-  const hasSentencePunctuation = /[.!?;:,]/.test(trimmed);
-  return words.length <= 4 && trimmed.length <= 40 && !hasSentencePunctuation;
-}
-
 export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCards, onError }: Props) {
   const [file, setFile] = useState<StudyFile | null>(null);
   const [textInput, setTextInput] = useState('');
+  // Explicit topic-vs-notes choice from the TopicPicker (see TopicPicker.tsx
+  // for why this replaced a length/punctuation guess: a long, detailed
+  // topic description was previously indistinguishable from long pasted
+  // notes, so it got treated as raw source material to comprehend rather
+  // than an instruction of what to generate — effectively "ignored" no
+  // matter how much detail the student gave it). Defaults to 'topic' since
+  // that's the more common first action; a file attachment hides this
+  // toggle entirely (see TopicPicker's hasFile prop) since the file is
+  // always the source material once one's attached.
+  const [inputMode, setInputMode] = useState<'topic' | 'notes'>('topic');
+  const [subject, setSubject] = useState<Subject>('general');
   // number | '' rather than always-a-number so the field can genuinely go
   // empty while typing (e.g. backspacing to retype) instead of snapping
   // back to its old value — that snapping was what made typing feel broken
@@ -61,8 +61,6 @@ export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCard
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [currentQ, setCurrentQ] = useState(0);
 
-  const [topicConfirmOpen, setTopicConfirmOpen] = useState(false);
-
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -85,16 +83,9 @@ export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCard
     setCurrentQ(0);
   };
 
-  // Gate in front of generateQuiz: catches a bare topic phrase (no file
-  // attached, so there's nothing but that short phrase to work from) and
-  // asks the student to confirm before spending a generation on it.
   const handleGenerateClick = () => {
     if (!file && !textInput.trim()) {
-      onError('Add a photo, PDF, video, or paste some text first.');
-      return;
-    }
-    if (!file && looksLikeTopicPhrase(textInput)) {
-      setTopicConfirmOpen(true);
+      onError('Add a photo, PDF, video, or describe a topic / paste notes first.');
       return;
     }
     generateQuiz();
@@ -102,7 +93,7 @@ export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCard
 
   const generateQuiz = async () => {
     if (!file && !textInput.trim()) {
-      onError('Add a photo, PDF, video, or paste some text first.');
+      onError('Add a photo, PDF, video, or describe a topic / paste notes first.');
       return;
     }
     const count = questionCount === '' ? 0 : questionCount;
@@ -120,13 +111,36 @@ export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCard
         const [, data] = file.dataUrl.split(',');
         parts.push({ inlineData: { mimeType: file.mimeType, data } });
       }
-      const instructions = `You are an expert ${gradeLevel} teacher. Create a ${difficulty} difficulty quiz with exactly ${count} ${quizType === 'multiple-choice' ? 'multiple-choice' : 'short-answer'} questions based on the study material provided (file and/or text below). ${
-        textInput.trim() ? `Text material: """${textInput.trim()}"""` : ''
-      }
+      // The mode picked in TopicPicker decides how textInput is framed for
+      // the model: as an INSTRUCTION of what to generate (topic), or as
+      // literal SOURCE MATERIAL to draw questions from (notes) — same as a
+      // file would be. Previously this was guessed from length/punctuation,
+      // which meant a longer, more detailed topic description quietly got
+      // treated as source text instead of an instruction. Explicit mode
+      // means a long topic description is never truncated, reinterpreted,
+      // or ignored — it's always sent as exactly what it is.
+      const materialClause = !textInput.trim()
+        ? ''
+        : file
+        ? `Additional focus/instructions from the student: """${textInput.trim()}"""`
+        : inputMode === 'topic'
+        ? `Generate the quiz about this topic (this is an instruction of what to cover, not source text to quote): """${textInput.trim()}"""`
+        : `Text material to base the quiz on: """${textInput.trim()}"""`;
+
+      const subjectClause = subjectPromptHint(subject);
+      const isEnglish = subject === 'english';
+
+      const instructions = `You are an expert ${gradeLevel} teacher. Create a ${difficulty} difficulty quiz with exactly ${count} ${quizType === 'multiple-choice' ? 'multiple-choice' : 'short-answer'} questions based on the study material provided (file and/or text below).
+${materialClause}
+${subjectClause}
 Respond ONLY with strict JSON, no markdown fences, in this exact shape:
-{"title": string, "questions": [{"type": "${quizType}", "question": string, ${
+{"title": string, "subject": "${subject}"${isEnglish ? ', "passage": string' : ''}, "questions": [{"type": "${quizType}", "question": string, ${
         quizType === 'multiple-choice' ? '"options": [string, string, string, string], ' : ''
-      }"correctAnswer": string, "explanation": string}]}`;
+      }"correctAnswer": string, "explanation": string}]}${
+        isEnglish
+          ? '\n"passage" is a short original reading passage (120-220 words) — every question must be answerable from it.'
+          : ''
+      }`;
       parts.push({ text: instructions });
 
       const response = await generateContentWithFallback(GEMINI_KEYS.quiz, {
@@ -254,6 +268,13 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
     y += titleLines.length * 8 + 2;
     pdf.setFontSize(11);
 
+    if (quizData.passage) {
+      writeWrapped('Reading Passage', 15, 180);
+      y += 1;
+      writeWrapped(quizData.passage, 15, 180);
+      y += 4;
+    }
+
     quizData.questions.forEach((q, i) => {
       writeWrapped(`${i + 1}. ${q.question}`, 15, 180);
       y += 2;
@@ -340,6 +361,12 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
           <p className="text-4xl font-black mt-1">{evaluation.score}/{evaluation.totalQuestions}</p>
           <p className="text-xs text-white/80 mt-2 leading-relaxed">{evaluation.overallFeedback}</p>
         </div>
+        {quizData.passage && (
+          <div className="bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/60 rounded-2xl p-4">
+            <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-1.5">Reading Passage</p>
+            <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">{quizData.passage}</p>
+          </div>
+        )}
         <div className="space-y-3">
           {quizData.questions.map((q, i) => {
             const ev = evaluation.evaluations.find((e) => e.questionIndex === i);
@@ -425,6 +452,15 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
             />
           ))}
         </div>
+
+        {/* English & Literature: the passage every question is drawn from,
+            shown once above the questions rather than repeated per-question. */}
+        {quizData.passage && (
+          <div className="bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/60 rounded-2xl p-4">
+            <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-1.5">Reading Passage</p>
+            <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">{quizData.passage}</p>
+          </div>
+        )}
 
         {/* Current question only */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 min-h-[220px] flex flex-col">
@@ -552,12 +588,14 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
         />
       </div>
 
-      <textarea
+      <TopicPicker
+        subject={subject}
+        onSubjectChange={setSubject}
+        mode={inputMode}
+        onModeChange={setInputMode}
         value={textInput}
-        onChange={(e) => setTextInput(e.target.value)}
-        placeholder="Or paste notes / a topic here…"
-        rows={4}
-        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary resize-none"
+        onValueChange={setTextInput}
+        hasFile={!!file}
       />
 
       <div className="grid grid-cols-2 gap-3">
@@ -630,42 +668,6 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
         {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
         {loading ? 'Building your quiz…' : 'Generate Quiz'}
       </button>
-
-      {topicConfirmOpen && (
-        <div
-          className="fixed inset-0 z-[200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-5"
-          onClick={() => setTopicConfirmOpen(false)}
-        >
-          <div
-            className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800 p-6 text-center space-y-5"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="space-y-1.5">
-              <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">Confirm topic</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Did you mean to generate questions based on the topic "{textInput.trim()}"?
-              </p>
-            </div>
-            <div className="flex gap-2.5">
-              <button
-                onClick={() => setTopicConfirmOpen(false)}
-                className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold rounded-2xl transition"
-              >
-                Go back
-              </button>
-              <button
-                onClick={() => {
-                  setTopicConfirmOpen(false);
-                  generateQuiz();
-                }}
-                className="flex-1 py-3 bg-focus-primary hover:bg-focus-primary-dark text-white text-xs font-bold rounded-2xl transition"
-              >
-                Yes, generate
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
