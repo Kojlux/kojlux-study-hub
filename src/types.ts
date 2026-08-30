@@ -40,12 +40,85 @@ export interface NumericDataset {
   series: { name: string; values: number[] }[];
 }
 
-export interface QuizData {
+// ---------------------------------------------------------------------------
+// Dynamic Forms — Subject-Aware structured content, shared across Quiz
+// Builder and NoteCraft. Each of these fields is OPTIONAL and only ever
+// populated when it's actually relevant (see lib/subjects.ts
+// buildStructuredFieldsClause, which is what tells the AI when to include
+// each one). `StructuredContent` is the shared shape both QuizData and
+// SummaryData extend, so a single rendering component
+// (components/blocks/SubjectContentBlocks.tsx) can render either one
+// without the two screens maintaining separate, drifting block lists.
+// ---------------------------------------------------------------------------
+
+// A generic spreadsheet-shaped table: used both for "any subject, data-heavy
+// content" (the `table` field) and for Geography/History's country/region
+// quick-reference (`factSheetTable`) — same shape, different field name so
+// a response can carry both independently without colliding.
+export interface DataTable {
+  headers: string[];
+  rows: (string | number)[][];
+}
+
+// Math & Physics: one step of a worked solution or proof. `latex` is
+// optional since not every step of a proof needs its own displayed
+// expression — some are prose ("therefore, by substitution...").
+export interface SolutionStep {
+  step: string;
+  latex?: string;
+}
+
+// Science & Biology: one stage of a process/cycle (water cycle,
+// photosynthesis, mitosis, etc.), in order.
+export interface ProcessFlowStep {
+  step: string;
+  description: string;
+}
+
+// Science & Biology: the independent/dependent (and optionally controlled)
+// variables of an experiment or investigation.
+export interface ExperimentVariables {
+  independent: string;
+  dependent: string;
+  controlled?: string[];
+}
+
+// Geography & History: one dated event on a timeline, with why it matters.
+export interface TimelineEvent {
+  date: string;
+  event: string;
+  significance: string;
+}
+
+// English & Literature: what kind of text `passage` actually is, so the UI
+// can label it correctly instead of always saying "Reading Passage" even
+// when the AI produced a poem or a short story.
+export type PassageType = 'reading_passage' | 'context_story' | 'poem';
+
+export interface StructuredContent {
+  // English & Literature: a short original passage/story/poem the content
+  // is drawn from, kept completely separate from the summary or questions.
+  passage?: string;
+  passageType?: PassageType;
+  // Math & Physics
+  formulas?: string[]; // clean LaTeX strings, never text shorthand
+  solutionSteps?: SolutionStep[];
+  // Science & Biology
+  processFlow?: ProcessFlowStep[];
+  variables?: ExperimentVariables;
+  chemicalEquations?: string[];
+  // Geography & History
+  timeline?: TimelineEvent[];
+  factSheetTable?: DataTable;
+  // Any subject, data-heavy content
+  table?: DataTable;
+  // Both pages: search terms for pulling in relevant educational images
+  imageQueries?: string[];
+}
+
+export interface QuizData extends StructuredContent {
   title: string;
   subject?: Subject;
-  // English & Literature: a short original reading passage the questions
-  // are drawn from, shown to the student above the questions.
-  passage?: string;
   questions: QuizQuestion[];
 }
 
@@ -76,14 +149,12 @@ export interface EvaluationResult {
   overallFeedback?: string;
 }
 
-export interface SummaryData {
+export interface SummaryData extends StructuredContent {
   title: string;
   subject?: Subject;
   overview: string;
   keyPoints: string[];
   glossary: GlossaryItem[];
-  // English & Literature: short original passage the summary is based on.
-  passage?: string;
   // Science & Biology: named, diagram-able parts of the system/process
   // being summarized (e.g. plant anatomy) — ids drawn from the same fixed
   // vocabulary the Visualizer's diagram nodes use (see lib/subjects.ts),

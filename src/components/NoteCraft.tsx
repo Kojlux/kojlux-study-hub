@@ -10,8 +10,11 @@ import {
   STUDY_FILE_ACCEPT,
 } from '../lib/gemini';
 import { makeRecallCard } from '../lib/spacedRepetition';
-import { Subject, subjectPromptHint } from '../lib/subjects';
+import { Subject, subjectPromptHint, buildStructuredFieldsClause } from '../lib/subjects';
 import TopicPicker from './TopicPicker';
+import SubjectContentBlocks from './blocks/SubjectContentBlocks';
+import { renderStructuredContentToPdf } from '../lib/pdfStructuredContent';
+import { sanitizeForPdf } from '../lib/pdfTextSanitizer';
 
 interface Props {
   gradeLevel: string;
@@ -89,13 +92,13 @@ export default function NoteCraft({ gradeLevel, history, onSaveHistory, onAddRec
         : `Text material to summarize: """${textInput.trim()}"""`;
 
       const subjectClause = subjectPromptHint(subject);
-      // Each subject contributes one optional field to the JSON shape (name
-      // for the schema line) plus a one-line rule explaining how to fill it
-      // (kept out of the schema line itself so the shape stays readable).
+      // Visualizer-linking fields: separate from Dynamic Forms below, these
+      // exist purely so the Concept Linker / Visualizer can render an
+      // interactive diagram/map/chart from a local asset library — not the
+      // student-facing structured blocks. Each subject contributes at most
+      // one of these.
       const extraField: { schema: string; rule: string } | null =
-        subject === 'english'
-          ? { schema: '"passage": string', rule: '"passage" is a short 120-220 word original reading passage the summary is based on.' }
-          : subject === 'science'
+        subject === 'science'
           ? {
               schema: '"diagramNodes": [{"nodeId": string, "label": string}, ...]',
               rule:
@@ -113,12 +116,18 @@ export default function NoteCraft({ gradeLevel, history, onSaveHistory, onAddRec
             }
           : null;
 
+      // Dynamic Forms: centralized in lib/subjects.ts so Quiz Builder and
+      // NoteCraft always request the same student-facing structured blocks
+      // (formulas, timelines, tables, images, etc.) for the same subject.
+      const { schemaFields, rules } = buildStructuredFieldsClause(subject);
+
       const instructions = `You are helping a ${gradeLevel} student study. Summarize the study material (file and/or text below) at a "${detailLevel}" level of detail.
 ${materialClause}
 ${subjectClause}
 Respond ONLY with strict JSON, no markdown fences: {"title": string, "subject": "${subject}", "overview": string, "keyPoints": [string, ...], "glossary": [{"term": string, "definition": string}, ...]${
         extraField ? `, ${extraField.schema}` : ''
-      }}${extraField ? `\n${extraField.rule}` : ''}`;
+      }${schemaFields}}
+${extraField ? `${extraField.rule}\n` : ''}${rules}`;
       parts.push({ text: instructions });
 
       const response = await generateContentWithFallback(GEMINI_KEYS.summarizer, {
@@ -225,18 +234,19 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
     };
 
     pdf.setFontSize(16);
-    const titleLines = pdf.splitTextToSize(summaryData.title, 180);
+    const titleLines = pdf.splitTextToSize(sanitizeForPdf(summaryData.title), 180);
     pdf.text(titleLines, 15, y);
     y += titleLines.length * 8 + 4;
 
     pdf.setFontSize(11);
     if (summaryData.passage) {
-      const passageLines = pdf.splitTextToSize(summaryData.passage, 180);
+      const passageLines = pdf.splitTextToSize(sanitizeForPdf(summaryData.passage), 180);
       ensureSpace(passageLines.length * 6);
       pdf.text(passageLines, 15, y);
       y += passageLines.length * 6 + 8;
     }
-    const overviewLines = pdf.splitTextToSize(summaryData.overview, 180);
+    y = renderStructuredContentToPdf(pdf, summaryData, y, summaryData.title);
+    const overviewLines = pdf.splitTextToSize(sanitizeForPdf(summaryData.overview), 180);
     ensureSpace(overviewLines.length * 6);
     pdf.text(overviewLines, 15, y);
     y += overviewLines.length * 6 + 8;
@@ -247,7 +257,7 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
     y += 8;
     pdf.setFontSize(11);
     summaryData.keyPoints.forEach((kp) => {
-      const lines = pdf.splitTextToSize(`•  ${kp}`, 175);
+      const lines = pdf.splitTextToSize(`•  ${sanitizeForPdf(kp)}`, 175);
       ensureSpace(lines.length * 6);
       pdf.text(lines, 15, y);
       y += lines.length * 6 + 2;
@@ -261,7 +271,7 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
       y += 8;
       pdf.setFontSize(11);
       summaryData.glossary.forEach((g) => {
-        const lines = pdf.splitTextToSize(`${g.term}: ${g.definition}`, 175);
+        const lines = pdf.splitTextToSize(`${sanitizeForPdf(g.term)}: ${sanitizeForPdf(g.definition)}`, 175);
         ensureSpace(lines.length * 6);
         pdf.text(lines, 15, y);
         y += lines.length * 6 + 2;
@@ -391,12 +401,9 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
             </div>
           </div>
 
-          {summaryData.passage && (
-            <div className="bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/60 rounded-2xl p-4">
-              <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-1.5">Reading Passage</p>
-              <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">{summaryData.passage}</p>
-            </div>
-          )}
+          {/* Dynamic Forms: passage, formulas/solution steps, process flow,
+              timeline, tables, and images — whichever are present. */}
+          <SubjectContentBlocks data={summaryData} />
 
           <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4">
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">{summaryData.overview}</p>

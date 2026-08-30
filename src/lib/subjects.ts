@@ -16,9 +16,9 @@ export interface SubjectOption {
 export const SUBJECT_OPTIONS: SubjectOption[] = [
   { id: 'general', label: 'General', hint: 'Any topic, mixed format' },
   { id: 'english', label: 'English & Lit', hint: 'Reading passage + comprehension' },
-  { id: 'science', label: 'Science & Bio', hint: 'Labeled diagram parts' },
-  { id: 'geography', label: 'Geography', hint: 'Map regions & coordinates' },
-  { id: 'math', label: 'Math & Data', hint: 'Charts, tables, datasets' },
+  { id: 'science', label: 'Science & Bio', hint: 'Process flows, variables, diagram parts' },
+  { id: 'geography', label: 'Geography & History', hint: 'Timelines, fact sheets, map regions' },
+  { id: 'math', label: 'Math & Physics', hint: 'LaTeX formulas, worked solutions, datasets' },
 ];
 
 // Appended to the AI instructions in Quiz Builder / Notes Summarizer /
@@ -41,6 +41,117 @@ export function subjectPromptHint(subject: Subject): string {
     default:
       return '';
   }
+}
+
+// ---------------------------------------------------------------------------
+// Dynamic Forms — the single source of truth for which extra structured
+// JSON fields get requested for a given subject. Both QuizBuilder.tsx and
+// NoteCraft.tsx call buildStructuredFieldsClause() instead of each keeping
+// their own ternary chain of subject -> schema fragment, which is what let
+// the two screens drift apart before (see QuizBuilder's old isEnglish-only
+// special case vs. NoteCraft's separate extraField chain). Adding or tuning
+// a field now only ever happens here.
+//
+// Each StructuredField pairs the literal JSON schema fragment (spliced into
+// the "Respond ONLY with strict JSON..." line) with a one-line rule that
+// tells the model exactly when to include vs. omit it — kept as prose
+// instructions rather than crammed into the schema line itself, so the
+// shape stays readable at a glance.
+// ---------------------------------------------------------------------------
+export interface StructuredField {
+  schema: string;
+  rule: string;
+}
+
+// Cross-cutting fields available to ANY subject — Task spec calls these out
+// as applying regardless of the selected subject pill.
+function universalStructuredFields(): StructuredField[] {
+  return [
+    {
+      schema: '"table": {"headers": [string, ...], "rows": [[string, ...], ...]}',
+      rule:
+        'Include "table" ONLY when the material is naturally tabular or data-heavy (comparisons, statistics, spreadsheet-like data) — every row array must have the same length as "headers". Omit entirely if nothing warrants a table.',
+    },
+    {
+      schema: '"imageQueries": [string, ...]',
+      rule:
+        'Include "imageQueries" with 1-4 short, specific image search terms for concrete visual subjects mentioned by name (people, places, artifacts, organisms, artworks). Every query must stand on its own with NO pronouns ("he", "his", "it") and NO bare descriptors ("physical appearance", "the leader") — always spell out the full proper name plus a disambiguating detail, e.g. "Muammar Gaddafi 1970s portrait" rather than "his physical appearance". Omit if nothing genuinely benefits from an image.',
+    },
+  ];
+}
+
+function subjectStructuredFields(subject: Subject): StructuredField[] {
+  switch (subject) {
+    case 'math':
+      return [
+        {
+          schema: '"formulas": [string, ...]',
+          rule:
+            '"formulas" holds every formula/equation involved as a clean LaTeX string (e.g. "x = \\\\frac{-b \\\\pm \\\\sqrt{b^2-4ac}}{2a}"). NEVER use plain-text shorthand like x^2, sqrt(x), or 1/2 — always proper LaTeX commands (\\\\frac, \\\\sqrt, ^{}, _{}). Omit if the content has no formulas.',
+        },
+        {
+          schema: '"solutionSteps": [{"step": string, "latex": string}, ...]',
+          rule:
+            '"solutionSteps" breaks a worked problem or proof into ordered steps, each with a short plain-English description and, where applicable, the LaTeX for that step. Omit for purely conceptual, non-computational content.',
+        },
+      ];
+    case 'science':
+      return [
+        {
+          schema: '"processFlow": [{"step": string, "description": string}, ...]',
+          rule:
+            '"processFlow" lists the ordered stages of a biological or physical process/cycle (e.g. water cycle, photosynthesis, mitosis). Omit if the content isn\'t about a process or cycle.',
+        },
+        {
+          schema: '"variables": {"independent": string, "dependent": string, "controlled": [string, ...]}',
+          rule:
+            '"variables" names the independent and dependent variables (and controlled variables, if relevant) — ONLY for experiment/investigation content. Omit otherwise.',
+        },
+        {
+          schema: '"chemicalEquations": [string, ...]',
+          rule:
+            '"chemicalEquations" holds any balanced chemical equations as plain formula strings (e.g. "6CO2 + 6H2O -> C6H12O6 + 6O2"). Omit if none apply.',
+        },
+      ];
+    case 'geography':
+      return [
+        {
+          schema: '"timeline": [{"date": string, "event": string, "significance": string}, ...]',
+          rule:
+            '"timeline" lists 3-8 chronological events relevant to the material, each with a date/era, a short description of what happened, and why it matters. Omit for content with no historical/chronological angle.',
+        },
+        {
+          schema: '"factSheetTable": {"headers": [string, ...], "rows": [[string, ...], ...]}',
+          rule:
+            '"factSheetTable" is a quick-reference table for a specific named country/region — e.g. headers like ["Capital", "Population", "Coordinates"] with one data row. Omit if the material isn\'t about a specific named place.',
+        },
+      ];
+    case 'english':
+      return [
+        {
+          schema: '"passage": string, "passageType": "reading_passage" | "context_story" | "poem"',
+          rule:
+            '"passage" is a short original text (120-220 words, or a complete short poem) that the content is drawn from — kept completely separate from the summary/overview or question text. Set "passageType" to whichever of "reading_passage", "context_story", or "poem" best fits. Always include both fields for this subject.',
+        },
+      ];
+    case 'general':
+    default:
+      return [];
+  }
+}
+
+// Returns a ready-to-splice JSON schema fragment (leading-comma-prefixed, so
+// it can be appended directly inside an existing `{...}` shape) plus the
+// prose rules explaining when to fill each field in. Callers append
+// `schemaFields` right before the closing `}` of their JSON shape line, and
+// append `rules` as its own paragraph afterward.
+export function buildStructuredFieldsClause(subject: Subject): { schemaFields: string; rules: string } {
+  const fields = [...subjectStructuredFields(subject), ...universalStructuredFields()];
+  if (fields.length === 0) return { schemaFields: '', rules: '' };
+  return {
+    schemaFields: fields.map((f) => `, ${f.schema}`).join(''),
+    rules: fields.map((f) => f.rule).join('\n'),
+  };
 }
 
 // Fixed vocabulary of local, pre-built diagram node assets the Visualizer's

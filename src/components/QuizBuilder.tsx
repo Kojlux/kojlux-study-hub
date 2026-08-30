@@ -14,8 +14,11 @@ import {
 } from '../lib/gemini';
 import { makeRecallCard } from '../lib/spacedRepetition';
 import { RecallCard } from '../types';
-import { Subject, subjectPromptHint } from '../lib/subjects';
+import { Subject, subjectPromptHint, buildStructuredFieldsClause } from '../lib/subjects';
 import TopicPicker from './TopicPicker';
+import SubjectContentBlocks from './blocks/SubjectContentBlocks';
+import { renderStructuredContentToPdf } from '../lib/pdfStructuredContent';
+import { sanitizeForPdf } from '../lib/pdfTextSanitizer';
 
 interface Props {
   gradeLevel: string;
@@ -128,19 +131,19 @@ export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCard
         : `Text material to base the quiz on: """${textInput.trim()}"""`;
 
       const subjectClause = subjectPromptHint(subject);
-      const isEnglish = subject === 'english';
+      // Dynamic Forms: centralized in lib/subjects.ts so Quiz Builder and
+      // NoteCraft always request the same shape for the same subject
+      // rather than maintaining separate schema logic per screen.
+      const { schemaFields, rules } = buildStructuredFieldsClause(subject);
 
       const instructions = `You are an expert ${gradeLevel} teacher. Create a ${difficulty} difficulty quiz with exactly ${count} ${quizType === 'multiple-choice' ? 'multiple-choice' : 'short-answer'} questions based on the study material provided (file and/or text below).
 ${materialClause}
 ${subjectClause}
 Respond ONLY with strict JSON, no markdown fences, in this exact shape:
-{"title": string, "subject": "${subject}"${isEnglish ? ', "passage": string' : ''}, "questions": [{"type": "${quizType}", "question": string, ${
+{"title": string, "subject": "${subject}", "questions": [{"type": "${quizType}", "question": string, ${
         quizType === 'multiple-choice' ? '"options": [string, string, string, string], ' : ''
-      }"correctAnswer": string, "explanation": string}]}${
-        isEnglish
-          ? '\n"passage" is a short original reading passage (120-220 words) — every question must be answerable from it.'
-          : ''
-      }`;
+      }"correctAnswer": string, "explanation": string}]${schemaFields}}
+${rules}`;
       parts.push({ text: instructions });
 
       const response = await generateContentWithFallback(GEMINI_KEYS.quiz, {
@@ -255,15 +258,18 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
         y = 20;
       }
     };
+    // Every string drawn by this function funnels through here, so this is
+    // the one choke point that keeps jsPDF from ever seeing raw AI/user
+    // text unsanitized (see lib/pdfTextSanitizer.ts).
     const writeWrapped = (text: string, indent: number, maxWidth: number, lineHeight = 6) => {
-      const lines = pdf.splitTextToSize(text, maxWidth);
+      const lines = pdf.splitTextToSize(sanitizeForPdf(text), maxWidth);
       ensureSpace(lines.length * lineHeight);
       pdf.text(lines, indent, y);
       y += lines.length * lineHeight;
     };
 
     pdf.setFontSize(16);
-    const titleLines = pdf.splitTextToSize(quizData.title, 180);
+    const titleLines = pdf.splitTextToSize(sanitizeForPdf(quizData.title), 180);
     pdf.text(titleLines, 15, y);
     y += titleLines.length * 8 + 2;
     pdf.setFontSize(11);
@@ -274,6 +280,7 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
       writeWrapped(quizData.passage, 15, 180);
       y += 4;
     }
+    y = renderStructuredContentToPdf(pdf, quizData, y, quizData.title);
 
     quizData.questions.forEach((q, i) => {
       writeWrapped(`${i + 1}. ${q.question}`, 15, 180);
@@ -309,21 +316,31 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
     // and space-checked individually so nothing gets clipped at the side of
     // the page or cut off at a page break; a block that doesn't fit pushes
     // cleanly to the next page instead.
+    // Same reasoning as exportPdf above — one choke point for every line
+    // this function draws, including the student's own typed answers.
     const writeWrapped = (text: string, indent: number, maxWidth: number, lineHeight = 6) => {
-      const lines = pdf.splitTextToSize(text, maxWidth);
+      const lines = pdf.splitTextToSize(sanitizeForPdf(text), maxWidth);
       ensureSpace(lines.length * lineHeight);
       pdf.text(lines, indent, y);
       y += lines.length * lineHeight;
     };
 
     pdf.setFontSize(16);
-    const titleLines = pdf.splitTextToSize(quizData.title, 180);
+    const titleLines = pdf.splitTextToSize(sanitizeForPdf(quizData.title), 180);
     pdf.text(titleLines, 15, y);
     y += titleLines.length * 8;
     pdf.setFontSize(11);
     y += 2;
     writeWrapped(`Score: ${evaluation.score}/${evaluation.totalQuestions}`, 15, 180);
     y += 4;
+
+    if (quizData.passage) {
+      writeWrapped('Reading Passage', 15, 180);
+      y += 1;
+      writeWrapped(quizData.passage, 15, 180);
+      y += 4;
+    }
+    y = renderStructuredContentToPdf(pdf, quizData, y, quizData.title);
 
     quizData.questions.forEach((q, i) => {
       const ev = evaluation.evaluations.find((e) => e.questionIndex === i);
@@ -361,12 +378,7 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
           <p className="text-4xl font-black mt-1">{evaluation.score}/{evaluation.totalQuestions}</p>
           <p className="text-xs text-white/80 mt-2 leading-relaxed">{evaluation.overallFeedback}</p>
         </div>
-        {quizData.passage && (
-          <div className="bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/60 rounded-2xl p-4">
-            <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-1.5">Reading Passage</p>
-            <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">{quizData.passage}</p>
-          </div>
-        )}
+        <SubjectContentBlocks data={quizData} />
         <div className="space-y-3 md:space-y-0 md:grid md:grid-cols-2 md:gap-3">
           {quizData.questions.map((q, i) => {
             const ev = evaluation.evaluations.find((e) => e.questionIndex === i);
@@ -453,14 +465,10 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
           ))}
         </div>
 
-        {/* English & Literature: the passage every question is drawn from,
-            shown once above the questions rather than repeated per-question. */}
-        {quizData.passage && (
-          <div className="bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/60 rounded-2xl p-4">
-            <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-1.5">Reading Passage</p>
-            <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">{quizData.passage}</p>
-          </div>
-        )}
+        {/* Dynamic Forms: passage, formulas/solution steps, process flow,
+            timeline, tables, and images all shown once above the questions
+            rather than repeated per-question. */}
+        <SubjectContentBlocks data={quizData} />
 
         {/* Current question only */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 min-h-[220px] flex flex-col">
