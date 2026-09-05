@@ -3,6 +3,7 @@ import { Sparkles, CheckCircle2, X } from 'lucide-react';
 import { HistoryItem, RecallCard, QuizData, SummaryData, VisualizationResponse } from '../types';
 import { generateContentWithFallback, GEMINI_KEYS, parseJsonResponse } from '../lib/gemini';
 import { makeRecallCard } from '../lib/spacedRepetition';
+import { loadDraft, saveDraft, clearDraft } from '../lib/draftStore';
 
 interface Props {
   // Setting this to a non-null array of items kicks off a background run.
@@ -16,6 +17,8 @@ interface Props {
   onError: (msg: string) => void;
   onDismiss: () => void;
 }
+
+const DRAFT_KEY = 'ai_coach_job';
 
 function describeHistoryItem(item: HistoryItem, index: number): string {
   if (item.type === 'quiz') {
@@ -45,46 +48,73 @@ export default function AiCoach({ items, requestedCount, onComplete, onError, on
   const [status, setStatus] = useState<'idle' | 'working' | 'done'>('idle');
   const runningFor = useRef<HistoryItem[] | null>(null);
 
+  // Actual generation logic, pulled out so it can be triggered either by a
+  // fresh `items` prop from the parent, or by resuming a job that was still
+  // in flight when the tab was interrupted (see the resume effect below).
+  const runGeneration = async (jobItems: HistoryItem[], jobRequestedCount: number | null) => {
+    try {
+      const material = jobItems.map(describeHistoryItem).join('\n\n');
+      const targetCount = jobRequestedCount ?? Math.min(20, Math.max(4, jobItems.length * 3));
+      const prompt = `A student selected ${jobItems.length} items from their study history to turn into one combined flashcard set. Write recall questions that cover the material across all of them — it's fine, and often better, for a question to connect two items. Write EXACTLY ${targetCount} question${targetCount === 1 ? '' : 's'} total — not more, not fewer. Respond ONLY with strict JSON: {"cards": [{"prompt": string, "answer": string, "sourceTitle": string}]}\n\n${material}`;
+
+      const response = await generateContentWithFallback(GEMINI_KEYS.recallCoach, {
+        model: 'gemini-3.6-flash',
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      });
+      const parsed = parseJsonResponse<{ cards: { prompt: string; answer: string; sourceTitle: string }[] }>(
+        response.text
+      );
+      // The model doesn't always follow "exactly N" precisely — trim any
+      // overshoot ourselves rather than trusting the response as-is.
+      const cards = parsed.cards.slice(0, targetCount).map((c) =>
+        makeRecallCard({
+          sourceType: 'concept-link',
+          sourceTitle: c.sourceTitle || `${jobItems.length} Recents`,
+          prompt: c.prompt,
+          answer: c.answer,
+          immediate: true,
+        })
+      );
+      setStatus('done');
+      clearDraft(DRAFT_KEY); // job finished — nothing left to resume
+      onComplete(cards);
+    } catch (err) {
+      console.error(err);
+      onError('Could not build flashcards from those items — try again.');
+      clearDraft(DRAFT_KEY); // don't keep retrying a job that's actually failing
+      runningFor.current = null;
+      setStatus('idle');
+    }
+  };
+
+  // On mount only: if a job was still running when the tab died (crash,
+  // refresh, mobile low-memory kill), resume it here — independent of
+  // whatever `items` this fresh mount receives as a prop, since the
+  // parent's own selection state (ReviewQueue's `coachItems`) doesn't
+  // survive a full-page refresh any better than this component's did.
+  // Without this, a refresh mid-generation silently drops the whole batch
+  // with no error and no retry, which reads to the student as "my cards
+  // just vanished" even though nothing had actually been saved yet.
+  useEffect(() => {
+    loadDraft<{ items: HistoryItem[]; requestedCount: number | null }>(DRAFT_KEY).then((job) => {
+      if (job && job.items?.length && !runningFor.current) {
+        runningFor.current = job.items;
+        setStatus('working');
+        runGeneration(job.items, job.requestedCount);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!items || items === runningFor.current) return;
     runningFor.current = items;
     setStatus('working');
-
-    (async () => {
-      try {
-        const material = items.map(describeHistoryItem).join('\n\n');
-        // The student's chosen count wins when they gave one; otherwise fall
-        // back to the old auto-scaled guess.
-        const targetCount = requestedCount ?? Math.min(20, Math.max(4, items.length * 3));
-        const prompt = `A student selected ${items.length} items from their study history to turn into one combined flashcard set. Write recall questions that cover the material across all of them — it's fine, and often better, for a question to connect two items. Write EXACTLY ${targetCount} question${targetCount === 1 ? '' : 's'} total — not more, not fewer. Respond ONLY with strict JSON: {"cards": [{"prompt": string, "answer": string, "sourceTitle": string}]}\n\n${material}`;
-
-        const response = await generateContentWithFallback(GEMINI_KEYS.recallCoach, {
-          model: 'gemini-3.6-flash',
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        });
-        const parsed = parseJsonResponse<{ cards: { prompt: string; answer: string; sourceTitle: string }[] }>(
-          response.text
-        );
-        // The model doesn't always follow "exactly N" precisely — trim any
-        // overshoot ourselves rather than trusting the response as-is.
-        const cards = parsed.cards.slice(0, targetCount).map((c) =>
-          makeRecallCard({
-            sourceType: 'concept-link',
-            sourceTitle: c.sourceTitle || `${items.length} Recents`,
-            prompt: c.prompt,
-            answer: c.answer,
-            immediate: true,
-          })
-        );
-        setStatus('done');
-        onComplete(cards);
-      } catch (err) {
-        console.error(err);
-        onError('Could not build flashcards from those items — try again.');
-        runningFor.current = null;
-        setStatus('idle');
-      }
-    })();
+    // Persist the job BEFORE the async call starts, so a crash at any point
+    // during generation — not just after it — leaves something to resume.
+    saveDraft(DRAFT_KEY, { items, requestedCount });
+    runGeneration(items, requestedCount);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
 
   // Dismissing (whether the student taps the X, or the auto-timer below

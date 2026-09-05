@@ -1,8 +1,10 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Upload, Camera, Sparkles, CheckCircle, XCircle, RefreshCw, Printer,
   ChevronRight, Trash, Layers, FileText,
 } from 'lucide-react';
+import { loadDraft, saveDraft, clearDraft } from '../lib/draftStore';
+import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 import { jsPDF } from 'jspdf';
 import { QuizData, QuizQuestion, EvaluationResult, HistoryItem, StudyFile } from '../types';
 import {
@@ -67,6 +69,73 @@ export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCard
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
+  // ---- Session-draft persistence ----
+  // A generated quiz (and the student's in-progress answers) used to live
+  // only in the useState calls above — a refresh, tab crash, or mobile
+  // low-memory force-reload wiped it back to a blank "new quiz" screen with
+  // no warning. This mirrors it into IndexedDB (see lib/draftStore.ts) as it
+  // changes, and restores it on mount, so a refresh mid-quiz resumes exactly
+  // where the student left off instead of discarding their work.
+  const DRAFT_KEY = 'quiz_builder';
+  const draftHydrated = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadDraft<{
+      file: StudyFile | null;
+      textInput: string;
+      inputMode: 'topic' | 'notes';
+      subject: Subject;
+      questionCount: number | '';
+      quizType: 'multiple-choice' | 'short-answer';
+      difficulty: 'easy' | 'medium' | 'hard';
+      quizData: QuizData | null;
+      quizSourceImage: string | null;
+      userAnswers: Record<number, string>;
+      evaluation: EvaluationResult | null;
+      currentQ: number;
+    }>(DRAFT_KEY).then((draft) => {
+      if (cancelled || !draft || !draft.quizData) return; // nothing worth resuming
+      setFile(draft.file);
+      setTextInput(draft.textInput);
+      setInputMode(draft.inputMode);
+      setSubject(draft.subject);
+      setQuestionCount(draft.questionCount);
+      setQuizType(draft.quizType);
+      setDifficulty(draft.difficulty);
+      setQuizData(draft.quizData);
+      setQuizSourceImage(draft.quizSourceImage);
+      setUserAnswers(draft.userAnswers);
+      setEvaluation(draft.evaluation);
+      setCurrentQ(draft.currentQ);
+    }).finally(() => {
+      draftHydrated.current = true;
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!draftHydrated.current) return; // don't stomp the draft with blank initial state before hydration runs
+    if (!quizData) {
+      clearDraft(DRAFT_KEY);
+      return;
+    }
+    saveDraft(DRAFT_KEY, {
+      file, textInput, inputMode, subject, questionCount, quizType, difficulty,
+      quizData, quizSourceImage, userAnswers, evaluation, currentQ,
+    });
+    // Only re-save when something about the actual session changes — typing
+    // in unrelated future fields shouldn't thrash IndexedDB.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quizData, quizSourceImage, userAnswers, evaluation, currentQ]);
+
+  // Warns on refresh/close while a quiz is in progress and not yet
+  // submitted — see lib/useUnsavedChangesWarning.ts for what this can and
+  // can't actually guarantee (short version: the draft above is the real
+  // safety net; this is just a nudge against accidental closes).
+  useUnsavedChangesWarning(Boolean(quizData) && !evaluation);
+
   const handleFile = (selected: File) => {
     const kind = classifyStudyFile(selected);
     if (!kind) {
@@ -84,6 +153,7 @@ export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCard
     setUserAnswers({});
     setEvaluation(null);
     setCurrentQ(0);
+    clearDraft(DRAFT_KEY);
   };
 
   const handleGenerateClick = () => {

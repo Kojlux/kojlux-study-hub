@@ -1,5 +1,7 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Upload, Camera, Sparkles, RefreshCw, BookOpenCheck, Link2, ChevronDown, ArrowRight, Printer, FileText } from 'lucide-react';
+import { loadDraft, saveDraft, clearDraft } from '../lib/draftStore';
+import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 import { jsPDF } from 'jspdf';
 import { SummaryData, HistoryItem, RecallCard, VisualizationResponse, StudyFile } from '../types';
 import {
@@ -43,6 +45,61 @@ export default function NoteCraft({ gradeLevel, history, onSaveHistory, onAddRec
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const visualizationHistory = history.filter((h) => h.type === 'visualization');
+
+  // ---- Session-draft persistence (same pattern as QuizBuilder) ----
+  // A generated summary + any Concept Linker results used to live only in
+  // memory — a refresh mid-session lost it all. This restores/mirrors it
+  // via IndexedDB so a refresh resumes instead of wiping the screen.
+  const DRAFT_KEY = 'note_craft';
+  const draftHydrated = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadDraft<{
+      file: StudyFile | null;
+      textInput: string;
+      inputMode: 'topic' | 'notes';
+      subject: Subject;
+      detailLevel: 'concise' | 'standard' | 'thorough';
+      summaryData: SummaryData | null;
+      linkedResults: Record<string, { prompt: string; answer: string }[]>;
+    }>(DRAFT_KEY).then((draft) => {
+      if (cancelled || !draft || !draft.summaryData) return;
+      setFile(draft.file);
+      setTextInput(draft.textInput);
+      setInputMode(draft.inputMode);
+      setSubject(draft.subject);
+      setDetailLevel(draft.detailLevel);
+      setSummaryData(draft.summaryData);
+      setLinkedResults(draft.linkedResults);
+    }).finally(() => {
+      draftHydrated.current = true;
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!draftHydrated.current) return;
+    if (!summaryData) {
+      clearDraft(DRAFT_KEY);
+      return;
+    }
+    saveDraft(DRAFT_KEY, { file, textInput, inputMode, subject, detailLevel, summaryData, linkedResults });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summaryData, linkedResults]);
+
+  useUnsavedChangesWarning(Boolean(summaryData));
+
+  // Starting over should discard the persisted draft too, not just the
+  // in-memory state — otherwise the old summary would silently come back
+  // on the next refresh.
+  const resetNotes = () => {
+    setSummaryData(null);
+    setFile(null);
+    setTextInput('');
+    clearDraft(DRAFT_KEY);
+  };
 
   const handleFile = (selected: File) => {
     const kind = classifyStudyFile(selected);
@@ -395,7 +452,7 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
               >
                 <Printer className="w-3.5 h-3.5" /> PDF
               </button>
-              <button onClick={() => { setSummaryData(null); setFile(null); setTextInput(''); }} className="text-xs text-focus-primary font-bold flex items-center gap-1">
+              <button onClick={resetNotes} className="text-xs text-focus-primary font-bold flex items-center gap-1">
                 <RefreshCw className="w-3.5 h-3.5" /> New
               </button>
             </div>

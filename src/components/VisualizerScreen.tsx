@@ -1,5 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import React, { useState, useEffect, useRef } from 'react';
+import { loadDraft, saveDraft, clearDraft } from '../lib/draftStore';
+import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 import {
   Play, Pause, ArrowLeft, ArrowRight, RotateCcw,
   Sparkles, Compass, Lightbulb, Activity,
@@ -125,6 +127,55 @@ export default function VisualizerScreen({
       setMobileView('visualization');
     }
   }, [loadedVisualization]);
+
+  // ---- Session-draft persistence (same pattern as QuizBuilder/NoteCraft) ----
+  // The whole chat thread + active visualization used to live only in
+  // memory — a refresh mid-conversation lost everything, same as the quiz
+  // and notes screens. This restores/mirrors it via IndexedDB.
+  //
+  // Deliberately skipped when `loadedVisualization` is set: that prop means
+  // the user explicitly opened a specific item from History, and that
+  // should always win over resuming an unrelated stale draft.
+  const DRAFT_KEY = 'visualizer_chat';
+  const draftHydrated = useRef(false);
+
+  useEffect(() => {
+    if (loadedVisualization) {
+      draftHydrated.current = true; // history-loaded session starts "hydrated" so it can be saved right away
+      return;
+    }
+    let cancelled = false;
+    loadDraft<{
+      messages: VisualizerChatMessage[];
+      vizData: VisualizationResponse | null;
+      currentStep: number;
+      mobileView: 'chat' | 'visualization';
+      subject: Subject;
+    }>(DRAFT_KEY).then((draft) => {
+      if (cancelled || !draft || draft.messages.length === 0) return;
+      setMessages(draft.messages);
+      setVizData(draft.vizData);
+      setCurrentStep(draft.currentStep);
+      setMobileView(draft.mobileView);
+      setSubject(draft.subject);
+    }).finally(() => {
+      draftHydrated.current = true;
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadedVisualization]);
+
+  useEffect(() => {
+    if (!draftHydrated.current) return;
+    if (messages.length === 0) {
+      clearDraft(DRAFT_KEY);
+      return;
+    }
+    saveDraft(DRAFT_KEY, { messages, vizData, currentStep, mobileView, subject });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, vizData, currentStep, mobileView, subject]);
+
+  useUnsavedChangesWarning(messages.length > 0);
 
   // Auto-scroll the chat to the latest message
   useEffect(() => {
@@ -307,6 +358,7 @@ Rules:
     setCurrentStep(0);
     setIsPlaying(false);
     setMobileView('chat');
+    clearDraft(DRAFT_KEY);
   };
 
   // Loads a past visualization message back into the active panel (e.g. after
