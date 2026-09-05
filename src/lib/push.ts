@@ -46,7 +46,8 @@ export async function registerPushForUser(uid: string): Promise<string | null> {
     // can keep running that stale worker for up to 24h even after you've
     // fixed and redeployed the file — "I fixed it and it's still broken"
     // is very often just this.
-    const registration = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
+    const serviceWorkerPath = `${import.meta.env.BASE_URL}sw.js`;
+    const registration = await navigator.serviceWorker.register(serviceWorkerPath, { updateViaCache: 'none' });
     await registration.update();
     const messaging = getMessaging(app);
 

@@ -25,7 +25,7 @@ messaging.onBackgroundMessage((payload) => {
   const title = data.title || 'Kojlux Study Hub';
   const body = data.body || 'You have something to review.';
   const tag = data.tag || 'kojlux-notification';
-  const url = data.url || '/';
+  const url = data.url || self.registration.scope;
 
   self.registration.showNotification(title, {
     body,
@@ -40,12 +40,12 @@ messaging.onBackgroundMessage((payload) => {
 // otherwise opens a new one at the deep-linked URL.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || '/';
+  const url = (event.notification.data && event.notification.data.url) || self.registration.scope;
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
       for (const client of windowClients) {
         if ('focus' in client) {
-          client.navigate(url);
+          client.navigate(new URL(url, self.registration.scope).href);
           return client.focus();
         }
       }

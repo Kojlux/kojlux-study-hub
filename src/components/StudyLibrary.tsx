@@ -7,6 +7,7 @@ import { makeCollection } from '../lib/collections';
 import Modal from './Modal';
 import ImageLightbox from './ImageLightbox';
 import { useToast } from './Toast';
+import ShareCollectionButton from './ShareCollectionButton';
 
 const UNCATEGORIZED = '__uncategorized__';
 
@@ -503,6 +504,7 @@ function ManageCollectionsModal({
                   {c.name} <span className="text-slate-400 font-semibold">({count})</span>
                 </button>
               )}
+              <ShareCollectionButton collection={c} cards={savedCards.filter((card) => card.collectionId === c.id)} />
               <button
                 type="button"
                 onClick={() => {

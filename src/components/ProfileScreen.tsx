@@ -1,16 +1,21 @@
-import React, { useState } from 'react';
-import { Sun, Moon, LogOut, LogIn, User as UserIcon, Flame, Layers, Menu, X, Mail } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { LogOut, LogIn, User as UserIcon, Flame, Layers, Menu, X, Mail, ChevronDown, Check } from 'lucide-react';
 import { GRADE_LEVEL_OPTIONS } from '../constants';
 import { ExamEvent, HistoryItem } from '../types';
 import CalendarScreen from './CalendarScreen';
+import ThemeSwitcher from './ThemeSwitcher';
 
 interface Props {
   email: string;
   username: string;
   gradeLevel: string;
   onGradeLevelChange: (g: string) => void;
-  darkMode: boolean;
-  onToggleDarkMode: () => void;
+  // Superseded by the in-screen theme picker (see ThemeSwitcher), which now
+  // owns light/dark plus 5 additional palettes and persists the choice
+  // itself. Left optional here only so a parent still passing these props
+  // doesn't need to change; ProfileScreen no longer reads them.
+  darkMode?: boolean;
+  onToggleDarkMode?: () => void;
   streak: number;
   totalReviews: number;
   // Guests (the "Skip" path at launch) don't have an account to sign out
@@ -30,7 +35,7 @@ interface Props {
 }
 
 export default function ProfileScreen({
-  email, username, gradeLevel, onGradeLevelChange, darkMode, onToggleDarkMode, streak, totalReviews,
+  email, username, gradeLevel, onGradeLevelChange, streak, totalReviews,
   isGuest, onSignOut, onSignIn, exams, history, onAddExam, onUpdateExam, onDeleteExam,
 }: Props) {
   // Grade level, appearance, account email, and sign out/in used to live
@@ -126,35 +131,9 @@ export default function ProfileScreen({
               <span className="truncate">{email || 'Signed in as guest'}</span>
             </div>
 
-            <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-2">Grade level</p>
-              <div className="flex flex-wrap gap-1.5">
-                {GRADE_LEVEL_OPTIONS.map((g) => (
-                  <button
-                    key={g}
-                    onClick={() => onGradeLevelChange(g)}
-                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border ${
-                      gradeLevel === g ? 'bg-focus-primary text-white border-focus-primary' : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-                    }`}
-                  >
-                    {g}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <GradeLevelSelect gradeLevel={gradeLevel} onGradeLevelChange={onGradeLevelChange} />
 
-            <button
-              onClick={onToggleDarkMode}
-              className="w-full flex items-center justify-between bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4"
-            >
-              <span className="flex items-center gap-2.5 text-sm font-bold text-slate-700 dark:text-slate-200">
-                {darkMode ? <Moon className="w-4.5 h-4.5 text-focus-primary" /> : <Sun className="w-4.5 h-4.5 text-focus-primary" />}
-                {darkMode ? 'Dark mode' : 'Light mode'}
-              </span>
-              <span className={`w-10 h-5.5 rounded-full p-0.5 transition ${darkMode ? 'bg-focus-primary' : 'bg-slate-200'}`}>
-                <span className={`block w-4.5 h-4.5 rounded-full bg-white shadow transition-transform ${darkMode ? 'translate-x-4.5' : ''}`} />
-              </span>
-            </button>
+            <ThemeSwitcher />
 
             {isGuest ? (
               <button
@@ -173,6 +152,73 @@ export default function ProfileScreen({
             )}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Grade level used to be a row of buttons, all visible at once, competing
+// for attention with everything else in the settings drawer. A dropdown
+// keeps only the current pick on screen and reveals the rest on demand —
+// same open/close/outside-click behavior as ThemeSwitcher, for consistency.
+function GradeLevelSelect({
+  gradeLevel,
+  onGradeLevelChange,
+}: {
+  gradeLevel: string;
+  onGradeLevelChange: (g: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  return (
+    <div>
+      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-2">Grade level</p>
+      <div className="relative" ref={rootRef}>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Choose grade level"
+          aria-expanded={open}
+          title="Choose grade level"
+          className="w-full flex items-center justify-between bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4"
+        >
+          <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{gradeLevel}</span>
+          <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+
+        {open && (
+          <div
+            role="menu"
+            className="absolute z-20 left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-1.5 shadow-xl"
+          >
+            {GRADE_LEVEL_OPTIONS.map((g) => (
+              <button
+                key={g}
+                type="button"
+                role="menuitemradio"
+                aria-checked={gradeLevel === g}
+                onClick={() => {
+                  onGradeLevelChange(g);
+                  setOpen(false);
+                }}
+                className="w-full flex items-center justify-between gap-2 p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-left"
+              >
+                <span className="text-xs font-bold text-slate-600 dark:text-slate-300">{g}</span>
+                {gradeLevel === g && <Check className="w-3.5 h-3.5 text-focus-primary shrink-0" />}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

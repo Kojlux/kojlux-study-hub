@@ -1,0 +1,67 @@
+/* Imported once from src/index.css via:
+     @import './styles/themes.css';
+   Tailwind v4 generates utilities like `bg-focus-primary` directly from the
+   `--color-focus-primary` variable declared in index.css's @theme block —
+   it references that variable rather than inlining its hex value. So each
+   block below just redeclares the same variable names, scoped to
+   [data-theme="..."], and every utility using them repaints automatically
+   whenever `data-theme` changes on <html>. No tailwind.config.js involved:
+   that file isn't used for colors on Tailwind v4 and can be ignored/removed
+   for this project. */
+
+:root,
+[data-theme='light'] {
+  --color-focus-primary: #4F46E5;
+  --color-focus-primary-dark: #4338CA;
+  --color-focus-sage: #6EE7B7;
+  --color-focus-sage-dark: #059669;
+  --color-focus-bg: #F8FAFC;
+}
+
+[data-theme='dark'] {
+  --color-focus-primary: #6366F1;
+  --color-focus-primary-dark: #4F46E5;
+  --color-focus-sage: #6EE7B7;
+  --color-focus-sage-dark: #34D399;
+  --color-focus-bg: #0F172A;
+}
+
+[data-theme='sunset'] {
+  --color-focus-primary: #EA580C;
+  --color-focus-primary-dark: #C2410C;
+  --color-focus-sage: #FDBA74;
+  --color-focus-sage-dark: #EA580C;
+  --color-focus-bg: #FFF7ED;
+}
+
+[data-theme='ocean'] {
+  --color-focus-primary: #0284C7;
+  --color-focus-primary-dark: #0369A1;
+  --color-focus-sage: #67E8F9;
+  --color-focus-sage-dark: #0891B2;
+  --color-focus-bg: #F0F9FF;
+}
+
+[data-theme='forest'] {
+  --color-focus-primary: #22C55E;
+  --color-focus-primary-dark: #16A34A;
+  --color-focus-sage: #86EFAC;
+  --color-focus-sage-dark: #4ADE80;
+  --color-focus-bg: #0F1B14;
+}
+
+[data-theme='rose'] {
+  --color-focus-primary: #E11D48;
+  --color-focus-primary-dark: #BE123C;
+  --color-focus-sage: #FDA4AF;
+  --color-focus-sage-dark: #FB7185;
+  --color-focus-bg: #FFF1F2;
+}
+
+[data-theme='midnight'] {
+  --color-focus-primary: #8B5CF6;
+  --color-focus-primary-dark: #7C3AED;
+  --color-focus-sage: #C4B5FD;
+  --color-focus-sage-dark: #A78BFA;
+  --color-focus-bg: #020617;
+}

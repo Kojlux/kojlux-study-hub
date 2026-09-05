@@ -57,7 +57,13 @@ const firebaseConfig = {
 };
 
 const template = fs.readFileSync(TEMPLATE_PATH, 'utf8');
-const output = template.replace('__FIREBASE_CONFIG__', JSON.stringify(firebaseConfig, null, 2));
+const firebaseConfigLiteral = JSON.stringify(firebaseConfig, null, 2);
+const initialization = 'firebase.initializeApp(__FIREBASE_CONFIG__);';
+if (!template.includes(initialization)) {
+  console.error('[generate-sw] Service worker template is missing its Firebase initialization placeholder.');
+  process.exit(1);
+}
+const output = template.replace(initialization, `firebase.initializeApp(${firebaseConfigLiteral});`);
 
 fs.mkdirSync(path.dirname(OUTPUT_PATH), { recursive: true });
 fs.writeFileSync(OUTPUT_PATH, output, 'utf8');

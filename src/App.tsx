@@ -28,16 +28,38 @@ import ProfileScreen from './components/ProfileScreen';
 import VisualizerScreen from './components/VisualizerScreen';
 import CalendarScreen from './components/CalendarScreen';
 import BottomNav, { NavTab } from './components/BottomNav';
+import { clearDeepLinkUrl, parseDeepLinkCardId, parseDeepLinkCollectionId } from './lib/deepLink';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
 
 const SCREEN_TITLES: Record<NavTab, string> = {
-  home: 'Study Home',
+  home: 'Kojlux Study Hub',
   quiz: 'Create',
   visualizer: 'Concept Visualizer',
   review: 'Review',
   profile: 'Dashboard',
 };
 
+// ThemeProvider has to sit above AppContent (not inside it) since
+// AppContent itself calls useTheme() below — a component can't consume a
+// context it renders itself.
 export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
+  );
+}
+
+function AppContent() {
+  const initialDeepLinkCardId = parseDeepLinkCardId();
+  const initialDeepLinkCollectionId = parseDeepLinkCollectionId();
+  const [deepLinkCardId, setDeepLinkCardId] = useState<string | null>(initialDeepLinkCardId);
+  const [deepLinkCollectionId, setDeepLinkCollectionId] = useState<string | null>(initialDeepLinkCollectionId);
+  const consumeDeepLink = () => {
+    setDeepLinkCardId(null);
+    setDeepLinkCollectionId(null);
+    clearDeepLinkUrl();
+  };
   // ---- Auth ----
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -70,7 +92,7 @@ export default function App() {
   // stays local, same as it already does whenever `user` is null elsewhere
   // in this file), and `showAuthScreen` is only for whether the *gate* is
   // currently showing the sign-in form or its own Skip/Sign-In choice.
-  const [guestMode, setGuestMode] = useState<boolean>(() => loadLocal('kojlux_guest_mode', false));
+  const [guestMode, setGuestMode] = useState<boolean>(() => loadLocal('kojlux_guest_mode', false) || Boolean(initialDeepLinkCardId || initialDeepLinkCollectionId));
   const [showAuthScreen, setShowAuthScreen] = useState(false);
   useEffect(() => saveLocal('kojlux_guest_mode', guestMode), [guestMode]);
   // If a guest actually signs in later, they're no longer a guest.
@@ -100,6 +122,12 @@ export default function App() {
   // Permission is requested from the banner's button click, never silently.
   const [notifPermission, setNotifPermission] = useState<NotificationSupportState>(() => getNotificationPermission());
   const [notifBannerDismissed, setNotifBannerDismissed] = useState(false);
+
+  useEffect(() => {
+    if (user && notifPermission === 'granted') {
+      registerPushForUser(user.uid).catch((err) => console.error('Failed to enable push notifications', err));
+    }
+  }, [user, notifPermission]);
 
   const recallCardsRef = useRef<RecallCard[]>([]);
   // Seeded from localStorage (scoped per account) rather than starting null
@@ -171,14 +199,13 @@ export default function App() {
   }, []);
 
   // ---- Appearance ----
-  const [darkMode, setDarkMode] = useState<boolean>(() => {
-    const stored = localStorage.getItem('kojlux_dark_mode');
-    return stored === null ? true : stored === 'true'; // dark mode is the default until the user chooses otherwise
-  });
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', darkMode);
-    localStorage.setItem('kojlux_dark_mode', String(darkMode));
-  }, [darkMode]);
+  // Previously its own independent state that defaulted to dark and never
+  // updated (nothing called its setter anymore once the theme picker took
+  // over) — it kept forcing the `dark` class onto the wrapper below every
+  // time, no matter which theme was picked, which is why every theme used
+  // to render identically. isDarkMode below now comes from the same
+  // ThemeProvider the picker itself writes to.
+  const { isDarkMode } = useTheme();
 
   // ---- Navigation ----
   const [activeTab, setActiveTab] = useState<NavTab>('home');
@@ -586,7 +613,7 @@ export default function App() {
   }
 
   return (
-    <div className={`min-h-screen bg-focus-bg dark:bg-slate-950 ${darkMode ? 'dark' : ''}`}>
+    <div className="min-h-screen bg-focus-bg dark:bg-slate-950">
       {/* Nav renders itself as a bottom bar on phones and a left rail from
           md up — see BottomNav.tsx. It's fixed/full-height on desktop, so
           it lives outside the centered content column below. */}
@@ -628,7 +655,7 @@ export default function App() {
           </div>
         )}
 
-        {isNotificationSupported() && notifPermission === 'default' && !notifBannerDismissed && recallCards.length > 0 && (
+        {isNotificationSupported() && notifPermission === 'default' && !notifBannerDismissed && (recallCards.length > 0 || user) && (
           <div className="px-5 pb-3">
             <div className="flex items-start gap-2.5 bg-focus-primary/10 dark:bg-focus-primary/15 border border-focus-primary/25 rounded-2xl p-3">
               <Bell className="w-4 h-4 text-focus-primary shrink-0 mt-0.5" />
@@ -683,7 +710,7 @@ export default function App() {
 
           {activeTab === 'visualizer' && (
             <VisualizerScreen
-              darkMode={darkMode}
+              darkMode={isDarkMode}
               gradeLevel={gradeLevel}
               onGradeLevelChange={handleGradeLevelChange}
               onError={setErrorMsg}
@@ -703,6 +730,10 @@ export default function App() {
               onRenameCollection={renameCollection}
               onDeleteCollection={deleteCollection}
               onError={setErrorMsg}
+              submitterId={user?.uid ?? 'guest'}
+              deepLinkCardId={deepLinkCardId}
+              deepLinkCollectionId={deepLinkCollectionId}
+              onConsumeDeepLink={consumeDeepLink}
             />
           )}
 
@@ -712,8 +743,6 @@ export default function App() {
               username={username}
               gradeLevel={gradeLevel}
               onGradeLevelChange={handleGradeLevelChange}
-              darkMode={darkMode}
-              onToggleDarkMode={() => setDarkMode((d) => !d)}
               streak={streak}
               totalReviews={totalReviews}
               isGuest={!user}

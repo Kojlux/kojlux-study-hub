@@ -172,7 +172,12 @@ export interface SummaryData extends StructuredContent {
 // simplified SM-2 style algorithm (ease factor + growing interval in days).
 export interface RecallCard {
   id: string;
-  sourceType: 'quiz' | 'summary' | 'concept-link' | 'manual';
+  // 'shared': created locally from a SharedCardSnapshot a student saved out
+  // of a deep-linked flashcard someone else sent them (see
+  // lib/sharedCards.ts / components/SharedCardViewer.tsx). Distinguished
+  // from 'manual' so the library/history UI can show where it really came
+  // from instead of implying the student typed it themselves.
+  sourceType: 'quiz' | 'summary' | 'concept-link' | 'manual' | 'shared';
   sourceTitle: string;
   prompt: string;
   answer: string;
@@ -303,4 +308,56 @@ export interface VisualizationResponse {
   regions?: MapRegion[];
   // Populated when type is "dataset".
   dataset?: NumericDataset;
+}
+
+// ---------------------------------------------------------------------------
+// Lightweight Flashcard Sharing & External Link Hub (Review Screen)
+// ---------------------------------------------------------------------------
+
+// The publicly-readable snapshot a `/card/:id` deep link resolves to (see
+// lib/sharedCards.ts). Deliberately NOT a RecallCard — no schedule, ease
+// factor, reps, or collectionId, since that's private study data a link
+// recipient has no business seeing. Lives in a top-level `sharedCards`
+// collection (not scoped under the sender's uid) so it's readable by anyone
+// with the link, without opening up the sender's private recallCards data.
+export interface SharedCardSnapshot {
+  id: string;
+  prompt: string;
+  answer: string;
+  sourceTitle: string;
+  image?: string;
+  sharedAt: string; // ISO date
+}
+
+export interface SharedCollectionCard {
+  id: string;
+  prompt: string;
+  answer: string;
+  sourceTitle: string;
+  image?: string;
+}
+
+export interface SharedCollectionSnapshot {
+  id: string;
+  name: string;
+  cards: SharedCollectionCard[];
+  sharedAt: string;
+}
+
+// A community-submitted educational link (Storage-Efficient Link Hub).
+// Lives in a single global Firestore collection `communityLinks` — NOT
+// scoped per user — since these are meant to be shared across every
+// student using the app. Intentionally just three pieces of metadata plus
+// bookkeeping: no file ever gets uploaded to or proxied through Firebase.
+// Tapping a result hands `url` straight to window.open(), so PDFs, videos,
+// or any other file type are fetched directly by the student's own browser
+// from wherever the link's original host serves them.
+export interface CommunityLink {
+  id: string;
+  title: string;
+  url: string;
+  subjectTag: string; // e.g. "Algebra 1" — shown to the user as-is
+  subjectTagLower: string; // normalized copy of subjectTag, search only
+  submittedBy: string; // uid of the student who shared it, or 'guest'
+  createdAt: string; // ISO date
 }
