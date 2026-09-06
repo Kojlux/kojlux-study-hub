@@ -1068,6 +1068,23 @@ function QuizBuilderOrSummarizer(props: {
 // "Skip for now" drops straight into a fully-functional local/guest session,
 // same as the rest of the app already treats a null `user`.
 function WelcomeGate({ onSkip, onSignIn }: { onSkip: () => void; onSignIn: () => void }) {
+  const [consent, setConsent] = useState<'pending' | 'accepted' | 'declined'>(() => {
+    try {
+      return localStorage.getItem('kojlux_privacy_accepted') === 'true' ? 'accepted' : 'pending';
+    } catch {
+      return 'pending';
+    }
+  });
+
+  const acceptPrivacy = () => {
+    try {
+      localStorage.setItem('kojlux_privacy_accepted', 'true');
+    } catch {
+      // Consent still applies for this session if browser storage is unavailable.
+    }
+    setConsent('accepted');
+  };
+
   return (
     <div className="min-h-screen bg-focus-bg dark:bg-slate-950 flex items-center justify-center p-5">
       <div className="max-w-sm w-full space-y-5">
@@ -1082,16 +1099,59 @@ function WelcomeGate({ onSkip, onSignIn }: { onSkip: () => void; onSignIn: () =>
           </p>
         </div>
 
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-3">
+          <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Before you enter</p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+            Please review the{' '}
+            <a
+              href={`${import.meta.env.BASE_URL}privacy.html`}
+              target="_blank"
+              rel="noreferrer"
+              className="font-bold text-focus-primary underline underline-offset-2"
+            >
+              Privacy Policy
+            </a>{' '}
+            before using Kojlux Study Hub.
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={acceptPrivacy}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition ${
+                consent === 'accepted'
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-focus-primary text-white hover:bg-focus-primary-dark'
+              }`}
+            >
+              {consent === 'accepted' ? 'Accepted' : 'Accept'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConsent('declined')}
+              className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-xs font-bold transition"
+            >
+              Decline
+            </button>
+          </div>
+          {consent === 'declined' && (
+            <p className="text-[11px] text-rose-600 dark:text-rose-400 leading-relaxed">
+              You must accept the Privacy Policy to enter the app. You can accept it whenever you are ready.
+            </p>
+          )}
+        </div>
+
         <div className="space-y-2.5">
           <button
             onClick={onSignIn}
-            className="w-full py-3.5 bg-focus-primary hover:bg-focus-primary-dark text-white rounded-2xl text-sm font-bold transition"
+            disabled={consent !== 'accepted'}
+            className="w-full py-3.5 bg-focus-primary hover:bg-focus-primary-dark text-white rounded-2xl text-sm font-bold transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Sign In / Register
           </button>
           <button
             onClick={onSkip}
-            className="w-full py-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl text-sm font-bold transition"
+            disabled={consent !== 'accepted'}
+            className="w-full py-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl text-sm font-bold transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Skip for now
           </button>

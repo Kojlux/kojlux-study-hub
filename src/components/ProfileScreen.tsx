@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { LogOut, LogIn, User as UserIcon, Flame, Layers, Menu, X, Mail, ChevronDown, Check, Bell, BellOff, BellRing } from 'lucide-react';
+import { LogOut, LogIn, User as UserIcon, Flame, Layers, Menu, X, Mail, ChevronDown, Check, Bell, BellOff, BellRing, Shield } from 'lucide-react';
 import { GRADE_LEVEL_OPTIONS } from '../constants';
 import { ExamEvent, HistoryItem } from '../types';
 import { NotificationSupportState } from '../lib/notifications';
@@ -145,6 +145,15 @@ export default function ProfileScreen({
             <NotificationStatusRow permission={notifPermission} onEnable={onEnableNotifications} />
 
             <ThemeSwitcher />
+
+            <a
+              href={`${import.meta.env.BASE_URL}privacy.html`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2.5 text-xs font-bold text-slate-600 dark:text-slate-300"
+            >
+              <Shield className="w-4 h-4 text-focus-primary" /> Privacy Policy
+            </a>
 
             {isGuest ? (
               <button

@@ -13,12 +13,10 @@
 }
 
 :root {
-  scrollbar-width: none;
   -ms-overflow-style: none;
 }
 
 * {
-  scrollbar-width: none;
   -ms-overflow-style: none;
 }
 
@@ -32,7 +30,6 @@
 /* Hide scrollbar for IE, Edge, and Firefox */
 html, body {
   -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
 }
 
 @keyframes badge-fire {
