@@ -12,8 +12,10 @@ import { NotificationItem, NotificationType, NotificationTargetTab } from '../ty
 import { loadLocal, saveLocal, scopedKey } from './storage';
 
 const STORAGE_KEY = 'kojlux_notifications';
-// Keeps the list from growing forever — old, presumably-stale notifications
-// (e.g. a "resume your quiz" nudge from weeks ago) fall off the end.
+// Notifications are useful as a short activity history, not a permanent
+// archive. Loading them is also the cleanup point for notifications created
+// before this retention rule existed.
+const NOTIFICATION_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 const MAX_NOTIFICATIONS = 50;
 
 function key(scopeId: string): string {
@@ -21,7 +23,26 @@ function key(scopeId: string): string {
 }
 
 export function loadNotifications(scopeId: string): NotificationItem[] {
-  return loadLocal<NotificationItem[]>(key(scopeId), []);
+  const stored = loadLocal<NotificationItem[]>(key(scopeId), []);
+  const cutoff = Date.now() - NOTIFICATION_RETENTION_MS;
+  const newestByTag = new Map<string, NotificationItem>();
+  const cleaned: NotificationItem[] = [];
+
+  for (const notification of stored) {
+    const createdAt = Date.parse(notification.createdAt);
+    if (!Number.isFinite(createdAt) || createdAt < cutoff) continue;
+
+    if (notification.dedupeTag) {
+      const existing = newestByTag.get(notification.dedupeTag);
+      if (existing) continue;
+      newestByTag.set(notification.dedupeTag, notification);
+    }
+    cleaned.push(notification);
+  }
+
+  const next = cleaned.slice(0, MAX_NOTIFICATIONS);
+  if (JSON.stringify(next) !== JSON.stringify(stored)) saveLocal(key(scopeId), next);
+  return next;
 }
 
 function saveNotifications(scopeId: string, items: NotificationItem[]): NotificationItem[] {

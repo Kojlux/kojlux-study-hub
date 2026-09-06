@@ -1,25 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { X, FolderPlus, LogIn, Compass } from 'lucide-react';
+import { X, FolderPlus, LogIn, Compass, Folder } from 'lucide-react';
 import { fetchSharedCard, fetchSharedCollection } from '../lib/sharedCards';
 import { setPendingImport, clearPendingImport } from '../lib/pendingImport';
 import { cardFromSharedSnapshot } from '../lib/sharedImport';
 import { makeCollection } from '../lib/collections';
 import { RecallCard, Collection, SharedCardSnapshot, SharedCollectionSnapshot } from '../types';
+import Modal from './Modal';
 
 interface Props {
-  // Non-null when the app was opened via a `/card/:id` or `/collection/:id`
-  // share link (see App.tsx + lib/deepLink.ts). Wraps the whole app shell —
-  // not just the Review tab — so a link works no matter which tab happens
-  // to be active, and so the guest lock screen below can actually blur/
-  // disable navigation instead of just replacing one tab's content.
   cardId?: string | null;
   collectionId?: string | null;
   isLoggedIn: boolean;
+  collections: Collection[];
   onImportCard: (cards: RecallCard[]) => void;
-  onImportCollection: (collection: Collection, cards: RecallCard[]) => void;
-  // Clears the deep-link state + URL (see consumeDeepLink in App.tsx).
+  onImportCollection: (collection: Collection | null, cards: RecallCard[]) => void;
   onDismiss: () => void;
-  // Opens the sign-in/register screen (App.tsx's setShowAuthScreen(true)).
   onRequestAuth: () => void;
   children: React.ReactNode;
 }
@@ -28,6 +23,7 @@ export default function SharedLinkGate({
   cardId,
   collectionId,
   isLoggedIn,
+  collections,
   onImportCard,
   onImportCollection,
   onDismiss,
@@ -38,12 +34,19 @@ export default function SharedLinkGate({
   const [collection, setCollection] = useState<SharedCollectionSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [selectedCollectionId, setSelectedCollectionId] = useState('');
+  const [newCollectionName, setNewCollectionName] = useState('');
 
   useEffect(() => {
     let cancelled = false;
     setCard(null);
     setCollection(null);
     setNotFound(false);
+    setPickerOpen(false);
+    setSelectedCollectionId('');
+    setNewCollectionName('');
+
     if (cardId) {
       setLoading(true);
       fetchSharedCard(cardId).then((snap) => {
@@ -61,6 +64,7 @@ export default function SharedLinkGate({
         else setNotFound(true);
       });
     }
+
     return () => {
       cancelled = true;
     };
@@ -69,34 +73,50 @@ export default function SharedLinkGate({
   const active = Boolean(cardId || collectionId);
   if (!active) return <>{children}</>;
 
-  // Flow A (logged in): clone the shared card/collection straight into this
-  // account. A fresh RecallCard/Collection id is generated for every clone
-  // (see cardFromSharedSnapshot), so this is always a copy in the
-  // importer's own uid-scoped data — never a reference to the sender's.
-  const importNow = () => {
+  const closePicker = () => {
+    setPickerOpen(false);
+    setSelectedCollectionId('');
+    setNewCollectionName('');
+  };
+
+  const importNow = (destinationId?: string) => {
     if (card) {
-      onImportCard([cardFromSharedSnapshot(card)]);
+      onImportCard([cardFromSharedSnapshot(card, destinationId)]);
     }
     if (collection) {
-      const newCollection = makeCollection(collection.name);
-      const cards = collection.cards.map((c) => cardFromSharedSnapshot(c, newCollection.id));
-      onImportCollection(newCollection, cards);
+      const cards = collection.cards.map((c) => cardFromSharedSnapshot(c, destinationId));
+      onImportCard(cards);
     }
+    closePicker();
     onDismiss();
   };
 
-  // Flow B (guest): remember what they wanted, then send them to sign up —
-  // App.tsx's post-login effect resumes this import automatically once
-  // `user` is set. Deliberately does NOT call onDismiss() here: the deep
-  // link (and this gate) needs to stay alive across the AuthScreen detour,
-  // since pendingImport alone doesn't carry the fetched snapshot data.
+  const createAndImport = () => {
+    if (!newCollectionName.trim()) return;
+    const created = makeCollection(newCollectionName);
+    if (card) {
+      onImportCollection(created, [cardFromSharedSnapshot(card, created.id)]);
+    }
+    if (collection) {
+      const cards = collection.cards.map((c) => cardFromSharedSnapshot(c, created.id));
+      onImportCollection(created, cards);
+    }
+    closePicker();
+    onDismiss();
+  };
+
   const requestSignupThenImport = () => {
-    setPendingImport(cardId ? { type: 'card', id: cardId } : { type: 'collection', id: collectionId! });
+    const targetCollectionId = selectedCollectionId || undefined;
+    const nextCollectionName = newCollectionName.trim() || undefined;
+    setPendingImport(
+      cardId
+        ? { type: 'card', id: cardId, targetCollectionId, newCollectionName: nextCollectionName }
+        : { type: 'collection', id: collectionId!, targetCollectionId, newCollectionName: nextCollectionName }
+    );
+    closePicker();
     onRequestAuth();
   };
 
-  // Guest explicitly declines — drop any queued import and exit to the
-  // normal (already-guest-mode) app.
   const explore = () => {
     clearPendingImport();
     onDismiss();
@@ -105,9 +125,56 @@ export default function SharedLinkGate({
   const title = card?.sourceTitle || collection?.name || 'Shared card';
   const preview = card?.prompt || (collection ? `${collection.cards.length} card${collection.cards.length === 1 ? '' : 's'}` : '');
 
+  const renderPicker = (continueLabel: string, continueAction: () => void) => (
+    <Modal onClose={closePicker} title={card ? 'Save shared flashcard' : 'Save shared collection'}>
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedCollectionId('');
+            setNewCollectionName('');
+            continueAction();
+          }}
+          className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
+        >
+          Save without a collection
+        </button>
+        {collections.length > 0 && (
+          <select
+            value={selectedCollectionId}
+            onChange={(event) => {
+              setSelectedCollectionId(event.target.value);
+              setNewCollectionName('');
+            }}
+            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary"
+          >
+            <option value="">Choose an existing collection…</option>
+            {collections.map((item) => (
+              <option key={item.id} value={item.id}>{item.name}</option>
+            ))}
+          </select>
+        )}
+        <input
+          value={newCollectionName}
+          onChange={(event) => {
+            setNewCollectionName(event.target.value);
+            if (event.target.value) setSelectedCollectionId('');
+          }}
+          placeholder="Or create a new collection…"
+          className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary"
+        />
+        <button
+          type="button"
+          onClick={continueAction}
+          className="w-full py-3 bg-focus-primary text-white rounded-2xl text-sm font-bold"
+        >
+          {continueLabel}
+        </button>
+      </div>
+    </Modal>
+  );
+
   if (isLoggedIn) {
-    // ---- Flow A: seamless import banner — the app underneath stays fully
-    // interactive, nothing is blurred or locked. ----
     return (
       <>
         {children}
@@ -123,7 +190,7 @@ export default function SharedLinkGate({
                     <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">{title}</p>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{preview}</p>
                     <button
-                      onClick={importNow}
+                      onClick={() => setPickerOpen(true)}
                       className="mt-2 flex items-center gap-1.5 text-xs font-bold text-white bg-focus-primary px-3 py-2 rounded-xl"
                     >
                       <FolderPlus className="w-3.5 h-3.5" /> Add to My Collection
@@ -137,13 +204,17 @@ export default function SharedLinkGate({
             </div>
           </div>
         )}
+        {pickerOpen && renderPicker('Add to collection', () => {
+          if (newCollectionName.trim()) {
+            createAndImport();
+            return;
+          }
+          importNow(selectedCollectionId || undefined);
+        })}
       </>
     );
   }
 
-  // ---- Flow B: restricted review mode — the rest of the app is visually
-  // and functionally locked behind this screen until the guest either signs
-  // up or explicitly exits. ----
   return (
     <div className="relative min-h-screen">
       <div className="pointer-events-none select-none blur-sm brightness-90 transition" aria-hidden="true">
@@ -160,7 +231,7 @@ export default function SharedLinkGate({
               <p className="text-xs text-slate-500 dark:text-slate-400">{preview}</p>
               <div className="space-y-2 pt-2">
                 <button
-                  onClick={requestSignupThenImport}
+                  onClick={() => setPickerOpen(true)}
                   className="w-full flex items-center justify-center gap-2 py-3 bg-focus-primary text-white rounded-2xl text-sm font-bold"
                 >
                   <LogIn className="w-4 h-4" /> Save to Collection
@@ -176,6 +247,13 @@ export default function SharedLinkGate({
           )}
         </div>
       </div>
+      {pickerOpen && renderPicker('Continue to sign in', () => {
+        if (newCollectionName.trim()) {
+          requestSignupThenImport();
+          return;
+        }
+        requestSignupThenImport();
+      })}
     </div>
   );
 }

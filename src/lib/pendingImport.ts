@@ -13,7 +13,9 @@
 
 const STORAGE_KEY = 'kojlux_pending_import';
 
-export type PendingImport = { type: 'card'; id: string } | { type: 'collection'; id: string };
+export type PendingImport =
+  | { type: 'card'; id: string; targetCollectionId?: string; newCollectionName?: string }
+  | { type: 'collection'; id: string; targetCollectionId?: string; newCollectionName?: string };
 
 export function setPendingImport(pending: PendingImport): void {
   try {

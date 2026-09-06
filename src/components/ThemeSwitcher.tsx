@@ -46,7 +46,7 @@ export default function ThemeSwitcher() {
       {open && (
         <div
           role="menu"
-          className="absolute z-20 left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-2 shadow-xl grid grid-cols-2 gap-1.5"
+          className="absolute z-20 left-0 right-0 mt-2 max-h-80 overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-2 shadow-xl grid grid-cols-2 gap-1.5"
         >
           {themes.map((t) => (
             <button

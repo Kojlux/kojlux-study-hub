@@ -65,3 +65,54 @@
   --color-focus-sage-dark: #A78BFA;
   --color-focus-bg: #020617;
 }
+
+/* --- New themes --- */
+
+/* Aurora: deep midnight navy with a teal/violet aurora-borealis glow.
+   Dark, moody, a little mysterious — for late-night study sessions. */
+[data-theme='aurora'] {
+  --color-focus-primary: #14B8A6;
+  --color-focus-primary-dark: #0F766E;
+  --color-focus-sage: #A78BFA;
+  --color-focus-sage-dark: #8B5CF6;
+  --color-focus-bg: #0B1120;
+}
+
+/* Cherry Blossom: soft blush pink and white, light and airy. */
+[data-theme='cherry'] {
+  --color-focus-primary: #DB2777;
+  --color-focus-primary-dark: #BE185D;
+  --color-focus-sage: #F9A8D4;
+  --color-focus-sage-dark: #EC4899;
+  --color-focus-bg: #FFF5F7;
+}
+
+/* Honeycomb: mustard/goldenrod with a lime-green pop — genuinely yellow,
+   not orange, so it doesn't collide with Sunset. Warm but distinct. */
+[data-theme='honeycomb'] {
+  --color-focus-primary: #CA8A04;
+  --color-focus-primary-dark: #A16207;
+  --color-focus-sage: #BEF264;
+  --color-focus-sage-dark: #84CC16;
+  --color-focus-bg: #FEFCE8;
+}
+
+/* Graphite: neutral steel-gray dark mode with a muted teal accent. The
+   only fully desaturated theme in the set, built for minimal visual
+   noise — distinct from every other dark theme by design, not just hue. */
+[data-theme='graphite'] {
+  --color-focus-primary: #64748B;
+  --color-focus-primary-dark: #475569;
+  --color-focus-sage: #5EEAD4;
+  --color-focus-sage-dark: #2DD4BF;
+  --color-focus-bg: #0B0F14;
+}
+
+/* Cyber Neon: near-black with electric cyan and magenta, high energy. */
+[data-theme='cyber'] {
+  --color-focus-primary: #22D3EE;
+  --color-focus-primary-dark: #0891B2;
+  --color-focus-sage: #F472B6;
+  --color-focus-sage-dark: #EC4899;
+  --color-focus-bg: #06070D;
+}

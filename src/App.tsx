@@ -739,13 +739,28 @@ function AppContent() {
       try {
         if (pending.type === 'card') {
           const snap = await fetchSharedCard(pending.id);
-          if (snap) addRecallCards([cardFromSharedSnapshot(snap)]);
+          if (!snap) return;
+          if (pending.newCollectionName?.trim()) {
+            const destination = makeCollection(pending.newCollectionName.trim());
+            addCollection(destination);
+            addRecallCards([cardFromSharedSnapshot(snap, destination.id)]);
+          } else if (pending.targetCollectionId) {
+            addRecallCards([cardFromSharedSnapshot(snap, pending.targetCollectionId)]);
+          } else {
+            addRecallCards([cardFromSharedSnapshot(snap)]);
+          }
         } else {
           const snap = await fetchSharedCollection(pending.id);
           if (snap) {
-            const newCollection = makeCollection(snap.name);
-            addCollection(newCollection);
-            addRecallCards(snap.cards.map((c) => cardFromSharedSnapshot(c, newCollection.id)));
+            if (pending.newCollectionName?.trim()) {
+              const destination = makeCollection(pending.newCollectionName.trim());
+              addCollection(destination);
+              addRecallCards(snap.cards.map((c) => cardFromSharedSnapshot(c, destination.id)));
+            } else if (pending.targetCollectionId) {
+              addRecallCards(snap.cards.map((c) => cardFromSharedSnapshot(c, pending.targetCollectionId)));
+            } else {
+              addRecallCards(snap.cards.map((c) => cardFromSharedSnapshot(c)));
+            }
           }
         }
       } catch (err) {
@@ -792,9 +807,10 @@ function AppContent() {
       cardId={deepLinkCardId}
       collectionId={deepLinkCollectionId}
       isLoggedIn={!!user}
+      collections={collections}
       onImportCard={addRecallCards}
       onImportCollection={(collection, importedCards) => {
-        addCollection(collection);
+        if (collection) addCollection(collection);
         addRecallCards(importedCards);
       }}
       onDismiss={consumeDeepLink}
