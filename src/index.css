@@ -34,3 +34,18 @@ html, body {
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
 }
+
+@keyframes badge-fire {
+  0%, 100% { transform: translateY(4px) scale(.92) rotate(-3deg); filter: drop-shadow(0 0 4px rgb(251 191 36 / .35)); }
+  50% { transform: translateY(-5px) scale(1.08) rotate(3deg); filter: drop-shadow(0 0 14px rgb(251 146 60 / .85)); }
+}
+
+.badge-fire {
+  width: 96px;
+  height: 96px;
+  margin: -12px auto 8px;
+  padding-top: 20px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fb923c 0%, #f43f5e 48%, transparent 70%);
+  animation: badge-fire 850ms ease-in-out infinite;
+}

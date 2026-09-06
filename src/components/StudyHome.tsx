@@ -1,21 +1,30 @@
-import React, { useMemo, useState } from 'react';
-import { Brain, FileText, Link2, Activity, Flame, ChevronRight, Clock, X, CheckCircle2, Printer } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Brain, FileText, Link2, Activity, Flame, ChevronRight, Clock, X, CheckCircle2, Printer, Award, LockKeyhole } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { RecallCard, HistoryItem, QuizData, SummaryData, VisualizationResponse } from '../types';
-import { isDue } from '../lib/spacedRepetition';
+import { HistoryItem, QuizData, SummaryData, VisualizationResponse } from '../types';
 
 interface Props {
   username: string;
   streak: number;
-  cards: RecallCard[];
+  activityDays: string[];
   history: HistoryItem[];
   onNavigate: (tab: 'quiz' | 'community' | 'summarizer' | 'review') => void;
 }
 
-export default function StudyHome({ username, streak, cards, history, onNavigate }: Props) {
-  const dueCount = useMemo(() => cards.filter(isDue).length, [cards]);
+export default function StudyHome({ username, streak, activityDays, history, onNavigate }: Props) {
   const recent = history.slice(0, 4);
   const [selected, setSelected] = useState<HistoryItem | null>(null);
+  const [showProgress, setShowProgress] = useState(false);
+  const [celebration, setCelebration] = useState<number | null>(null);
+
+  useEffect(() => {
+    const shown = Number(localStorage.getItem('kojlux_last_badge_milestone') || 0);
+    const earned = earnedMilestone(activityDays.length);
+    if (earned > shown) {
+      localStorage.setItem('kojlux_last_badge_milestone', String(earned));
+      setCelebration(earned);
+    }
+  }, [activityDays.length]);
 
   return (
     <div className="space-y-6">
@@ -24,33 +33,12 @@ export default function StudyHome({ username, streak, cards, history, onNavigate
         <h1 className="text-xl font-black text-slate-900 dark:text-white mt-0.5">{username || 'Student'}</h1>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-focus-primary rounded-2xl p-4 text-white shadow-sm shadow-focus-primary/20">
-          <Flame className="w-5 h-5 text-white/80" />
-          <p className="text-2xl font-black mt-2">{streak}</p>
-          <p className="text-[10px] font-bold uppercase tracking-wide text-white/70">Day streak</p>
-        </div>
-        <button
-          onClick={() => onNavigate('review')}
-          className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 text-left hover:border-focus-primary transition"
-        >
-          <Brain className="w-5 h-5 text-focus-primary" />
-          <p className="text-2xl font-black mt-2 text-slate-900 dark:text-white">{dueCount}</p>
-          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Due for review</p>
-        </button>
-      </div>
-
-      {dueCount > 0 && (
-        <button
-          onClick={() => onNavigate('review')}
-          className="w-full bg-focus-primary/10 dark:bg-focus-primary/15 border border-focus-primary/25 rounded-2xl p-4 flex items-center justify-between"
-        >
-          <span className="text-xs font-bold text-focus-primary">
-            {dueCount} card{dueCount === 1 ? '' : 's'} ready — a few minutes now beats cramming later.
-          </span>
-          <ChevronRight className="w-4 h-4 text-focus-primary shrink-0" />
-        </button>
-      )}
+      <button onClick={() => setShowProgress(true)} className="w-full text-left bg-focus-primary rounded-2xl p-4 text-white shadow-sm shadow-focus-primary/20">
+        <Flame className="w-5 h-5 text-white/80" />
+        <p className="text-2xl font-black mt-2">{streak}</p>
+        <p className="text-[10px] font-bold uppercase tracking-wide text-white/70">Day streak</p>
+        <p className="text-[10px] text-white/70 mt-2">Tap to view badges and progress</p>
+      </button>
 
       <div className="space-y-2.5">
         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide px-1">Study tools</p>
@@ -63,7 +51,7 @@ export default function StudyHome({ username, streak, cards, history, onNavigate
           />
           <ToolHex
             icon={Link2}
-            label="Community Links"
+            label="Study materials"
             colorClasses="bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400"
             onClick={() => onNavigate('community')}
           />
@@ -99,8 +87,35 @@ export default function StudyHome({ username, streak, cards, history, onNavigate
       )}
 
       {selected && <HistoryDetailModal item={selected} onClose={() => setSelected(null)} />}
+      {showProgress && <BadgeProgressModal streak={streak} activityDays={activityDays} onClose={() => setShowProgress(false)} />}
+      {celebration !== null && <BadgeCelebration milestone={celebration} onClose={() => setCelebration(null)} />}
     </div>
   );
+}
+
+const BADGE_NAMES = ['First Spark', 'Five-Day Focus', 'Ten-Day Momentum', 'Fifteen-Day Scholar', 'Twenty-Day Mastery'];
+function earnedMilestone(streak: number) {
+  return streak >= 5 ? Math.floor(streak / 5) * 5 : streak >= 1 ? 1 : 0;
+}
+function milestoneList(streak: number) {
+  const highest = Math.max(1, Math.ceil(Math.max(streak, 1) / 5) * 5);
+  return [1, ...Array.from({ length: highest / 5 }, (_, i) => (i + 1) * 5)];
+}
+function badgeName(day: number) {
+  return BADGE_NAMES[Math.min(Math.floor(day / 5), BADGE_NAMES.length - 1)] || `${day}-Day Creator`;
+}
+function BadgeProgressModal({ streak, activityDays, onClose }: { streak: number; activityDays: string[]; onClose: () => void }) {
+  return <div className="fixed inset-0 z-[210] bg-slate-950/50 backdrop-blur-sm flex items-end md:items-center justify-center p-4" onClick={onClose}>
+    <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-5 space-y-5" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center justify-between"><div><p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Your progress</p><h2 className="text-xl font-black text-slate-900 dark:text-white">Creator streak</h2></div><button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800"><X className="w-4 h-4 mx-auto" /></button></div>
+      <p className="text-xs text-slate-500 dark:text-slate-400">Create a quiz, make a summary, or share study material each day to keep moving forward.</p>
+      <div className="space-y-2">{milestoneList(activityDays.length).map((day) => { const earned = activityDays.length >= day; return <div key={day} className={`flex items-center gap-3 rounded-2xl p-3 border ${earned ? 'border-amber-200 bg-amber-50 dark:bg-amber-950/30' : 'border-slate-200 dark:border-slate-800'}`}><div className={`w-9 h-9 rounded-xl flex items-center justify-center ${earned ? 'bg-amber-400 text-white' : 'bg-slate-100 text-slate-400 dark:bg-slate-800'}`}>{earned ? <Award className="w-5 h-5" /> : <LockKeyhole className="w-4 h-4" />}</div><div className="flex-1"><p className="text-xs font-bold text-slate-700 dark:text-slate-200">{badgeName(day)}</p><p className="text-[10px] text-slate-400">Day {day} badge</p></div>{earned && <span className="text-[10px] font-bold text-amber-600">Earned</span>}</div>; })}</div>
+      <p className="text-[10px] text-slate-400">{activityDays.length} active creation day{activityDays.length === 1 ? '' : 's'} recorded.</p>
+    </div>
+  </div>;
+}
+function BadgeCelebration({ milestone, onClose }: { milestone: number; onClose: () => void }) {
+  return <div className="fixed inset-0 z-[220] bg-slate-950/55 backdrop-blur-sm flex items-center justify-center p-5" onClick={onClose}><div className="relative w-full max-w-sm rounded-3xl bg-white dark:bg-slate-900 p-7 text-center overflow-hidden" onClick={(e) => e.stopPropagation()}><div className="badge-fire"><Flame className="w-14 h-14 text-white mx-auto" /></div><Award className="w-10 h-10 text-amber-400 mx-auto -mt-2" /><p className="text-[11px] font-bold uppercase tracking-widest text-amber-500 mt-3">Badge unlocked</p><h2 className="text-2xl font-black text-slate-900 dark:text-white mt-1">{badgeName(milestone)}</h2><p className="text-xs text-slate-500 mt-2">You reached day {milestone}. Keep creating to unlock the next one.</p><button onClick={onClose} className="mt-5 w-full rounded-xl bg-focus-primary py-3 text-xs font-bold text-white">Keep studying</button></div></div>;
 }
 
 function ToolHex({ icon: Icon, label, colorClasses, onClick }: { icon: any; label: string; colorClasses: string; onClick: () => void }) {

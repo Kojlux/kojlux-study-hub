@@ -2,9 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection as fsCollection, increment } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { AlertCircle, X, ArrowLeft, GraduationCap, Camera, Bell, CalendarDays } from 'lucide-react';
+import { AlertCircle, X, ArrowLeft, GraduationCap, Camera, Bell } from 'lucide-react';
 
-import { HistoryItem, RecallCard, ExamEvent, Collection } from './types';
+import { HistoryItem, RecallCard, ExamEvent, Collection, NotificationItem, SummaryData } from './types';
 import { loadLocal, saveLocal, scopedKey } from './lib/storage';
 import { isDue } from './lib/spacedRepetition';
 import { isReminderDue } from './lib/examReminders';
@@ -16,6 +16,15 @@ import {
   notifyExamReminder,
   NotificationSupportState,
 } from './lib/notifications';
+import {
+  loadNotifications,
+  addNotification,
+  upsertNotification,
+  markNotificationRead,
+  markAllNotificationsRead,
+  markNotificationsByTagRead,
+} from './lib/notificationCenter';
+import { loadDraft } from './lib/draftStore';
 import { GRADE_LEVEL_OPTIONS } from './constants';
 import { registerPushForUser } from './lib/push';
 
@@ -26,7 +35,7 @@ import NoteCraft from './components/NoteCraft';
 import ReviewQueue from './components/ReviewQueue';
 import ProfileScreen from './components/ProfileScreen';
 import MaterialsHub from './components/MaterialsHub';
-import CalendarScreen from './components/CalendarScreen';
+import NotificationCenter from './components/NotificationCenter';
 import BottomNav, { NavTab } from './components/BottomNav';
 import { clearDeepLinkUrl, parseDeepLinkCardId, parseDeepLinkCollectionId } from './lib/deepLink';
 import { ThemeProvider } from './context/ThemeContext';
@@ -70,6 +79,7 @@ function AppContent() {
   const [authLoading, setAuthLoading] = useState(true);
   const [gradeLevel, setGradeLevel] = useState<string>(GRADE_LEVEL_OPTIONS[2]);
   const [streak, setStreak] = useState<number>(0);
+  const [activityDays, setActivityDays] = useState<string[]>([]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -82,6 +92,7 @@ function AppContent() {
             const data = snap.data();
             if (data.gradeLevel) setGradeLevel(data.gradeLevel);
             if (typeof data.streak === 'number') setStreak(data.streak);
+            if (Array.isArray(data.activityDays)) setActivityDays(data.activityDays.filter((day): day is string => typeof day === 'string'));
           }
         } catch (err) {
           console.error('Failed to load profile from Firestore', err);
@@ -120,6 +131,24 @@ function AppContent() {
   // person's data to another.
   const scopeId = user ? user.uid : guestMode ? 'guest' : null;
   const loadedScopeRef = useRef<string | null>(null);
+  // The due-card/exam poll below (checkForNewlyDueCards/checkExamReminders)
+  // is set up once on mount with an empty effect dependency array — it has
+  // to be, since it also owns the setInterval/visibilitychange wiring — so
+  // it can't just close over `scopeId` from render. This ref keeps it
+  // pointed at whichever scope is currently active (signed-in user vs.
+  // guest vs. a fresh sign-in) without re-running that whole effect.
+  const scopeIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    scopeIdRef.current = scopeId;
+  }, [scopeId]);
+
+  // ---- Notification Center ----
+  // Every notification below (review-ready, exam reminders, quiz-resume) is
+  // recorded here in addition to being fired as a browser Notification, so
+  // it's visible any time the student opens the app — including when
+  // browser notifications were never granted. See lib/notificationCenter.ts.
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   // ---- Review-ready notifications ----
   // No service worker/push backend here, so this only works while the app is
@@ -129,10 +158,29 @@ function AppContent() {
   const [notifBannerDismissed, setNotifBannerDismissed] = useState(false);
 
   useEffect(() => {
+    const refreshNotificationPermission = () => setNotifPermission(getNotificationPermission());
+    window.addEventListener('focus', refreshNotificationPermission);
+    document.addEventListener('visibilitychange', refreshNotificationPermission);
+    return () => {
+      window.removeEventListener('focus', refreshNotificationPermission);
+      document.removeEventListener('visibilitychange', refreshNotificationPermission);
+    };
+  }, []);
+
+  useEffect(() => {
     if (user && notifPermission === 'granted') {
       registerPushForUser(user.uid).catch((err) => console.error('Failed to enable push notifications', err));
     }
   }, [user, notifPermission]);
+
+  // Shared by the "enable notifications" banner and the always-visible
+  // status row in Profile > Settings, so both stay in sync with a single
+  // source of truth instead of each requesting permission independently.
+  const enableNotifications = async () => {
+    const permission = await requestNotificationPermission();
+    setNotifPermission(permission);
+    if (permission === 'granted' && user) registerPushForUser(user.uid);
+  };
 
   const recallCardsRef = useRef<RecallCard[]>([]);
   // Seeded from localStorage (scoped per account) rather than starting null
@@ -153,32 +201,69 @@ function AppContent() {
     }
   }, [scopeId]);
 
+  // Hoisted out of the polling effect below (instead of defined inline
+  // inside it) so they can ALSO be called the instant recallCards/examEvents
+  // actually change — see the two effects near the ref-sync effects further
+  // down. Both still read from recallCardsRef/examEventsRef rather than the
+  // recallCards/examEvents state directly, since the mount-time interval/
+  // visibilitychange listeners below capture whichever version of these
+  // functions exists at mount — reading from refs (always current) instead
+  // of closed-over state (frozen at mount) is what keeps THOSE calls correct
+  // over time, same as before this refactor.
+  const checkForNewlyDueCards = () => {
+    const currentlyDue = recallCardsRef.current.filter(isDue);
+    const currentlyDueIds = currentlyDue.map((c) => c.id);
+    if (previouslyDueIdsRef.current) {
+      const newlyDue = currentlyDueIds.filter((id) => !previouslyDueIdsRef.current!.has(id));
+      if (newlyDue.length > 0) notifyReviewsReady(newlyDue.length);
+    }
+    previouslyDueIdsRef.current = new Set(currentlyDueIds);
+    if (previouslyDueScopeRef.current) {
+      saveLocal(scopedKey('kojlux_previously_due_ids', previouslyDueScopeRef.current), currentlyDueIds);
+    }
+    if (scopeIdRef.current) {
+      if (currentlyDue.length > 0) {
+        setNotifications(
+          upsertNotification(scopeIdRef.current, 'reviews-ready', {
+            type: 'review_ready',
+            title: currentlyDue.length === 1 ? 'A review is ready' : `${currentlyDue.length} reviews are ready`,
+            body: 'A few minutes now beats cramming later — tap to jump into Review.',
+            targetTab: 'review',
+          })
+        );
+      } else {
+        setNotifications(markNotificationsByTagRead(scopeIdRef.current, 'reviews-ready'));
+      }
+    }
+  };
+  // Same shape as checkForNewlyDueCards above, but exams track their own
+  // "already notified" flag (`reminderSent`) directly instead of a
+  // separate previously-seen id set, since each reminder only ever fires
+  // once in an exam's lifetime rather than repeatedly like a due card
+  // does. NOTE: this only runs while the app is open — see the reliability
+  // note in lib/examReminders.ts for why a fully closed tab won't get one.
+  const checkExamReminders = () => {
+    const due = examEventsRef.current.filter((e) => !e.reminderSent && isReminderDue(e));
+    if (due.length === 0) return;
+    due.forEach((exam) => {
+      notifyExamReminder(exam.title, exam.id);
+      if (scopeIdRef.current) {
+        setNotifications(
+          addNotification(scopeIdRef.current, {
+            type: 'exam_reminder',
+            title: "Don't forget to study!",
+            body: `Your exam "${exam.title}" is tomorrow. Tap to review your materials.`,
+            targetTab: 'profile',
+            dedupeTag: `exam-reminder-${exam.id}`,
+          })
+        );
+      }
+    });
+    const dueIds = new Set(due.map((e) => e.id));
+    setExamEvents((prev) => prev.map((e) => (dueIds.has(e.id) ? { ...e, reminderSent: true } : e)));
+  };
+
   useEffect(() => {
-    const checkForNewlyDueCards = () => {
-      const currentlyDue = recallCardsRef.current.filter(isDue);
-      const currentlyDueIds = currentlyDue.map((c) => c.id);
-      if (previouslyDueIdsRef.current) {
-        const newlyDue = currentlyDueIds.filter((id) => !previouslyDueIdsRef.current!.has(id));
-        if (newlyDue.length > 0) notifyReviewsReady(newlyDue.length);
-      }
-      previouslyDueIdsRef.current = new Set(currentlyDueIds);
-      if (previouslyDueScopeRef.current) {
-        saveLocal(scopedKey('kojlux_previously_due_ids', previouslyDueScopeRef.current), currentlyDueIds);
-      }
-    };
-    // Same shape as checkForNewlyDueCards above, but exams track their own
-    // "already notified" flag (`reminderSent`) directly instead of a
-    // separate previously-seen id set, since each reminder only ever fires
-    // once in an exam's lifetime rather than repeatedly like a due card
-    // does. NOTE: this only runs while the app is open — see the reliability
-    // note in lib/examReminders.ts for why a fully closed tab won't get one.
-    const checkExamReminders = () => {
-      const due = examEventsRef.current.filter((e) => !e.reminderSent && isReminderDue(e));
-      if (due.length === 0) return;
-      due.forEach((exam) => notifyExamReminder(exam.title, exam.id));
-      const dueIds = new Set(due.map((e) => e.id));
-      setExamEvents((prev) => prev.map((e) => (dueIds.has(e.id) ? { ...e, reminderSent: true } : e)));
-    };
     checkForNewlyDueCards();
     checkExamReminders();
     // The interval is what catches a card becoming due while the tab is
@@ -201,10 +286,12 @@ function AppContent() {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ---- Navigation ----
   const [activeTab, setActiveTab] = useState<NavTab>('home');
+  const [quizSourceSummary, setQuizSourceSummary] = useState<SummaryData | null>(null);
 
   // ---- Shared study data: history + spaced-repetition cards ----
   // Start empty; the load effect below fills these in as soon as scopeId is
@@ -217,19 +304,8 @@ function AppContent() {
   // Student-named folders of saved cards (e.g. "Bio Midterm") — see
   // types.ts Collection and RecallCard.collectionId/.saved.
   const [collections, setCollections] = useState<Collection[]>([]);
-  // Which day the standalone Calendar overlay should open on next (see the
-  // `showCalendar` overlay near the end of this component — there's no
-  // bottom-nav tab for it, since the nav bar is already full). Passed to
-  // CalendarScreen as a React `key` (not just a prop) so tapping a
-  // different exam from the Profile preview forces a fresh mount that
-  // actually jumps there, instead of being ignored by Calendar's own
-  // internal "selected day" state once it's already mounted.
-  const [calendarInitialDate, setCalendarInitialDate] = useState<string | null>(null);
-  const [showCalendar, setShowCalendar] = useState(false);
-  const openCalendar = (date?: string) => {
-    setCalendarInitialDate(date ?? null);
-    setShowCalendar(true);
-  };
+  const activityDaysRef = useRef<string[]>([]);
+  useEffect(() => { activityDaysRef.current = activityDays; }, [activityDays]);
 
   // ---- Cross-device cloud sync ----
   // Local state is still saved to localStorage first (instant, works
@@ -371,6 +447,41 @@ function AppContent() {
     setCollections(loadLocal(scopedKey('kojlux_collections', scopeId), []));
     setGradeLevel(loadLocal(scopedKey('kojlux_grade_level', scopeId), GRADE_LEVEL_OPTIONS[2]));
     setStreak(loadLocal(scopedKey('kojlux_streak', scopeId), 0));
+    const storedActivityDays = loadLocal<string[]>(scopedKey('kojlux_activity_days', scopeId), []);
+    setActivityDays(storedActivityDays);
+    activityDaysRef.current = storedActivityDays;
+    setNotifications(loadNotifications(scopeId));
+  }, [scopeId]);
+
+  // ---- Mid-quiz refresh recovery ----
+  // QuizBuilder already persists an in-progress quiz to IndexedDB as the
+  // student answers (see lib/draftStore.ts + the draft effects in
+  // QuizBuilder.tsx), so a refresh doesn't lose their work. What it can't do
+  // on its own is tell the student that draft exists — a refresh always
+  // drops back to the Home tab, not the Quiz tab where QuizBuilder would
+  // silently rehydrate it. This checks for that draft once scope is known
+  // and, if one exists, drops a "resume your quiz" notification into the
+  // Notification Center pointing back at the Quiz tab.
+  useEffect(() => {
+    if (!scopeId) return;
+    let cancelled = false;
+    loadDraft<{ quizData: unknown }>('quiz_builder')
+      .then((draft) => {
+        if (cancelled || !draft || !draft.quizData) return;
+        setNotifications(
+          addNotification(scopeId, {
+            type: 'quiz_resume',
+            title: 'Resume your quiz',
+            body: "Looks like you left a quiz in progress — tap to pick up right where you left off.",
+            targetTab: 'quiz',
+            dedupeTag: 'quiz-resume',
+          })
+        );
+      })
+      .catch((err) => console.error('Failed to check for an in-progress quiz draft', err));
+    return () => {
+      cancelled = true;
+    };
   }, [scopeId]);
 
   // These just keep the local offline cache warm — actual cloud sync now
@@ -428,6 +539,26 @@ function AppContent() {
     examEventsRef.current = examEvents;
   }, [examEvents]);
 
+  // The mount-time effect above only checks once immediately, then again on
+  // a 60s interval or a visibility change — fine for catching a card
+  // crossing its due date while the tab sits open, but NOT for the very
+  // first render: recallCards/examEvents load asynchronously (localStorage,
+  // then Firestore for signed-in users), so that first mount-time check
+  // fires against an empty array before real data has arrived, decides
+  // nothing's due, and marks the Notification Center's "reviews are ready"
+  // entry read. The result: the bell could say "nothing due" for up to a
+  // minute — or until the tab is backgrounded and refocused — even while
+  // Review correctly shows every due card. Re-running the moment the real
+  // data lands closes that gap immediately instead of waiting on the poll.
+  useEffect(() => {
+    checkForNewlyDueCards();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recallCards]);
+  useEffect(() => {
+    checkExamReminders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [examEvents]);
+
   const addHistory = (item: HistoryItem) => {
     setHistory((prev) => {
       const combined = [item, ...prev];
@@ -438,6 +569,7 @@ function AppContent() {
       return next;
     });
     upsertCloudItem('historyItems', item.id, item);
+    if (item.type === 'quiz' || item.type === 'summary') recordStudyActivity();
   };
   const addRecallCards = (cards: RecallCard[]) => {
     setRecallCards((prev) => [...prev, ...cards]);
@@ -512,29 +644,41 @@ function AppContent() {
         console.error('Failed to sync total reviews', err)
       );
     }
-    bumpStreak();
   };
 
 
-  // A day counts toward the streak the first time the student completes any
-  // review or quiz that day — tracked by date string, not a running timer.
+  // A day counts toward the streak the first time the student creates a quiz,
+  // creates a summary, or posts study material that day.
   const bumpStreak = () => {
-    const todayKey = new Date().toDateString();
-    const lastActive = localStorage.getItem('kojlux_last_active_day');
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const lastActive = scopeId ? loadLocal<string | null>(scopedKey('kojlux_last_active_day', scopeId), null) : null;
     if (lastActive === todayKey) return;
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const wasYesterday = lastActive === yesterday.toDateString();
+    const wasYesterday = lastActive === yesterday.toISOString().slice(0, 10);
     const nextStreak = wasYesterday ? streak + 1 : 1;
     setStreak(nextStreak);
-    localStorage.setItem('kojlux_last_active_day', todayKey);
-    if (scopeId) saveLocal(scopedKey('kojlux_streak', scopeId), nextStreak);
+    if (scopeId) {
+      saveLocal(scopedKey('kojlux_last_active_day', scopeId), todayKey);
+      saveLocal(scopedKey('kojlux_streak', scopeId), nextStreak);
+    }
     if (user) {
       lastCloudStreakRef.current = nextStreak;
       updateDoc(doc(db, 'users', user.uid), { streak: nextStreak }).catch((err) =>
         console.error('Failed to sync streak', err)
       );
     }
+  };
+
+  const recordStudyActivity = () => {
+    const todayKey = new Date().toISOString().slice(0, 10);
+    if (activityDaysRef.current.includes(todayKey)) return;
+    const nextDays = [...activityDaysRef.current, todayKey].sort();
+    activityDaysRef.current = nextDays;
+    setActivityDays(nextDays);
+    if (scopeId) saveLocal(scopedKey('kojlux_activity_days', scopeId), nextDays);
+    if (user) setDoc(doc(db, 'users', user.uid), { activityDays: nextDays }, { merge: true }).catch((err) => console.error('Failed to sync activity days', err));
+    bumpStreak();
   };
 
   const handleGradeLevelChange = (g: string) => {
@@ -568,6 +712,7 @@ function AppContent() {
     setCollections([]);
     setStreak(0);
     setGradeLevel(GRADE_LEVEL_OPTIONS[2]);
+    setNotifications([]);
     setGuestMode(false);
     setShowAuthScreen(false);
     setGuestBannerDismissed(false);
@@ -615,7 +760,6 @@ function AppContent() {
   // ---- Errors ----
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const dueCount = recallCards.filter(isDue).length;
   const username = user?.displayName || user?.email?.split('@')[0] || 'Student';
 
   if (authLoading) {
@@ -660,7 +804,7 @@ function AppContent() {
       {/* Nav renders itself as a bottom bar on phones and a left rail from
           md up — see BottomNav.tsx. It's fixed/full-height on desktop, so
           it lives outside the centered content column below. */}
-      <BottomNav active={activeTab} dueCount={dueCount} onChange={setActiveTab} />
+      <BottomNav active={activeTab} onChange={setActiveTab} />
 
       <div className="md:pl-20 lg:pl-56 min-h-screen flex flex-col">
         {/* Content stays a comfortable single reading column on phones
@@ -674,11 +818,16 @@ function AppContent() {
           </h1>
           {activeTab === 'home' && (
             <button
-              onClick={() => openCalendar()}
-              aria-label="Study Calendar"
-              className="shrink-0 w-8 h-8 rounded-full bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center justify-center"
+              onClick={() => setShowNotifications(true)}
+              aria-label="Notifications"
+              className="relative shrink-0 w-8 h-8 rounded-full bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center justify-center"
             >
-              <CalendarDays className="w-4 h-4 text-focus-primary" />
+              <Bell className="w-4 h-4 text-focus-primary" />
+              {notifications.some((n) => !n.read) && (
+                <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">
+                  {notifications.filter((n) => !n.read).length > 9 ? '9+' : notifications.filter((n) => !n.read).length}
+                </span>
+              )}
             </button>
           )}
         </header>
@@ -708,14 +857,7 @@ function AppContent() {
                 </p>
                 <div className="flex gap-4 mt-1.5">
                   <button
-                    onClick={async () => {
-                      const permission = await requestNotificationPermission();
-                      setNotifPermission(permission);
-                      // Only signed-in users have a Firestore doc for the
-                      // backend to push to — see the sync effects above and
-                      // PUSH_NOTIFICATIONS_SETUP.md.
-                      if (permission === 'granted' && user) registerPushForUser(user.uid);
-                    }}
+                    onClick={enableNotifications}
                     className="text-[11px] font-bold text-focus-primary"
                   >
                     Enable Notifications
@@ -734,7 +876,7 @@ function AppContent() {
             <StudyHome
               username={username}
               streak={streak}
-              cards={recallCards}
+              activityDays={activityDays}
               history={history}
               onNavigate={(tab) => setActiveTab(tab === 'summarizer' ? 'quiz' : (tab as NavTab))}
             />
@@ -744,6 +886,12 @@ function AppContent() {
             <QuizBuilderOrSummarizer
               gradeLevel={gradeLevel}
               history={history}
+              sourceSummary={quizSourceSummary}
+              onSourceConsumed={() => setQuizSourceSummary(null)}
+              onCreateQuizFromSummary={(summary) => {
+                setQuizSourceSummary(summary);
+                setActiveTab('quiz');
+              }}
               onSaveHistory={addHistory}
               onAddRecallCards={addRecallCards}
               onError={setErrorMsg}
@@ -751,7 +899,7 @@ function AppContent() {
           )}
 
           {activeTab === 'community' && (
-            <MaterialsHub currentUserId={user?.uid ?? null} defaultGradeLevel={gradeLevel} onError={setErrorMsg} />
+            <MaterialsHub currentUserId={user?.uid ?? null} defaultGradeLevel={gradeLevel} onError={setErrorMsg} onStudyActivity={recordStudyActivity} />
           )}
 
           {activeTab === 'review' && (
@@ -785,44 +933,30 @@ function AppContent() {
               onAddExam={addExam}
               onUpdateExam={updateExam}
               onDeleteExam={deleteExam}
+              notifPermission={notifPermission}
+              onEnableNotifications={enableNotifications}
             />
           )}
         </main>
         </div>
       </div>
 
-      {/* Study Calendar isn't a bottom-nav tab — there's no room left on that
-          bar — so it opens as a full-screen overlay from the icon button in
-          the Home header instead, the same pattern already used below for
-          errorMsg and for AuthScreen earlier in this file. */}
-      {showCalendar && (
-        <div className="fixed inset-0 z-[150] bg-focus-bg dark:bg-slate-950 overflow-y-auto md:pl-20 lg:pl-56">
-          <div className="max-w-md md:max-w-3xl lg:max-w-5xl mx-auto min-h-screen flex flex-col">
-            <header className="sticky top-0 z-10 bg-focus-bg/90 dark:bg-slate-950/90 backdrop-blur-md px-5 pt-6 pb-3 flex items-center gap-3">
-              <button
-                onClick={() => setShowCalendar(false)}
-                aria-label="Back"
-                className="shrink-0 w-9 h-9 rounded-full bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center justify-center"
-              >
-                <ArrowLeft className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-              </button>
-              <h1 className="text-sm font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                Study Calendar
-              </h1>
-            </header>
-            <main className="flex-1 px-5 pb-10">
-              <CalendarScreen
-                key={calendarInitialDate ?? 'calendar-default'}
-                exams={examEvents}
-                history={history}
-                onAddExam={addExam}
-                onUpdateExam={updateExam}
-                onDeleteExam={deleteExam}
-                initialDate={calendarInitialDate}
-              />
-            </main>
-          </div>
-        </div>
+      {/* Opens as a full-screen overlay from the bell icon in the Home
+          header, the same pattern the Study Calendar overlay used to use
+          before it moved to living inline on the Profile screen. */}
+      {showNotifications && (
+        <NotificationCenter
+          notifications={notifications}
+          onClose={() => setShowNotifications(false)}
+          onMarkAllRead={() => {
+            if (scopeId) setNotifications(markAllNotificationsRead(scopeId));
+          }}
+          onSelect={(item) => {
+            if (scopeId) setNotifications(markNotificationRead(scopeId, item.id));
+            setShowNotifications(false);
+            if (item.targetTab) setActiveTab(item.targetTab as NavTab);
+          }}
+        />
       )}
 
       {errorMsg && (
@@ -864,11 +998,17 @@ function AppContent() {
 function QuizBuilderOrSummarizer(props: {
   gradeLevel: string;
   history: HistoryItem[];
+  sourceSummary: SummaryData | null;
+  onSourceConsumed: () => void;
+  onCreateQuizFromSummary: (summary: SummaryData) => void;
   onSaveHistory: (item: HistoryItem) => void;
   onAddRecallCards: (cards: RecallCard[]) => void;
   onError: (msg: string) => void;
 }) {
   const [subTab, setSubTab] = useState<'quiz' | 'notecraft'>('quiz');
+  useEffect(() => {
+    if (props.sourceSummary) setSubTab('quiz');
+  }, [props.sourceSummary]);
   return (
     <div className="space-y-5">
       <div className="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
@@ -885,14 +1025,21 @@ function QuizBuilderOrSummarizer(props: {
         ))}
       </div>
       {subTab === 'quiz' ? (
-        <QuizBuilder gradeLevel={props.gradeLevel} onSaveHistory={props.onSaveHistory} onAddRecallCards={props.onAddRecallCards} onError={props.onError} />
-      ) : (
-        <NoteCraft
+        <QuizBuilder
           gradeLevel={props.gradeLevel}
-          history={props.history}
+          summarySource={props.sourceSummary ? formatSummaryForQuiz(props.sourceSummary) : null}
+          onSummarySourceConsumed={props.onSourceConsumed}
           onSaveHistory={props.onSaveHistory}
           onAddRecallCards={props.onAddRecallCards}
           onError={props.onError}
+        />
+      ) : (
+        <NoteCraft
+          gradeLevel={props.gradeLevel}
+          onSaveHistory={props.onSaveHistory}
+          onAddRecallCards={props.onAddRecallCards}
+          onError={props.onError}
+          onCreateQuizFromSummary={props.onCreateQuizFromSummary}
         />
       )}
     </div>
@@ -954,4 +1101,15 @@ function WelcomeGate({ onSkip, onSignIn }: { onSkip: () => void; onSignIn: () =>
       </div>
     </div>
   );
+}
+
+function formatSummaryForQuiz(summary: SummaryData): string {
+  const glossary = summary.glossary?.map((item) => `${item.term}: ${item.definition}`).join('\n') || '';
+  return [
+    `Summary: ${summary.title}`,
+    summary.overview,
+    'Key points:',
+    ...summary.keyPoints.map((point) => `- ${point}`),
+    glossary ? `Glossary:\n${glossary}` : '',
+  ].filter(Boolean).join('\n\n');
 }

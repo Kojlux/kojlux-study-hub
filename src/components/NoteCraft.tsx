@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Upload, Camera, Sparkles, RefreshCw, BookOpenCheck, Link2, ChevronDown, Printer, FileText } from 'lucide-react';
+import { Upload, Camera, Sparkles, RefreshCw, BookOpenCheck, ClipboardCheck, Printer, FileText } from 'lucide-react';
 import { loadDraft, saveDraft, clearDraft } from '../lib/draftStore';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 import { jsPDF } from 'jspdf';
-import { SummaryData, HistoryItem, RecallCard, VisualizationResponse, StudyFile } from '../types';
+import { SummaryData, HistoryItem, RecallCard, StudyFile } from '../types';
 import {
   generateContentWithFallback,
   GEMINI_KEYS,
@@ -20,13 +20,13 @@ import { sanitizeForPdf } from '../lib/pdfTextSanitizer';
 
 interface Props {
   gradeLevel: string;
-  history: HistoryItem[];
   onSaveHistory: (item: HistoryItem) => void;
   onAddRecallCards: (cards: RecallCard[]) => void;
   onError: (msg: string) => void;
+  onCreateQuizFromSummary: (summary: SummaryData) => void;
 }
 
-export default function NoteCraft({ gradeLevel, history, onSaveHistory, onAddRecallCards, onError }: Props) {
+export default function NoteCraft({ gradeLevel, onSaveHistory, onAddRecallCards, onError, onCreateQuizFromSummary }: Props) {
   const [file, setFile] = useState<StudyFile | null>(null);
   const [textInput, setTextInput] = useState('');
   // See TopicPicker.tsx for why this replaced the old length/punctuation
@@ -37,17 +37,12 @@ export default function NoteCraft({ gradeLevel, history, onSaveHistory, onAddRec
   const [loading, setLoading] = useState(false);
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
 
-  const [linkerOpen, setLinkerOpen] = useState(false);
-  const [linkerBusy, setLinkerBusy] = useState<string | null>(null); // id of diagram currently being linked
-  const [linkedResults, setLinkedResults] = useState<Record<string, { prompt: string; answer: string }[]>>({});
-
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
-  const visualizationHistory = history.filter((h) => h.type === 'visualization');
 
   // ---- Session-draft persistence (same pattern as QuizBuilder) ----
-  // A generated summary + any Concept Linker results used to live only in
-  // memory — a refresh mid-session lost it all. This restores/mirrors it
+  // A generated summary used to live only in memory — a refresh mid-session
+  // lost it all. This restores/mirrors it
   // via IndexedDB so a refresh resumes instead of wiping the screen.
   const DRAFT_KEY = 'note_craft';
   const draftHydrated = useRef(false);
@@ -61,7 +56,6 @@ export default function NoteCraft({ gradeLevel, history, onSaveHistory, onAddRec
       subject: Subject;
       detailLevel: 'concise' | 'standard' | 'thorough';
       summaryData: SummaryData | null;
-      linkedResults: Record<string, { prompt: string; answer: string }[]>;
     }>(DRAFT_KEY).then((draft) => {
       if (cancelled || !draft || !draft.summaryData) return;
       setFile(draft.file);
@@ -70,7 +64,6 @@ export default function NoteCraft({ gradeLevel, history, onSaveHistory, onAddRec
       setSubject(draft.subject);
       setDetailLevel(draft.detailLevel);
       setSummaryData(draft.summaryData);
-      setLinkedResults(draft.linkedResults);
     }).finally(() => {
       draftHydrated.current = true;
     });
@@ -84,9 +77,9 @@ export default function NoteCraft({ gradeLevel, history, onSaveHistory, onAddRec
       clearDraft(DRAFT_KEY);
       return;
     }
-    saveDraft(DRAFT_KEY, { file, textInput, inputMode, subject, detailLevel, summaryData, linkedResults });
+    saveDraft(DRAFT_KEY, { file, textInput, inputMode, subject, detailLevel, summaryData });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [summaryData, linkedResults]);
+  }, [summaryData]);
 
   useUnsavedChangesWarning(Boolean(summaryData));
 
@@ -95,7 +88,6 @@ export default function NoteCraft({ gradeLevel, history, onSaveHistory, onAddRec
   // on the next refresh.
   const resetNotes = () => {
     setSummaryData(null);
-    setLinkedResults({});
     setFile(null);
     setTextInput('');
     clearDraft(DRAFT_KEY);
@@ -127,7 +119,6 @@ export default function NoteCraft({ gradeLevel, history, onSaveHistory, onAddRec
     }
     setLoading(true);
     setSummaryData(null);
-    setLinkedResults({});
     try {
       const parts: any[] = [];
       if (file) {
@@ -149,9 +140,7 @@ export default function NoteCraft({ gradeLevel, history, onSaveHistory, onAddRec
         : `Text material to summarize: """${textInput.trim()}"""`;
 
       const subjectClause = subjectPromptHint(subject);
-      // Visualizer-linking fields: separate from Dynamic Forms below, these
-      // exist purely so the Concept Linker / Visualizer can render an
-      // interactive diagram/map/chart from a local asset library — not the
+      // Structured fields below render subject-specific study aids — not the
       // student-facing structured blocks. Each subject contributes at most
       // one of these.
       const extraField: { schema: string; rule: string } | null =
@@ -227,49 +216,6 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
       onError('Could not summarize that material. Try a clearer file or more text.');
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Concept Linker: dual coding. Pairs this text summary with a diagram the
-  // student already generated in the Visualizer, and asks Gemini to write
-  // questions that force the student to connect the visual and the verbal —
-  // e.g. "label this part of the diagram, then explain why it matters."
-  const runConceptLinker = async (viz: HistoryItem) => {
-    if (!summaryData) return;
-    setLinkerBusy(viz.id);
-    try {
-      const vizData = viz.data as VisualizationResponse;
-      const prompt = `A student has both a text summary and a visual diagram on related material. Write 3 short "dual-coding" recall questions that require connecting the diagram to the written explanation (e.g. asking the student to identify a labeled step in the diagram AND explain its significance from the summary). Keep each question to one or two sentences, and give a concise model answer for each.
-
-Summary title: "${summaryData.title}"
-Summary key points: ${summaryData.keyPoints.join('; ')}
-
-Diagram title: "${vizData.title}" (type: ${vizData.type})
-Diagram steps: ${vizData.steps.map((s, i) => `(${i + 1}) ${s.label} — ${s.explanation}`).join('; ')}
-
-Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": string}, ...]}`;
-
-      const response = await generateContentWithFallback(GEMINI_KEYS.recallCoach, {
-        model: 'gemini-3.6-flash',
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      });
-      const parsed = parseJsonResponse<{ questions: { prompt: string; answer: string }[] }>(response.text);
-      const cards = parsed.questions.map((q) =>
-        makeRecallCard({
-          sourceType: 'concept-link',
-          sourceTitle: `${summaryData.title} × ${vizData.title}`,
-          prompt: q.prompt,
-          answer: q.answer,
-          image: file?.kind === 'image' ? file.dataUrl : undefined,
-        })
-      );
-      onAddRecallCards(cards);
-      setLinkedResults((prev) => ({ ...prev, [viz.id]: parsed.questions }));
-    } catch (err) {
-      console.error(err);
-      onError('Could not link this summary to that diagram — try again.');
-    } finally {
-      setLinkerBusy(null);
     }
   };
 
@@ -549,66 +495,19 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
             <p className="text-xs text-slate-600 dark:text-slate-300">Key points added to <span className="font-bold text-focus-primary">Review</span> for spaced repetition.</p>
           </div>
 
-          {/* Concept Linker */}
-          <div className="border border-slate-200/80 dark:border-slate-800 rounded-2xl overflow-hidden print:hidden">
-            <button
-              onClick={() => setLinkerOpen((o) => !o)}
-              className="w-full flex items-center justify-between p-4 bg-white dark:bg-slate-900"
-            >
-              <span className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
-                <Link2 className="w-4 h-4 text-focus-primary" /> Connect this to a diagram
+          <button
+            onClick={() => summaryData && onCreateQuizFromSummary(summaryData)}
+            className="w-full flex items-center justify-between gap-3 bg-focus-primary/5 dark:bg-focus-primary/10 border border-focus-primary/20 rounded-2xl p-4 text-left print:hidden"
+          >
+            <span className="flex items-center gap-2.5 min-w-0">
+              <ClipboardCheck className="w-4 h-4 text-focus-primary shrink-0" />
+              <span>
+                <span className="block text-xs font-bold text-slate-700 dark:text-slate-200">Test your knowledge</span>
+                <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Quiz yourself on this summary and check your understanding.</span>
               </span>
-              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${linkerOpen ? 'rotate-180' : ''}`} />
-            </button>
-            {linkerOpen && (
-              <div className="p-4 pt-0 space-y-3 bg-white dark:bg-slate-900">
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Studying a picture and its explanation together sticks better than either alone. Pick a diagram
-                  you've already built in <span className="font-semibold text-slate-500 dark:text-slate-400">Visualize</span>,
-                  and this will write a few questions that ask you to point to a part of that diagram and explain it
-                  using this summary. The questions get added to Review, just like everything else.
-                </p>
-                {visualizationHistory.map((v) => {
-                  const vizData = v.data as VisualizationResponse;
-                  const busy = linkerBusy === v.id;
-                  const results = linkedResults[v.id];
-                  return (
-                    <div key={v.id} className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-                      <button
-                        disabled={busy}
-                        onClick={() => runConceptLinker(v)}
-                        className="w-full text-left px-3.5 py-3 bg-slate-50 dark:bg-slate-800 flex items-center justify-between gap-3 disabled:opacity-60"
-                      >
-                        <span>
-                          <span className="block text-xs font-bold text-slate-700 dark:text-slate-200">{v.title}</span>
-                          <span className="block text-[10px] text-slate-400 uppercase tracking-wide mt-0.5">
-                            {vizData.type} diagram · {vizData.steps.length} steps
-                          </span>
-                        </span>
-                        <span className="text-[11px] font-bold text-focus-primary shrink-0 flex items-center gap-1.5">
-                          {busy && <RefreshCw className="w-3 h-3 animate-spin" />}
-                          {busy ? 'Writing questions…' : results ? 'Regenerate' : 'Generate questions'}
-                        </span>
-                      </button>
-                      {results && (
-                        <div className="p-3.5 pt-3 space-y-2.5 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700">
-                          <p className="text-[11px] font-bold text-focus-sage-dark dark:text-focus-sage">
-                            {results.length} question{results.length === 1 ? '' : 's'} added to Review:
-                          </p>
-                          {results.map((q, i) => (
-                            <div key={i} className="text-xs">
-                              <p className="font-semibold text-slate-700 dark:text-slate-200">{q.prompt}</p>
-                              <p className="text-slate-400 mt-0.5">Answer: {q.answer}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+            </span>
+            <span className="text-[11px] font-bold text-focus-primary shrink-0">Make a quiz</span>
+          </button>
         </div>
       )}
     </div>

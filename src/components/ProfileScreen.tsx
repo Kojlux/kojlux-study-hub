@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { LogOut, LogIn, User as UserIcon, Flame, Layers, Menu, X, Mail, ChevronDown, Check } from 'lucide-react';
+import { LogOut, LogIn, User as UserIcon, Flame, Layers, Menu, X, Mail, ChevronDown, Check, Bell, BellOff, BellRing } from 'lucide-react';
 import { GRADE_LEVEL_OPTIONS } from '../constants';
 import { ExamEvent, HistoryItem } from '../types';
+import { NotificationSupportState } from '../lib/notifications';
 import CalendarScreen from './CalendarScreen';
 import ThemeSwitcher from './ThemeSwitcher';
 
@@ -32,11 +33,19 @@ interface Props {
   onAddExam: (exam: ExamEvent) => void;
   onUpdateExam: (exam: ExamEvent) => void;
   onDeleteExam: (id: string) => void;
+  // Always shown in Settings (not just in the dismissible Home banner) so a
+  // student can check whether notifications are actually on without having
+  // to remember whether they dismissed that banner earlier. Owned by App.tsx
+  // (see enableNotifications there) so this screen and the Home banner never
+  // drift out of sync with each other.
+  notifPermission: NotificationSupportState;
+  onEnableNotifications: () => void;
 }
 
 export default function ProfileScreen({
   email, username, gradeLevel, onGradeLevelChange, streak, totalReviews,
   isGuest, onSignOut, onSignIn, exams, history, onAddExam, onUpdateExam, onDeleteExam,
+  notifPermission, onEnableNotifications,
 }: Props) {
   // Grade level, appearance, account email, and sign out/in used to live
   // inline on this screen. They're account/settings-flavored rather than
@@ -133,6 +142,8 @@ export default function ProfileScreen({
 
             <GradeLevelSelect gradeLevel={gradeLevel} onGradeLevelChange={onGradeLevelChange} />
 
+            <NotificationStatusRow permission={notifPermission} onEnable={onEnableNotifications} />
+
             <ThemeSwitcher />
 
             {isGuest ? (
@@ -153,6 +164,55 @@ export default function ProfileScreen({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Always visible in Settings — not just the dismissible "enable
+// notifications?" banner on Home, which the student may have already
+// dismissed (or never seen, e.g. on desktop with no due cards yet). This is
+// read-only status plus, when it's actually actionable, a way to act on it:
+// 'granted'/'denied' can only be changed from the browser's own site
+// settings (the Notification API can't re-prompt once denied), so only the
+// 'default' state gets an in-app "Enable" button.
+function NotificationStatusRow({
+  permission,
+  onEnable,
+}: {
+  permission: NotificationSupportState;
+  onEnable: () => void;
+}) {
+  const statusText: Record<NotificationSupportState, string> = {
+    granted: 'Allowed',
+    denied: 'Blocked — allow in site settings',
+    default: 'Not enabled yet',
+    unsupported: 'Not supported on this device',
+  };
+  const dotClasses: Record<NotificationSupportState, string> = {
+    granted: 'bg-emerald-500',
+    denied: 'bg-rose-500',
+    default: 'bg-amber-400',
+    unsupported: 'bg-slate-300 dark:bg-slate-600',
+  };
+  const Icon = permission === 'granted' ? BellRing : permission === 'denied' || permission === 'unsupported' ? BellOff : Bell;
+
+  return (
+    <div className="flex items-center justify-between gap-3 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4">
+      <div className="flex items-center gap-2.5 min-w-0">
+        <Icon className="w-4 h-4 text-focus-primary shrink-0" />
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Notifications</p>
+          <p className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClasses[permission]}`} />
+            {statusText[permission]}
+          </p>
+        </div>
+      </div>
+      {permission === 'default' && (
+        <button onClick={onEnable} className="shrink-0 text-[11px] font-bold text-focus-primary">
+          Enable
+        </button>
+      )}
     </div>
   );
 }

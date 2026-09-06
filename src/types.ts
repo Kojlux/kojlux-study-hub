@@ -311,6 +311,39 @@ export interface VisualizationResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Notification Center — every notification (review-ready, exam reminders,
+// quiz-resume nudges) is recorded here, not just fired as a browser
+// Notification, so students who miss or block the OS notification still
+// have a place to see what happened. See lib/notificationCenter.ts and
+// components/NotificationCenter.tsx.
+// ---------------------------------------------------------------------------
+
+export type NotificationType = 'review_ready' | 'exam_reminder' | 'quiz_resume' | 'general';
+
+// Mirrors BottomNav's NavTab union without importing it — types.ts stays a
+// leaf module with no component imports. Keep in sync with
+// components/BottomNav.tsx if a tab is ever added/renamed.
+export type NotificationTargetTab = 'home' | 'quiz' | 'community' | 'review' | 'profile';
+
+export interface NotificationItem {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  createdAt: string; // ISO date
+  read: boolean;
+  // Which tab tapping this notification should switch to, if any.
+  targetTab?: NotificationTargetTab;
+  // Collapses repeat notifications of the same kind (e.g. re-checking the
+  // same due exam on the next poll) into a single unread entry instead of
+  // stacking duplicates — same idea as the browser Notification `tag` in
+  // lib/notifications.ts. A new notification with a tag that already has an
+  // *unread* match is dropped; once the student reads it, the next one with
+  // that tag is added fresh.
+  dedupeTag?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Lightweight Flashcard Sharing & External Link Hub (Review Screen)
 // ---------------------------------------------------------------------------
 

@@ -24,12 +24,14 @@ import { sanitizeForPdf } from '../lib/pdfTextSanitizer';
 
 interface Props {
   gradeLevel: string;
+  summarySource?: string | null;
+  onSummarySourceConsumed?: () => void;
   onSaveHistory: (item: HistoryItem) => void;
   onAddRecallCards: (cards: RecallCard[]) => void;
   onError: (msg: string) => void;
 }
 
-export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCards, onError }: Props) {
+export default function QuizBuilder({ gradeLevel, summarySource, onSummarySourceConsumed, onSaveHistory, onAddRecallCards, onError }: Props) {
   const [file, setFile] = useState<StudyFile | null>(null);
   const [textInput, setTextInput] = useState('');
   // Explicit topic-vs-notes choice from the TopicPicker (see TopicPicker.tsx
@@ -180,8 +182,9 @@ export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCard
     generateQuiz();
   };
 
-  const generateQuiz = async () => {
-    if (!file && !textInput.trim()) {
+  const generateQuiz = async (sourceOverride?: string) => {
+    const sourceText = sourceOverride ?? textInput;
+    if (!file && !sourceText.trim()) {
       onError('Add a photo, PDF, video, or describe a topic / paste notes first.');
       return;
     }
@@ -208,13 +211,13 @@ export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCard
       // treated as source text instead of an instruction. Explicit mode
       // means a long topic description is never truncated, reinterpreted,
       // or ignored — it's always sent as exactly what it is.
-      const materialClause = !textInput.trim()
+      const materialClause = !sourceText.trim()
         ? ''
         : file
-        ? `Additional focus/instructions from the student: """${textInput.trim()}"""`
+        ? `Additional focus/instructions from the student: """${sourceText.trim()}"""`
         : inputMode === 'topic'
-        ? `Generate the quiz about this topic (this is an instruction of what to cover, not source text to quote): """${textInput.trim()}"""`
-        : `Text material to base the quiz on: """${textInput.trim()}"""`;
+        ? `Generate the quiz about this topic (this is an instruction of what to cover, not source text to quote): """${sourceText.trim()}"""`
+        : `Text material to base the quiz on: """${sourceText.trim()}"""`;
 
       const subjectClause = subjectPromptHint(subject);
       // Dynamic Forms: centralized in lib/subjects.ts so Quiz Builder and
@@ -246,6 +249,16 @@ ${rules}`;
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!summarySource) return;
+    setTextInput(summarySource);
+    setInputMode('notes');
+    generateQuiz(summarySource);
+    onSummarySourceConsumed?.();
+    // The source is consumed once when NoteCraft hands it to this screen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summarySource]);
 
   const submitQuiz = async () => {
     if (!quizData) return;

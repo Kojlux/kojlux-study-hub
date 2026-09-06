@@ -23,17 +23,18 @@ interface Props {
   currentUserId: string | null; // Firebase Auth uid, or null when signed out
   defaultGradeLevel?: string;
   onError: (msg: string) => void;
+  onStudyActivity: () => void;
 }
 
-export default function MaterialsHub({ currentUserId, defaultGradeLevel, onError }: Props) {
+export default function MaterialsHub({ currentUserId, defaultGradeLevel, onError, onStudyActivity }: Props) {
   return (
     <ToastProvider>
-      <MaterialsHubInner currentUserId={currentUserId} defaultGradeLevel={defaultGradeLevel} onError={onError} />
+      <MaterialsHubInner currentUserId={currentUserId} defaultGradeLevel={defaultGradeLevel} onError={onError} onStudyActivity={onStudyActivity} />
     </ToastProvider>
   );
 }
 
-function MaterialsHubInner({ currentUserId, defaultGradeLevel, onError }: Props) {
+function MaterialsHubInner({ currentUserId, defaultGradeLevel, onError, onStudyActivity }: Props) {
   const { showToast } = useToast();
   const [queryText, setQueryText] = useState('');
   const [results, setResults] = useState<CommunityLink[]>([]);
@@ -485,6 +486,7 @@ function MaterialsHubInner({ currentUserId, defaultGradeLevel, onError }: Props)
           defaultGradeLevel={defaultGradeLevel}
           onClose={() => setShowSubmit(false)}
           onDone={() => {
+            onStudyActivity();
             setShowSubmit(false);
             showToast('Material shared');
             // Show the student's own material immediately rather than

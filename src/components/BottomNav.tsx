@@ -1,17 +1,17 @@
 import React from 'react';
-import { Home, FileText, Link2, Brain, LayoutDashboard } from 'lucide-react';
+import { Home, FileText, Users, Brain, ChartNoAxesCombined } from 'lucide-react';
 
 export type NavTab = 'home' | 'quiz' | 'community' | 'review' | 'profile';
 
 const TABS: { key: NavTab; label: string; icon: any }[] = [
   { key: 'home', label: 'Home', icon: Home },
   { key: 'quiz', label: 'Create', icon: FileText },
-  { key: 'community', label: 'Community', icon: Link2 },
   { key: 'review', label: 'Review', icon: Brain },
-  { key: 'profile', label: 'Dashboard', icon: LayoutDashboard },
+  { key: 'community', label: 'Community', icon: Users },
+  { key: 'profile', label: 'Dashboard', icon: ChartNoAxesCombined },
 ];
 
-export default function BottomNav({ active, dueCount, onChange }: { active: NavTab; dueCount: number; onChange: (t: NavTab) => void }) {
+export default function BottomNav({ active, onChange }: { active: NavTab; onChange: (t: NavTab) => void }) {
   return (
     <>
       {/* Phones: fixed bottom tab bar — unchanged from before. */}
@@ -27,11 +27,6 @@ export default function BottomNav({ active, dueCount, onChange }: { active: NavT
             >
               <div className={`relative p-1.5 rounded-xl ${active === key ? 'text-focus-primary' : 'text-slate-400 dark:text-slate-500'}`}>
                 <Icon className="w-5 h-5" />
-                {key === 'review' && dueCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">
-                    {dueCount > 9 ? '9+' : dueCount}
-                  </span>
-                )}
               </div>
             </button>
           ))}
@@ -61,11 +56,6 @@ export default function BottomNav({ active, dueCount, onChange }: { active: NavT
           >
             <span className="relative shrink-0">
               <Icon className="w-5 h-5" />
-              {key === 'review' && dueCount > 0 && (
-                <span className="absolute -top-1 -right-1.5 min-w-[15px] h-[15px] px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">
-                  {dueCount > 9 ? '9+' : dueCount}
-                </span>
-              )}
             </span>
           </button>
         ))}
