@@ -1,11 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, ExternalLink, ZoomIn, ZoomOut } from 'lucide-react';
 
 // Fullscreen viewer for a card's source image. Zoom works via buttons, mouse
 // wheel/trackpad, or a two-finger pinch (handled natively by the browser via
 // touch-action); once zoomed in, dragging pans around the image. "Back" (or
 // Escape) closes it without touching whatever card is underneath.
-export default function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
+export default function ImageLightbox({
+  src,
+  onClose,
+  sourceUrl,
+  sourceLabel,
+}: {
+  src: string;
+  onClose: () => void;
+  sourceUrl?: string;
+  sourceLabel?: string;
+}) {
   const [scale, setScale] = useState(1);
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const dragState = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
@@ -74,6 +84,17 @@ export default function ImageLightbox({ src, onClose }: { src: string; onClose: 
           <ArrowLeft className="w-4 h-4" /> Back
         </button>
         <div className="flex items-center gap-2">
+          {sourceUrl && (
+            <a
+              href={sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-2 text-[11px] font-bold text-white/80 hover:bg-white/20 hover:text-white"
+              title={sourceLabel ? `Open source: ${sourceLabel}` : 'Open image source'}
+            >
+              <ExternalLink className="w-3.5 h-3.5" /> Source
+            </a>
+          )}
           <button
             onClick={zoomOut}
             disabled={scale <= 1}

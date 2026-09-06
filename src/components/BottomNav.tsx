@@ -1,12 +1,12 @@
 import React from 'react';
-import { Home, FileText, Activity, Brain, LayoutDashboard } from 'lucide-react';
+import { Home, FileText, Link2, Brain, LayoutDashboard } from 'lucide-react';
 
-export type NavTab = 'home' | 'quiz' | 'visualizer' | 'review' | 'profile';
+export type NavTab = 'home' | 'quiz' | 'community' | 'review' | 'profile';
 
 const TABS: { key: NavTab; label: string; icon: any }[] = [
   { key: 'home', label: 'Home', icon: Home },
   { key: 'quiz', label: 'Create', icon: FileText },
-  { key: 'visualizer', label: 'Visualize', icon: Activity },
+  { key: 'community', label: 'Community', icon: Link2 },
   { key: 'review', label: 'Review', icon: Brain },
   { key: 'profile', label: 'Dashboard', icon: LayoutDashboard },
 ];
@@ -21,6 +21,8 @@ export default function BottomNav({ active, dueCount, onChange }: { active: NavT
             <button
               key={key}
               onClick={() => onChange(key)}
+              aria-label={label}
+              title={label}
               className="relative w-14 h-14 flex flex-col items-center justify-center rounded-2xl transition"
             >
               <div className={`relative p-1.5 rounded-xl ${active === key ? 'text-focus-primary' : 'text-slate-400 dark:text-slate-500'}`}>
@@ -31,9 +33,6 @@ export default function BottomNav({ active, dueCount, onChange }: { active: NavT
                   </span>
                 )}
               </div>
-              <span className={`text-[9px] font-bold uppercase tracking-tight mt-0.5 ${active === key ? 'text-focus-primary' : 'text-slate-400 dark:text-slate-500'}`}>
-                {label}
-              </span>
             </button>
           ))}
         </div>
@@ -52,6 +51,8 @@ export default function BottomNav({ active, dueCount, onChange }: { active: NavT
           <button
             key={key}
             onClick={() => onChange(key)}
+            aria-label={label}
+            title={label}
             className={`relative flex items-center gap-3 w-full px-3 py-3 rounded-xl transition ${
               active === key
                 ? 'bg-focus-primary/10 text-focus-primary'
@@ -66,7 +67,6 @@ export default function BottomNav({ active, dueCount, onChange }: { active: NavT
                 </span>
               )}
             </span>
-            <span className="hidden lg:inline text-xs font-bold uppercase tracking-tight">{label}</span>
           </button>
         ))}
       </div>

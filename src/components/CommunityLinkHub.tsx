@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link2, Search, ExternalLink, PlusCircle, Loader2 } from 'lucide-react';
 import { CommunityLink } from '../types';
 import { searchCommunityLinks, submitCommunityLink } from '../lib/communityLinks';
-import { useToast } from './Toast';
+import { ToastProvider, useToast } from './Toast';
 import Modal from './Modal';
 
 interface Props {
@@ -11,6 +11,14 @@ interface Props {
 }
 
 export default function CommunityLinkHub({ submitterId, onError }: Props) {
+  return (
+    <ToastProvider>
+      <CommunityLinkHubInner submitterId={submitterId} onError={onError} />
+    </ToastProvider>
+  );
+}
+
+function CommunityLinkHubInner({ submitterId, onError }: Props) {
   const { showToast } = useToast();
   const [queryText, setQueryText] = useState('');
   const [results, setResults] = useState<CommunityLink[]>([]);

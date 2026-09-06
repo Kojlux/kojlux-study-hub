@@ -344,20 +344,68 @@ export interface SharedCollectionSnapshot {
   sharedAt: string;
 }
 
-// A community-submitted educational link (Storage-Efficient Link Hub).
+// 'link' = an external URL the poster is pointing at (nothing stored but
+// the URL string). 'file' = something the poster uploaded directly, stored
+// in Firebase Storage. Older docs written before file uploads existed have
+// no `kind` field at all — treat a missing `kind` as 'link' everywhere this
+// type is read (see normalizeMaterial in lib/communityLinks.ts).
+export type MaterialKind = 'link' | 'file';
+
+// A community-submitted piece of study material — the Materials page.
 // Lives in a single global Firestore collection `communityLinks` — NOT
 // scoped per user — since these are meant to be shared across every
-// student using the app. Intentionally just three pieces of metadata plus
-// bookkeeping: no file ever gets uploaded to or proxied through Firebase.
-// Tapping a result hands `url` straight to window.open(), so PDFs, videos,
-// or any other file type are fetched directly by the student's own browser
-// from wherever the link's original host serves them.
+// student using the app.
+//
+// For kind 'link': `url` is the external site the poster is sharing, and
+// tapping a result hands it straight to window.open() — no file is ever
+// uploaded to or proxied through Firebase for these.
+//
+// For kind 'file': the actual bytes are uploaded to Firebase Storage (see
+// uploadCommunityFile in lib/communityLinks.ts), and `url` is that file's
+// Storage download URL. Those uploads are made with a `contentDisposition:
+// attachment` header, so tapping a result still just calls window.open() —
+// the browser downloads the file straight to the student's device instead
+// of previewing it inline, the same "you have to save it to open it"
+// experience as an image or PDF someone sends you on a phone. Uploaded
+// files are capped at MATERIAL_MAX_FILE_SIZE_BYTES (constants.ts) and are
+// auto-deleted after MATERIAL_FILE_EXPIRY_DAYS to keep Storage usage low —
+// see `expiresAt` below and MATERIALS_SETUP.md for how that's enforced.
 export interface CommunityLink {
   id: string;
+  kind?: MaterialKind;
   title: string;
+  titleLower: string; // normalized copy of title, search only
   url: string;
-  subjectTag: string; // e.g. "Algebra 1" — shown to the user as-is
-  subjectTagLower: string; // normalized copy of subjectTag, search only
+  // Optional free-text topic label, e.g. "Algebra 1" — kept from the
+  // original link-only version of this feature, but no longer part of
+  // search (see gradeLevel/titleLower below, which are).
+  subjectTag?: string;
+  subjectTagLower?: string;
+  gradeLevel: string; // one of GRADE_LEVEL_OPTIONS, constants.ts
+  gradeLevelLower: string; // normalized copy of gradeLevel, search only
+  description: string; // poster's <=50-word summary of what the material is/covers
   submittedBy: string; // uid of the student who shared it, or 'guest'
   createdAt: string; // ISO date
+  // Epoch-ms copy of createdAt. Firestore/Storage security rules can't
+  // parse an ISO string into a timestamp to do date math, so this field
+  // exists purely so the auto-delete window can be enforced/queried
+  // without a Cloud Function — see MATERIALS_SETUP.md.
+  createdAtMillis: number;
+  // File-only fields (present when kind === 'file').
+  fileName?: string;
+  fileType?: string; // MIME type
+  fileSizeBytes?: number;
+  // Storage object path, needed to delete the file itself once it expires
+  // — deleting the Firestore doc alone would leave the bytes orphaned in
+  // Storage forever.
+  storagePath?: string;
+  // ISO date the file is due for auto-deletion; undefined for kind 'link'
+  // since links never expire (there's nothing of ours to delete).
+  expiresAt?: string;
+  // Epoch-ms copy of expiresAt — same reasoning as createdAtMillis: the
+  // Storage/Firestore security rules that grant "anyone can delete this
+  // once it's expired" permission need to do real date math, and rules
+  // can't reliably parse an ISO string into a timestamp to compare against
+  // request.time.
+  expiresAtMillis?: number;
 }

@@ -23,12 +23,18 @@ export async function generateContentWithFallback(
   throw lastError ?? new Error('No valid Gemini API key configured.');
 }
 
-// One key pool per feature, mirroring the existing VITE_VISUALIZER_KEY /
-// VITE_QUIZ_GENERATOR_KEY pattern already used elsewhere in this app.
+// Feature pools keep each feature's own keys first, then rotate through the
+// Visualizer keys as shared fallbacks. The environment-variable names stay
+// unchanged so the existing configuration continues to work.
+const VISUALIZER_ROTATION_KEYS = [
+  import.meta.env.VITE_VISUALIZER_KEY,
+  import.meta.env.VITE_VISUALIZER_KEY_ROTATION,
+];
+
 export const GEMINI_KEYS = {
-  quiz: [import.meta.env.VITE_QUIZ_GENERATOR_KEY, import.meta.env.VITE_QUIZ_GENERATOR_KEY_ROTATION],
-  summarizer: [import.meta.env.VITE_SUMMARIZER_KEY, import.meta.env.VITE_SUMMARIZER_KEY_ROTATION],
-  visualizer: [import.meta.env.VITE_VISUALIZER_KEY, import.meta.env.VITE_VISUALIZER_KEY_ROTATION],
+  quiz: [import.meta.env.VITE_QUIZ_GENERATOR_KEY, import.meta.env.VITE_QUIZ_GENERATOR_KEY_ROTATION, ...VISUALIZER_ROTATION_KEYS],
+  summarizer: [import.meta.env.VITE_SUMMARIZER_KEY, import.meta.env.VITE_SUMMARIZER_KEY_ROTATION, ...VISUALIZER_ROTATION_KEYS],
+  visualizer: VISUALIZER_ROTATION_KEYS,
   // New: powers Recall Coach's self-explanation grading and Concept Linker's
   // dual-coding questions. Add VITE_RECALL_COACH_KEY (and, optionally, a
   // _ROTATION fallback) to your _env file with the key you provided.

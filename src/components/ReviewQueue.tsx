@@ -10,9 +10,6 @@ import Modal from './Modal';
 import { ToastProvider, useToast } from './Toast';
 import SaveCardControl from './SaveCardControl';
 import ShareCardButton from './ShareCardButton';
-import CommunityLinkHub from './CommunityLinkHub';
-import SharedCardViewer from './SharedCardViewer';
-import SharedCollectionViewer from './SharedCollectionViewer';
 import StudyLibrary from './StudyLibrary';
 import ImageLightbox from './ImageLightbox';
 
@@ -30,15 +27,6 @@ interface Props {
   onRenameCollection: (id: string, name: string) => void;
   onDeleteCollection: (id: string) => void;
   onError: (msg: string) => void;
-  // Signed-in uid, or 'guest' — attributed on any community link this
-  // student submits (see CommunityLinkHub / lib/communityLinks.ts).
-  submitterId: string;
-  // Non-null when the app was opened via a `/card/:id` share link (see
-  // App.tsx + lib/deepLink.ts). While set, this screen shows that one
-  // shared card instead of the normal due-cards session.
-  deepLinkCardId?: string | null;
-  deepLinkCollectionId?: string | null;
-  onConsumeDeepLink?: () => void;
 }
 
 // The toast system lives at the top of this page (see Toast.tsx) so every
@@ -68,10 +56,6 @@ function ReviewQueueInner({
   onRenameCollection,
   onDeleteCollection,
   onError,
-  submitterId,
-  deepLinkCardId,
-  deepLinkCollectionId,
-  onConsumeDeepLink,
 }: Props) {
   const { showToast } = useToast();
   const dueCards = useMemo(() => cards.filter(isDue), [cards]);
@@ -105,13 +89,6 @@ function ReviewQueueInner({
   const [explanation, setExplanation] = useState('');
   const [revealed, setRevealed] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
-
-  // Top-of-screen switch between the original review session and the
-  // Community Links tab. Community Links used to be bolted onto the very
-  // bottom of this page (below the library, past the fold) — pulling it up
-  // into a real tab means it's reachable in one tap instead of a long
-  // scroll, and it no longer competes for space with the flip card.
-  const [view, setView] = useState<'review' | 'community'>('review');
 
   // Recents bulk selection -> AI Coach. coachItems is non-null while a
   // background generation run is in flight or has just finished (see
@@ -214,66 +191,9 @@ function ReviewQueueInner({
     />
   );
 
-  // A `/card/:id` link was opened — show that shared card on its own,
-  // regardless of what's due or which session is active underneath. This
-  // takes priority over every other view on this screen.
-  if (deepLinkCollectionId) {
-    return <SharedCollectionViewer collectionId={deepLinkCollectionId} onAdd={onAddRecallCards} onDismiss={onConsumeDeepLink ?? (() => {})} />;
-  }
-  if (deepLinkCardId) {
-    return (
-      <SharedCardViewer
-        cardId={deepLinkCardId}
-        onAdd={onAddRecallCards}
-        onDismiss={onConsumeDeepLink ?? (() => {})}
-      />
-    );
-  }
-
-  // Segmented control pinned to the top of every non-deep-link view on this
-  // screen, so switching to Community Links never requires scrolling first.
-  const viewToggle = (
-    <div className="flex p-1 bg-slate-100 dark:bg-slate-900 rounded-2xl">
-      <button
-        type="button"
-        onClick={() => setView('review')}
-        title="Today's spaced-repetition review session"
-        className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${
-          view === 'review'
-            ? 'bg-white dark:bg-slate-800 text-focus-primary shadow-sm'
-            : 'text-slate-400 dark:text-slate-500'
-        }`}
-      >
-        Review
-      </button>
-      <button
-        type="button"
-        onClick={() => setView('community')}
-        title="Browse and share study links from other students"
-        className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${
-          view === 'community'
-            ? 'bg-white dark:bg-slate-800 text-focus-primary shadow-sm'
-            : 'text-slate-400 dark:text-slate-500'
-        }`}
-      >
-        Community
-      </button>
-    </div>
-  );
-
-  if (view === 'community') {
-    return (
-      <div className="space-y-6">
-        {viewToggle}
-        <CommunityLinkHub submitterId={submitterId} onError={onError} />
-      </div>
-    );
-  }
-
   if (!collectionLabel && dueCards.length === 0) {
     return (
       <div className="space-y-6">
-        {viewToggle}
         <div className="flex flex-col items-center justify-center text-center py-10 space-y-3">
           <div className="w-16 h-16 rounded-2xl bg-focus-sage/15 flex items-center justify-center">
             <PartyPopper className="w-8 h-8 text-focus-sage-dark" />
@@ -300,7 +220,6 @@ function ReviewQueueInner({
 
   return (
     <div className="space-y-5">
-      {viewToggle}
       <div className="flex items-center justify-between">
         {collectionLabel ? (
           <>

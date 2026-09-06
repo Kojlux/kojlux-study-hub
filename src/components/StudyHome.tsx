@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Brain, FileText, Activity, Flame, ChevronRight, Clock, X, CheckCircle2, Printer } from 'lucide-react';
+import { Brain, FileText, Link2, Activity, Flame, ChevronRight, Clock, X, CheckCircle2, Printer } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { RecallCard, HistoryItem, QuizData, SummaryData, VisualizationResponse } from '../types';
 import { isDue } from '../lib/spacedRepetition';
@@ -9,7 +9,7 @@ interface Props {
   streak: number;
   cards: RecallCard[];
   history: HistoryItem[];
-  onNavigate: (tab: 'quiz' | 'visualizer' | 'summarizer' | 'review') => void;
+  onNavigate: (tab: 'quiz' | 'community' | 'summarizer' | 'review') => void;
 }
 
 export default function StudyHome({ username, streak, cards, history, onNavigate }: Props) {
@@ -62,10 +62,10 @@ export default function StudyHome({ username, streak, cards, history, onNavigate
             onClick={() => onNavigate('quiz')}
           />
           <ToolHex
-            icon={Activity}
-            label="Visualizer"
+            icon={Link2}
+            label="Community Links"
             colorClasses="bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400"
-            onClick={() => onNavigate('visualizer')}
+            onClick={() => onNavigate('community')}
           />
           <ToolHex
             icon={Brain}

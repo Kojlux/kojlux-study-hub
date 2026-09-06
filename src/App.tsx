@@ -25,16 +25,21 @@ import QuizBuilder from './components/QuizBuilder';
 import NoteCraft from './components/NoteCraft';
 import ReviewQueue from './components/ReviewQueue';
 import ProfileScreen from './components/ProfileScreen';
-import VisualizerScreen from './components/VisualizerScreen';
+import MaterialsHub from './components/MaterialsHub';
 import CalendarScreen from './components/CalendarScreen';
 import BottomNav, { NavTab } from './components/BottomNav';
 import { clearDeepLinkUrl, parseDeepLinkCardId, parseDeepLinkCollectionId } from './lib/deepLink';
-import { ThemeProvider, useTheme } from './context/ThemeContext';
+import { ThemeProvider } from './context/ThemeContext';
+import SharedLinkGate from './components/SharedLinkGate';
+import { fetchSharedCard, fetchSharedCollection } from './lib/sharedCards';
+import { cardFromSharedSnapshot } from './lib/sharedImport';
+import { getPendingImport, clearPendingImport } from './lib/pendingImport';
+import { makeCollection } from './lib/collections';
 
 const SCREEN_TITLES: Record<NavTab, string> = {
   home: 'Kojlux Study Hub',
   quiz: 'Create',
-  visualizer: 'Concept Visualizer',
+  community: 'Materials',
   review: 'Review',
   profile: 'Dashboard',
 };
@@ -197,15 +202,6 @@ function AppContent() {
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, []);
-
-  // ---- Appearance ----
-  // Previously its own independent state that defaulted to dark and never
-  // updated (nothing called its setter anymore once the theme picker took
-  // over) — it kept forcing the `dark` class onto the wrapper below every
-  // time, no matter which theme was picked, which is why every theme used
-  // to render identically. isDarkMode below now comes from the same
-  // ThemeProvider the picker itself writes to.
-  const { isDarkMode } = useTheme();
 
   // ---- Navigation ----
   const [activeTab, setActiveTab] = useState<NavTab>('home');
@@ -581,6 +577,41 @@ function AppContent() {
     lastCloudGradeLevelRef.current = null;
   };
 
+  // ---- Resume a shared-link import queued before the guest signed up ----
+  // See components/SharedLinkGate.tsx: a guest who tapped "Save to
+  // Collection" on the restricted lock screen had their card/collection id
+  // stashed in lib/pendingImport.ts (not this account's data — there was no
+  // account yet). The moment `user` goes from null to set, re-fetch that
+  // snapshot and clone it in, same as the normal in-app import path. Guarded
+  // by a ref so this can't double-run across re-renders once it's started.
+  const importedPendingRef = useRef(false);
+  useEffect(() => {
+    if (!user || importedPendingRef.current) return;
+    const pending = getPendingImport();
+    if (!pending) return;
+    importedPendingRef.current = true;
+    (async () => {
+      try {
+        if (pending.type === 'card') {
+          const snap = await fetchSharedCard(pending.id);
+          if (snap) addRecallCards([cardFromSharedSnapshot(snap)]);
+        } else {
+          const snap = await fetchSharedCollection(pending.id);
+          if (snap) {
+            const newCollection = makeCollection(snap.name);
+            addCollection(newCollection);
+            addRecallCards(snap.cards.map((c) => cardFromSharedSnapshot(c, newCollection.id)));
+          }
+        }
+      } catch (err) {
+        console.error('Failed to resume pending shared-link import', err);
+      } finally {
+        clearPendingImport();
+        consumeDeepLink();
+      }
+    })();
+  }, [user]);
+
   // ---- Errors ----
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -613,6 +644,18 @@ function AppContent() {
   }
 
   return (
+    <SharedLinkGate
+      cardId={deepLinkCardId}
+      collectionId={deepLinkCollectionId}
+      isLoggedIn={!!user}
+      onImportCard={addRecallCards}
+      onImportCollection={(collection, importedCards) => {
+        addCollection(collection);
+        addRecallCards(importedCards);
+      }}
+      onDismiss={consumeDeepLink}
+      onRequestAuth={() => setShowAuthScreen(true)}
+    >
     <div className="min-h-screen bg-focus-bg dark:bg-slate-950">
       {/* Nav renders itself as a bottom bar on phones and a left rail from
           md up — see BottomNav.tsx. It's fixed/full-height on desktop, so
@@ -704,18 +747,11 @@ function AppContent() {
               onSaveHistory={addHistory}
               onAddRecallCards={addRecallCards}
               onError={setErrorMsg}
-              onGoToVisualizer={() => setActiveTab('visualizer')}
             />
           )}
 
-          {activeTab === 'visualizer' && (
-            <VisualizerScreen
-              darkMode={isDarkMode}
-              gradeLevel={gradeLevel}
-              onGradeLevelChange={handleGradeLevelChange}
-              onError={setErrorMsg}
-              onSaveHistory={addHistory}
-            />
+          {activeTab === 'community' && (
+            <MaterialsHub currentUserId={user?.uid ?? null} defaultGradeLevel={gradeLevel} onError={setErrorMsg} />
           )}
 
           {activeTab === 'review' && (
@@ -730,10 +766,6 @@ function AppContent() {
               onRenameCollection={renameCollection}
               onDeleteCollection={deleteCollection}
               onError={setErrorMsg}
-              submitterId={user?.uid ?? 'guest'}
-              deepLinkCardId={deepLinkCardId}
-              deepLinkCollectionId={deepLinkCollectionId}
-              onConsumeDeepLink={consumeDeepLink}
             />
           )}
 
@@ -819,6 +851,7 @@ function AppContent() {
         </div>
       )}
     </div>
+    </SharedLinkGate>
   );
 }
 
@@ -834,7 +867,6 @@ function QuizBuilderOrSummarizer(props: {
   onSaveHistory: (item: HistoryItem) => void;
   onAddRecallCards: (cards: RecallCard[]) => void;
   onError: (msg: string) => void;
-  onGoToVisualizer: () => void;
 }) {
   const [subTab, setSubTab] = useState<'quiz' | 'notecraft'>('quiz');
   return (
@@ -861,7 +893,6 @@ function QuizBuilderOrSummarizer(props: {
           onSaveHistory={props.onSaveHistory}
           onAddRecallCards={props.onAddRecallCards}
           onError={props.onError}
-          onGoToVisualizer={props.onGoToVisualizer}
         />
       )}
     </div>

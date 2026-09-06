@@ -147,7 +147,23 @@ export default function QuizBuilder({ gradeLevel, onSaveHistory, onAddRecallCard
     reader.readAsDataURL(selected);
   };
 
+  const finishQuiz = () => {
+    // A quiz becomes a recent item when the student leaves it, even if they
+    // choose New before submitting answers. Submitted quizzes are already in
+    // history, so only save unfinished sessions here.
+    if (quizData && !evaluation) {
+      onSaveHistory({
+        id: `${Date.now()}`,
+        type: 'quiz',
+        title: quizData.title,
+        createdAt: new Date().toISOString(),
+        data: quizData,
+      });
+    }
+  };
+
   const resetQuiz = () => {
+    finishQuiz();
     setQuizData(null);
     setQuizSourceImage(null);
     setUserAnswers({});

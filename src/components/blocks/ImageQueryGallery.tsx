@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Image as ImageIcon } from 'lucide-react';
+import ImageLightbox from '../ImageLightbox';
 
 interface ImgResult {
   url: string;
   title: string;
+  sourceUrl?: string;
 }
 
 // Zero-key default: Wikimedia Commons' public search API (CORS-enabled via
@@ -14,7 +16,7 @@ interface ImgResult {
 async function fetchEducationalImages(query: string): Promise<ImgResult[]> {
   const url = `https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrnamespace=6&gsrlimit=3&gsrsearch=${encodeURIComponent(
     query
-  )}&prop=imageinfo&iiprop=url&iiurlwidth=400`;
+  )}&prop=imageinfo&iiprop=url|descriptionurl&iiurlwidth=400`;
   const res = await fetch(url);
   if (!res.ok) return [];
   const data = await res.json();
@@ -24,6 +26,7 @@ async function fetchEducationalImages(query: string): Promise<ImgResult[]> {
     .map((p) => ({
       url: p.imageinfo?.[0]?.thumburl || p.imageinfo?.[0]?.url,
       title: (p.title as string)?.replace(/^File:/, '').replace(/\.(jpg|jpeg|png|svg|gif)$/i, ''),
+      sourceUrl: p.imageinfo?.[0]?.descriptionurl,
     }))
     .filter((r): r is ImgResult => !!r.url);
 }
@@ -34,6 +37,7 @@ async function fetchEducationalImages(query: string): Promise<ImgResult[]> {
 export default function ImageQueryGallery({ queries }: { queries?: string[] }) {
   const [results, setResults] = useState<Record<string, ImgResult[]>>({});
   const [loading, setLoading] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<ImgResult | null>(null);
 
   useEffect(() => {
     if (!queries || queries.length === 0) {
@@ -76,20 +80,30 @@ export default function ImageQueryGallery({ queries }: { queries?: string[] }) {
               <p className="text-[10px] font-semibold text-slate-400">{q}</p>
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {imgs.map((img, i) => (
-                  <img
+                  <button
                     key={i}
-                    src={img.url}
-                    alt={img.title}
-                    title={img.title}
-                    loading="lazy"
-                    className="h-24 w-32 object-cover rounded-xl border border-slate-200 dark:border-slate-700 shrink-0"
-                  />
+                    type="button"
+                    onClick={() => setSelectedImage(img)}
+                    className="h-24 w-32 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0 overflow-hidden focus:outline-none focus:ring-2 focus:ring-focus-primary"
+                    aria-label={`Open image: ${img.title}`}
+                    title="Open image"
+                  >
+                    <img src={img.url} alt={img.title} loading="lazy" className="h-full w-full object-cover" />
+                  </button>
                 ))}
               </div>
             </div>
           );
         })}
       </div>
+      {selectedImage && (
+        <ImageLightbox
+          src={selectedImage.url}
+          sourceUrl={selectedImage.sourceUrl}
+          sourceLabel={selectedImage.title}
+          onClose={() => setSelectedImage(null)}
+        />
+      )}
     </div>
   );
 }

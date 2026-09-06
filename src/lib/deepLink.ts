@@ -1,19 +1,10 @@
 // ---------------------------------------------------------------------------
 // Deep-linking helpers for sharing a single flashcard.
 //
-// Architecture: plain path-based URLs (`/card/:id`), not a `#hash` fragment.
-// Hash fragments never reach the server and are invisible to OS-level
-// Universal Links (iOS) / App Links (Android) — so if this app is ever
-// wrapped natively (Capacitor, Expo, etc.), a real path is what those
-// features match against. Firebase Hosting needs one rewrite rule for a
-// shared link to survive a hard refresh landing directly on /card/:id:
-//
-//   { "hosting": { "rewrites": [{ "source": "/card/**", "destination": "/index.html" }] } }
-//
-// No router library is added for a single route — App.tsx reads
-// window.location.pathname once on mount (parseDeepLinkCardId) and passes
-// the id down; ReviewQueue/SharedCardViewer render that one card
-// independently of the signed-in user's own due-card queue.
+// GitHub Pages serves this app from /kojlux-study-hub/ and does not rewrite
+// arbitrary /card/:id requests to index.html. Share links therefore use the
+// hash portion of a base-aware URL: the server serves the app normally, and
+// the browser keeps the card or collection id for App.tsx to read.
 //
 // This file is intentionally free of any Firebase import — it only ever
 // builds/parses strings. The actual publish/fetch of a card's shareable
@@ -23,12 +14,20 @@
 export const CARD_ROUTE_PREFIX = '/card/';
 export const COLLECTION_ROUTE_PREFIX = '/collection/';
 
+function appBaseUrl(): string {
+  return import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+}
+
+function buildHashShareUrl(prefix: string, id: string): string {
+  return `${window.location.origin}${appBaseUrl()}#${prefix}${encodeURIComponent(id)}`;
+}
+
 export function buildCardShareUrl(cardId: string): string {
-  return `${window.location.origin}${CARD_ROUTE_PREFIX}${encodeURIComponent(cardId)}`;
+  return buildHashShareUrl(CARD_ROUTE_PREFIX, cardId);
 }
 
 export function buildCollectionShareUrl(collectionId: string): string {
-  return `${window.location.origin}${COLLECTION_ROUTE_PREFIX}${encodeURIComponent(collectionId)}`;
+  return buildHashShareUrl(COLLECTION_ROUTE_PREFIX, collectionId);
 }
 
 // Custom scheme reserved for an optional future "Open in App" banner, once
@@ -40,9 +39,9 @@ export function buildCardAppScheme(cardId: string): string {
   return `kojlux://card/${encodeURIComponent(cardId)}`;
 }
 
-export function parseDeepLinkCardId(pathname: string = window.location.pathname): string | null {
-  if (!pathname.startsWith(CARD_ROUTE_PREFIX)) return null;
-  const raw = pathname.slice(CARD_ROUTE_PREFIX.length).split('/')[0];
+function parseRouteId(route: string, prefix: string): string | null {
+  if (!route.startsWith(prefix)) return null;
+  const raw = route.slice(prefix.length).split('/')[0];
   if (!raw) return null;
   try {
     return decodeURIComponent(raw);
@@ -51,16 +50,22 @@ export function parseDeepLinkCardId(pathname: string = window.location.pathname)
   }
 }
 
-export function parseDeepLinkCollectionId(pathname: string = window.location.pathname): string | null {
-  if (!pathname.startsWith(COLLECTION_ROUTE_PREFIX)) return null;
-  const raw = pathname.slice(COLLECTION_ROUTE_PREFIX.length).split('/')[0];
-  if (!raw) return null;
-  try { return decodeURIComponent(raw); } catch { return raw; }
+function currentDeepLinkRoute(): string {
+  const hashRoute = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
+  return hashRoute || window.location.pathname;
 }
 
-// Clears the /card/:id path back to `/` without a page reload, once the
+export function parseDeepLinkCardId(route: string = currentDeepLinkRoute()): string | null {
+  return parseRouteId(route, CARD_ROUTE_PREFIX);
+}
+
+export function parseDeepLinkCollectionId(route: string = currentDeepLinkRoute()): string | null {
+  return parseRouteId(route, COLLECTION_ROUTE_PREFIX);
+}
+
+// Clears the shared-link route back to the app base without a page reload, once the
 // student has viewed (and optionally saved) the shared card — otherwise a
 // refresh later would keep reopening the same shared-card viewer forever.
 export function clearDeepLinkUrl(): void {
-  window.history.replaceState(null, '', '/');
+  window.history.replaceState(null, '', `${window.location.origin}${appBaseUrl()}`);
 }

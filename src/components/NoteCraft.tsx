@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Upload, Camera, Sparkles, RefreshCw, BookOpenCheck, Link2, ChevronDown, ArrowRight, Printer, FileText } from 'lucide-react';
+import { Upload, Camera, Sparkles, RefreshCw, BookOpenCheck, Link2, ChevronDown, Printer, FileText } from 'lucide-react';
 import { loadDraft, saveDraft, clearDraft } from '../lib/draftStore';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 import { jsPDF } from 'jspdf';
@@ -24,10 +24,9 @@ interface Props {
   onSaveHistory: (item: HistoryItem) => void;
   onAddRecallCards: (cards: RecallCard[]) => void;
   onError: (msg: string) => void;
-  onGoToVisualizer: () => void;
 }
 
-export default function NoteCraft({ gradeLevel, history, onSaveHistory, onAddRecallCards, onError, onGoToVisualizer }: Props) {
+export default function NoteCraft({ gradeLevel, history, onSaveHistory, onAddRecallCards, onError }: Props) {
   const [file, setFile] = useState<StudyFile | null>(null);
   const [textInput, setTextInput] = useState('');
   // See TopicPicker.tsx for why this replaced the old length/punctuation
@@ -96,6 +95,7 @@ export default function NoteCraft({ gradeLevel, history, onSaveHistory, onAddRec
   // on the next refresh.
   const resetNotes = () => {
     setSummaryData(null);
+    setLinkedResults({});
     setFile(null);
     setTextInput('');
     clearDraft(DRAFT_KEY);
@@ -568,15 +568,6 @@ Respond ONLY with strict JSON: {"questions": [{"prompt": string, "answer": strin
                   and this will write a few questions that ask you to point to a part of that diagram and explain it
                   using this summary. The questions get added to Review, just like everything else.
                 </p>
-                {visualizationHistory.length === 0 && (
-                  <button
-                    onClick={onGoToVisualizer}
-                    className="w-full text-left px-3.5 py-3 rounded-xl bg-focus-primary/5 border border-focus-primary/20 text-xs font-bold text-focus-primary flex items-center justify-between"
-                  >
-                    Click here to go to the Visualizer screen
-                    <ArrowRight className="w-3.5 h-3.5 shrink-0" />
-                  </button>
-                )}
                 {visualizationHistory.map((v) => {
                   const vizData = v.data as VisualizationResponse;
                   const busy = linkerBusy === v.id;
