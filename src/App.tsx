@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection as fsCollection, increment } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { AlertCircle, X, ArrowLeft, GraduationCap, Camera, Bell } from 'lucide-react';
+import { AlertCircle, X, ArrowLeft, Camera, Bell } from 'lucide-react';
 
 import { HistoryItem, RecallCard, ExamEvent, Collection, NotificationItem, SummaryData } from './types';
 import { loadLocal, saveLocal, scopedKey } from './lib/storage';
@@ -1089,8 +1089,12 @@ function WelcomeGate({ onSkip, onSignIn }: { onSkip: () => void; onSignIn: () =>
     <div className="min-h-screen bg-focus-bg dark:bg-slate-950 flex items-center justify-center p-5">
       <div className="max-w-sm w-full space-y-5">
         <div className="text-center space-y-2">
-          <div className="w-14 h-14 mx-auto rounded-2xl bg-focus-primary flex items-center justify-center shadow-lg shadow-focus-primary/25">
-            <GraduationCap className="w-7 h-7 text-white" />
+          <div className="w-16 h-16 mx-auto rounded-2xl overflow-hidden shadow-lg shadow-focus-primary/25">
+            <img
+              src={`${import.meta.env.BASE_URL}icon.png`}
+              alt="Kojlux Study Hub app icon"
+              className="w-full h-full object-cover"
+            />
           </div>
           <h1 className="text-lg font-black text-slate-900 dark:text-white">Welcome to Kojlux Study Hub</h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed px-2">

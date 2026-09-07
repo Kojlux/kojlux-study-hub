@@ -6,7 +6,7 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
-import { BrainCircuit, Mail, Lock, User as UserIcon, AlertCircle } from 'lucide-react';
+import { Mail, Lock, User as UserIcon, AlertCircle } from 'lucide-react';
 import { GRADE_LEVEL_OPTIONS } from '../constants';
 
 export default function AuthScreen() {
@@ -47,8 +47,12 @@ export default function AuthScreen() {
     <div className="min-h-screen w-full flex items-center justify-center bg-focus-bg px-5">
       <div className="w-full max-w-sm space-y-7">
         <div className="text-center space-y-2">
-          <div className="w-14 h-14 mx-auto rounded-2xl bg-focus-primary flex items-center justify-center shadow-lg shadow-focus-primary/20">
-            <BrainCircuit className="w-7 h-7 text-white" />
+          <div className="w-16 h-16 mx-auto rounded-2xl overflow-hidden shadow-lg shadow-focus-primary/20">
+            <img
+              src={`${import.meta.env.BASE_URL}icon.png`}
+              alt="Kojlux Study Hub app icon"
+              className="w-full h-full object-cover"
+            />
           </div>
           <h1 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Kojlux Study Hub</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">Focused study, built on how memory actually works.</p>

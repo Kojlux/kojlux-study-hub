@@ -41,7 +41,7 @@
     <script type="module" src="./src/main.tsx"></script>
    <script>
   if ('serviceWorker' in navigator) {
-   navigator.serviceWorker.register('/kojlux-study-hub/sw.js')
+  navigator.serviceWorker.register('./sw.js')
       .then(() => console.log('Service Worker Registered'));
   }
 </script>
