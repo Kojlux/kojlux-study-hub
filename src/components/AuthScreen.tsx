@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   updateProfile,
 } from 'firebase/auth';
@@ -17,6 +18,7 @@ export default function AuthScreen() {
   const [gradeLevel, setGradeLevel] = useState(GRADE_LEVEL_OPTIONS[2]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,6 +38,25 @@ export default function AuthScreen() {
           streak: 0,
         });
       }
+    } catch (err: any) {
+      setError(humanizeAuthError(err?.code || err?.message || 'Something went wrong.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    const address = email.trim();
+    setError(null);
+    setResetSent(false);
+    if (!address) {
+      setError('Enter your email address first, then choose Reset password.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await sendPasswordResetEmail(auth, address);
+      setResetSent(true);
     } catch (err: any) {
       setError(humanizeAuthError(err?.code || err?.message || 'Something went wrong.'));
     } finally {
@@ -146,6 +167,19 @@ export default function AuthScreen() {
             className="w-full py-3 bg-focus-primary hover:bg-focus-primary-dark text-white text-sm font-bold rounded-xl transition shadow-sm disabled:opacity-60"
           >
             {busy ? 'Please wait…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
+          </button>
+          {resetSent && (
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 text-center">
+              Password reset email sent. Check your inbox.
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={handlePasswordReset}
+            disabled={busy}
+            className="w-full text-xs font-bold text-focus-primary hover:text-focus-primary-dark disabled:opacity-50"
+          >
+            Reset password
           </button>
         </form>
       </div>

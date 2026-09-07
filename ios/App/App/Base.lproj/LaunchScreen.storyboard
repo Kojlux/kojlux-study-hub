@@ -12,11 +12,30 @@
         <scene sceneID="EHf-IW-A2E">
             <objects>
                 <viewController id="01J-lp-oVM" sceneMemberID="viewController">
-                    <imageView key="view" userInteractionEnabled="NO" contentMode="scaleAspectFill" horizontalHuggingPriority="251" verticalHuggingPriority="251" image="Splash" id="snD-IY-ifK">
+                    <view key="view" contentMode="scaleToFill" id="snD-IY-ifK">
                         <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
                         <autoresizingMask key="autoresizingMask"/>
                         <color key="backgroundColor" systemColor="systemBackgroundColor"/>
-                    </imageView>
+                        <subviews>
+                            <imageView userInteractionEnabled="NO" contentMode="scaleAspectFit" horizontalHuggingPriority="251" verticalHuggingPriority="251" image="Splash" translatesAutoresizingMaskIntoConstraints="NO" id="splash-image">
+                                <rect key="frame" x="107" y="253.0" width="161" height="161"/>
+                            </imageView>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="KOJLUX STUDY HUB" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="splash-title">
+                                <rect key="frame" x="24" y="610" width="327" height="24"/>
+                                <fontDescription key="fontDescription" type="system" weight="bold" pointSize="18"/>
+                                <color key="textColor" label="Label Color" systemColor="labelColor"/>
+                            </label>
+                        </subviews>
+                        <constraints>
+                            <constraint firstItem="splash-image" firstAttribute="centerX" secondItem="snD-IY-ifK" secondAttribute="centerX" id="splash-image-center-x"/>
+                            <constraint firstItem="splash-image" firstAttribute="centerY" secondItem="snD-IY-ifK" secondAttribute="centerY" constant="-12" id="splash-image-center-y"/>
+                            <constraint firstItem="splash-image" firstAttribute="width" constant="161" id="splash-image-width"/>
+                            <constraint firstItem="splash-image" firstAttribute="height" constant="161" id="splash-image-height"/>
+                            <constraint firstItem="splash-title" firstAttribute="leading" secondItem="snD-IY-ifK" secondAttribute="leading" constant="24" id="splash-title-leading"/>
+                            <constraint firstItem="snD-IY-ifK" firstAttribute="trailing" secondItem="splash-title" secondAttribute="trailing" constant="24" id="splash-title-trailing"/>
+                            <constraint firstItem="snD-IY-ifK" firstAttribute="bottom" secondItem="splash-title" secondAttribute="bottom" constant="32" id="splash-title-bottom"/>
+                        </constraints>
+                    </view>
                 </viewController>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="iYj-Kq-Ea1" userLabel="First Responder" sceneMemberID="firstResponder"/>
             </objects>
@@ -27,6 +46,9 @@
         <image name="Splash" width="1366" height="1366"/>
         <systemColor name="systemBackgroundColor">
             <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+        </systemColor>
+        <systemColor name="labelColor">
+            <color white="0.0" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
         </systemColor>
     </resources>
 </document>

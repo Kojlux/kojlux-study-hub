@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Check, Sparkles, History, FolderOpen, Play, Pencil, X, Settings2, RotateCw, Maximize2,
+  Check, Sparkles, History, FolderOpen, Play, Eye, X, Settings2, RotateCw, Maximize2,
 } from 'lucide-react';
 import { RecallCard, HistoryItem, Collection } from '../types';
 import { makeCollection } from '../lib/collections';
@@ -386,19 +386,12 @@ function SavedPanel({
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => setStudyCard(c)}
-                title="Flip through this card's question and answer"
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-focus-primary/10 text-focus-primary text-[11px] font-bold"
-              >
-                <Play className="w-3.5 h-3.5" /> Study
-              </button>
-              <button
-                type="button"
                 onClick={() => setEditCard(c)}
-                title="Edit this card's question, answer, or collection"
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[11px] font-bold"
+                title="View and edit this flashcard"
+                aria-label="View and edit this flashcard"
+                className="w-full flex items-center justify-center py-2 rounded-lg bg-focus-primary/10 text-focus-primary text-[11px] font-bold"
               >
-                <Pencil className="w-3.5 h-3.5" /> Edit
+                <Eye className="w-4 h-4" />
               </button>
             </div>
           </div>
