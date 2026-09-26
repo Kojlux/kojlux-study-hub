@@ -38,8 +38,8 @@ messaging.onBackgroundMessage((payload) => {
     body,
     tag,
     data: { url },
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
+    icon: `${self.registration.scope}icon.png`,
+    badge: `${self.registration.scope}icon.png`,
   });
 });
 

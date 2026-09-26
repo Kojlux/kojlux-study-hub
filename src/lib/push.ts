@@ -49,6 +49,7 @@ export async function registerPushForUser(uid: string): Promise<string | null> {
     const serviceWorkerPath = `${import.meta.env.BASE_URL}sw.js`;
     const registration = await navigator.serviceWorker.register(serviceWorkerPath, { updateViaCache: 'none' });
     await registration.update();
+    await navigator.serviceWorker.ready;
     const messaging = getMessaging(app);
 
     // Generate this in Firebase console → Project settings → Cloud Messaging

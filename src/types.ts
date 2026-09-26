@@ -21,6 +21,8 @@ export interface QuizQuestion {
 // 'general' items populate none of them and behave exactly as before.
 export type Subject = 'general' | 'english' | 'science' | 'geography' | 'math';
 
+export type AgeBand = 'under13' | '13to17' | '18plus';
+
 // Geography: a real-world place with an approximate coordinate, meant for
 // local map rendering (see components/MapWidget in VisualizerScreen) —
 // never a rendered map image, just the lightweight coordinate data.

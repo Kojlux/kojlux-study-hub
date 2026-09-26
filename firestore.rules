@@ -1,0 +1,113 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    match /users/{uid} {
+      allow read, write: if isSignedIn() && request.auth.uid == uid;
+
+      match /{document=**} {
+        allow read, write: if isSignedIn() && request.auth.uid == uid;
+      }
+    }
+
+    match /videos/{videoId} {
+      allow read: if true;
+      allow create: if isSignedIn()
+        && request.resource.data.postedByUid == request.auth.uid;
+      allow delete: if isSignedIn()
+        && resource.data.postedByUid == request.auth.uid;
+      allow update: if isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['totalWatchSeconds'])
+        && request.resource.data.totalWatchSeconds is number
+        && (!('totalWatchSeconds' in resource.data)
+          || request.resource.data.totalWatchSeconds > resource.data.totalWatchSeconds);
+    }
+
+    match /sharedCards/{cardId} {
+      allow read: if true;
+      allow create, update: if isSignedIn()
+        && request.resource.data.id == cardId;
+      allow delete: if false;
+    }
+
+    match /communityLinks/{linkId} {
+      allow read: if true;
+
+      allow create: if isSignedIn()
+        && request.resource.data.submittedBy == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'kind', 'title', 'titleLower', 'url',
+          'subjectTag', 'subjectTagLower',
+          'gradeLevel', 'gradeLevelLower', 'description',
+          'submittedBy', 'createdAt', 'createdAtMillis',
+          'fileName', 'fileType', 'fileSizeBytes', 'storagePath',
+          'expiresAt', 'expiresAtMillis'
+        ])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.titleLower is string
+        && request.resource.data.url is string
+        && request.resource.data.url.size() > 0
+        && request.resource.data.gradeLevel is string
+        && request.resource.data.gradeLevel.size() > 0
+        && request.resource.data.gradeLevelLower is string
+        && request.resource.data.description is string
+        && request.resource.data.description.size() > 0
+        && request.resource.data.createdAt is string
+        && request.resource.data.createdAtMillis is number
+        && (!('kind' in request.resource.data)
+          || request.resource.data.kind in ['link', 'file'])
+        && (!('subjectTag' in request.resource.data)
+          || request.resource.data.subjectTag is string)
+        && (!('subjectTagLower' in request.resource.data)
+          || request.resource.data.subjectTagLower is string)
+        && (
+          request.resource.data.get('kind', 'link') != 'file'
+          || (
+            request.resource.data.fileName is string
+            && request.resource.data.fileType is string
+            && request.resource.data.fileSizeBytes is number
+            && request.resource.data.fileSizeBytes <= 15 * 1024 * 1024
+            && request.resource.data.storagePath is string
+            && request.resource.data.storagePath.matches('^materials/.*')
+            && request.resource.data.expiresAt is string
+            && request.resource.data.expiresAtMillis is number
+          )
+        )
+        && (
+          request.resource.data.get('kind', 'link') != 'link'
+          || !('fileName' in request.resource.data)
+        );
+
+      allow update: if false;
+      allow delete: if (isSignedIn()
+          && resource.data.submittedBy == request.auth.uid)
+        || (
+          resource.data.get('kind', 'link') == 'file'
+          && resource.data.get('expiresAtMillis', 0) > 0
+          && request.time.toMillis() > resource.data.expiresAtMillis
+        );
+    }
+
+    match /deletion_requests/{requestId} {
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly(['uid', 'email', 'reason', 'requestedAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.email is string
+        && request.resource.data.email.size() > 3
+        && request.resource.data.email.size() <= 254
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() <= 1000
+        && request.resource.data.requestedAt is timestamp;
+      allow read, update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

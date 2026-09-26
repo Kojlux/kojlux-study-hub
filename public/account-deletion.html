@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Confirm deletion of your Kojlux Study Hub account and associated data." />
+    <title>Delete Account | Kojlux Study Hub</title>
+    <style>
+      :root { color-scheme: light; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172033; background: #f4f6fb; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; padding: 24px; display: grid; place-items: center; }
+      main { width: min(100%, 680px); padding: clamp(24px, 5vw, 44px); background: #fff; border: 1px solid #dce2ec; border-radius: 18px; box-shadow: 0 18px 50px rgba(23, 32, 51, .08); }
+      h1 { margin: 12px 0 10px; font-size: clamp(1.65rem, 4vw, 2.25rem); line-height: 1.1; }
+      p, li { line-height: 1.6; }
+      a { color: #4056d6; }
+      .eyebrow { margin: 0; color: #4056d6; font-size: .75rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+      .muted { color: #617089; }
+      .note { margin: 24px 0; padding: 15px 17px; background: #eef1ff; border-left: 4px solid #4056d6; border-radius: 10px; }
+      form { display: grid; gap: 16px; margin-top: 26px; }
+      label { display: grid; gap: 7px; font-size: .82rem; font-weight: 750; }
+      input, textarea { width: 100%; border: 1px solid #cbd4e2; border-radius: 10px; padding: 12px 13px; color: #172033; background: #fbfcfe; font: inherit; }
+      input:disabled { color: #617089; background: #eef1f5; }
+      .confirmation { display: flex; align-items: flex-start; gap: 10px; font-weight: 600; line-height: 1.5; }
+      .confirmation input { width: 18px; height: 18px; margin: 1px 0 0; flex: 0 0 auto; accent-color: #4056d6; }
+      textarea { min-height: 120px; resize: vertical; }
+      input:focus, textarea:focus { outline: 3px solid rgba(64, 86, 214, .18); border-color: #4056d6; }
+      button { border: 0; border-radius: 10px; padding: 13px 16px; color: white; background: #4056d6; font: inherit; font-weight: 800; cursor: pointer; }
+      button:disabled { cursor: wait; opacity: .6; }
+      .actions { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
+      .cancel { display: inline-block; padding: 12px 16px; border: 1px solid #cbd4e2; border-radius: 10px; color: #35445b; font-weight: 750; text-decoration: none; }
+      #submit-button { background: #bd2738; }
+      #submit-button:not(:disabled):hover { background: #a61e2e; }
+      #submit-button:disabled { opacity: .45; }
+      #status { min-height: 24px; margin: 0; font-size: .9rem; }
+      #status.success { color: #137333; }
+      #status.error { color: #b3261e; }
+      footer { margin-top: 28px; padding-top: 18px; border-top: 1px solid #e3e7ee; font-size: .82rem; }
+      @media (max-width: 560px) { body { padding: 12px; } main { border-radius: 14px; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <a href="./privacy.html">Back to Privacy Policy</a>
+      <p class="eyebrow">Kojlux Study Hub</p>
+      <h1>Delete your account</h1>
+      <p class="muted">This permanently deletes your Kojlux Study Hub sign-in. Your synced study profile and owned Materials will be removed by our secure cleanup process.</p>
+      <p class="note"><strong>This cannot be undone.</strong> You will lose access to synced study data. Export or save anything you want to keep before continuing.</p>
+
+      <form id="deletion-form" hidden>
+        <label for="email">Signed-in account
+          <input id="email" name="email" type="email" autocomplete="email" required maxlength="254" placeholder="you@example.com" readonly disabled />
+        </label>
+        <label for="password">Confirm your password
+          <input id="password" name="password" type="password" autocomplete="current-password" required />
+        </label>
+        <label class="confirmation" for="confirm-delete">
+          <input id="confirm-delete" name="confirm-delete" type="checkbox" required />
+          <span>I understand this permanently deletes my account and synced data.</span>
+        </label>
+        <div class="actions">
+          <a class="cancel" href="./">Cancel</a>
+          <button id="submit-button" type="submit" disabled>Delete my account</button>
+        </div>
+      </form>
+      <p id="status" role="status" aria-live="polite"></p>
+
+      <footer>
+        <p>See the <a href="./privacy.html">Privacy Policy</a> for details about deletion and retention.</p>
+        <p>Need help? Email <a href="mailto:officialkojlux@gmail.com">officialkojlux@gmail.com</a>.</p>
+      </footer>
+    </main>
+
+    <script>
+      console.info("[AccountDeletion] page loaded; starting Firebase module");
+      window.addEventListener("error", (event) => {
+        console.error("[AccountDeletion] page or module resource error", {
+          message: event.message,
+          filename: event.filename,
+          line: event.lineno
+        });
+      });
+      window.addEventListener("unhandledrejection", (event) => {
+        console.error("[AccountDeletion] unhandled promise rejection", event.reason);
+      });
+    </script>
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
+      import { EmailAuthProvider, getAuth, onAuthStateChanged, reauthenticateWithCredential } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
+
+      console.info("[AccountDeletion] Firebase module loaded");
+
+      const firebaseConfig = {
+        apiKey: "AIzaSyAYlk96J0ruTjEjzxDWNtjg562yt6QKH10",
+        authDomain: "kojlux-study-hub.firebaseapp.com",
+        projectId: "kojlux-study-hub",
+        storageBucket: "kojlux-study-hub.firebasestorage.app",
+        messagingSenderId: "960240769488",
+        appId: "1:960240769488:web:309df71ebf8166a85881d5"
+      };
+      const app = initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      const form = document.querySelector("#deletion-form");
+      const emailInput = document.querySelector("#email");
+      const passwordInput = document.querySelector("#password");
+      const confirmationInput = document.querySelector("#confirm-delete");
+      const submitButton = document.querySelector("#submit-button");
+      const status = document.querySelector("#status");
+      let authenticatedUser = null;
+      let deletionInProgress = false;
+
+      if (!form || !emailInput || !passwordInput || !confirmationInput || !submitButton || !status) {
+        console.error("[AccountDeletion] Form setup failed: expected form elements were not found", {
+          formFound: Boolean(form),
+          emailFound: Boolean(emailInput),
+          passwordFound: Boolean(passwordInput),
+          confirmationFound: Boolean(confirmationInput),
+          buttonFound: Boolean(submitButton),
+          statusFound: Boolean(status)
+        });
+        throw new Error("Account deletion form elements are missing");
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        console.log("[AccountDeletion] Final deletion confirmation submitted");
+        if (!authenticatedUser || !auth.currentUser) {
+          console.warn("[AccountDeletion] Submission blocked: no authenticated user");
+          status.className = "error";
+          status.textContent = "Your sign-in session ended. Please sign in again.";
+          window.location.replace("./?requireAuth=account-deletion");
+          return;
+        }
+        if (!confirmationInput.checked) {
+          console.warn("[AccountDeletion] Deletion confirmation checkbox is not selected");
+          status.className = "error";
+          status.textContent = "Confirm that you understand the deletion before continuing.";
+          return;
+        }
+        if (!passwordInput.value) {
+          status.className = "error";
+          status.textContent = "Enter your password to confirm account deletion.";
+          passwordInput.focus();
+          return;
+        }
+
+        submitButton.disabled = true;
+        status.className = "";
+        status.textContent = "Deleting your account and starting secure data cleanup…";
+        deletionInProgress = true;
+        try {
+          const user = auth.currentUser;
+          if (!user.email) throw new Error("This account does not have an email address.");
+          console.info("[AccountDeletion] Reauthenticating current user before deletion", { uid: user.uid });
+          const credential = EmailAuthProvider.credential(user.email, passwordInput.value);
+          await reauthenticateWithCredential(user, credential);
+          console.info("[AccountDeletion] Password confirmed; deleting current Auth user", { uid: user.uid });
+          console.info("[AccountDeletion] Calling Firebase Auth delete for current user", { uid: authenticatedUser.uid });
+          await user.delete();
+          console.info("[AccountDeletion] Firebase Auth account deleted; backend cleanup trigger will process user data");
+          emailInput.value = "";
+          passwordInput.value = "";
+          confirmationInput.checked = false;
+          status.className = "success";
+          status.textContent = "Your account was deleted. Secure removal of your synced data has started.";
+          submitButton.textContent = "Account deleted";
+        } catch (error) {
+          deletionInProgress = false;
+          console.error("[AccountDeletion] Firebase Auth deletion failed", {
+            code: error?.code || "unknown",
+            message: error?.message || String(error),
+            error
+          });
+          status.className = "error";
+          if (error?.code === "auth/wrong-password" || error?.code === "auth/invalid-credential") {
+            status.textContent = "That password did not match this account. Check it and try again.";
+          } else if (error?.code === "auth/too-many-requests") {
+            status.textContent = "Too many attempts. Wait a little while, then try again.";
+          } else {
+            status.textContent = "We could not delete your account. Please try again or contact support.";
+          }
+        } finally {
+          if (!auth.currentUser) submitButton.disabled = true;
+          else submitButton.disabled = !confirmationInput.checked;
+        }
+      });
+      confirmationInput.addEventListener("change", () => {
+        submitButton.disabled = !confirmationInput.checked || !authenticatedUser;
+      });
+      console.info("[AccountDeletion] Final confirmation listener attached");
+
+      onAuthStateChanged(auth, (user) => {
+        console.info("[AccountDeletion] Authentication check resolved", { authenticated: Boolean(user) });
+        if (!user) {
+          if (deletionInProgress) return;
+          window.location.replace("./?requireAuth=account-deletion");
+          return;
+        }
+        authenticatedUser = user;
+        const lockedEmail = auth.currentUser?.email?.trim() || user.email?.trim();
+        form.hidden = false;
+        if (!lockedEmail) {
+          status.className = "error";
+          status.textContent = "Your signed-in account has no email address. Contact support before deleting it.";
+          return;
+        }
+        emailInput.value = lockedEmail;
+        emailInput.disabled = true;
+        emailInput.readOnly = true;
+        submitButton.disabled = !confirmationInput.checked;
+        console.info("[AccountDeletion] Authenticated email attached to locked field", { uid: user.uid });
+      }, (error) => {
+        console.error("[AccountDeletion] Authentication check failed", error);
+        status.className = "error";
+        status.textContent = "We could not verify your sign-in. Please return to the app and sign in again.";
+      });
+    </script>
+  </body>
+</html>

@@ -11,13 +11,13 @@ const TABS: { key: NavTab; label: string; icon: any }[] = [
   { key: 'profile', label: 'Dashboard', icon: ChartNoAxesCombined },
 ];
 
-export default function BottomNav({ active, onChange }: { active: NavTab; onChange: (t: NavTab) => void }) {
+export default function BottomNav({ active, blockedTabs = [], onChange }: { active: NavTab; blockedTabs?: NavTab[]; onChange: (t: NavTab) => void }) {
   return (
     <>
       {/* Phones: fixed bottom tab bar — unchanged from before. */}
       <div className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200/80 dark:border-slate-800 pb-[env(safe-area-inset-bottom)]">
         <div className="max-w-md mx-auto flex items-center justify-around px-2 py-2">
-          {TABS.map(({ key, label, icon: Icon }) => (
+          {TABS.filter(({ key }) => !blockedTabs.includes(key)).map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               onClick={() => onChange(key)}
@@ -42,7 +42,7 @@ export default function BottomNav({ active, onChange }: { active: NavTab; onChan
         <div className="hidden lg:block px-3 mb-5">
           <span className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Kojlux</span>
         </div>
-        {TABS.map(({ key, label, icon: Icon }) => (
+        {TABS.filter(({ key }) => !blockedTabs.includes(key)).map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => onChange(key)}

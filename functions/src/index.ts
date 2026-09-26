@@ -23,11 +23,66 @@
 // side is plenty since review "due" times aren't second-precise).
 
 import * as admin from 'firebase-admin';
+import * as functionsV1 from 'firebase-functions/v1';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 
 admin.initializeApp();
 const db = admin.firestore();
 const messaging = admin.messaging();
+
+export const cleanupDeletedUserData = functionsV1
+  .runWith({ timeoutSeconds: 540 })
+  .auth.user()
+  .onDelete(async (user) => {
+    const uid = user.uid;
+    const userRef = db.collection('users').doc(uid);
+    const communityLinks = await db.collection('communityLinks').where('submittedBy', '==', uid).get();
+
+    for (let offset = 0; offset < communityLinks.docs.length; offset += 500) {
+      const batch = db.batch();
+      communityLinks.docs.slice(offset, offset + 500).forEach((link) => batch.delete(link.ref));
+      await batch.commit();
+    }
+
+    await Promise.all([
+      db.recursiveDelete(userRef),
+      admin.storage().bucket().deleteFiles({ prefix: `materials/${uid}/` }),
+    ]);
+
+    console.info('Completed account data cleanup after Auth deletion', { uid });
+  });
+
+export const queueDeletionRequestEmail = onDocumentCreated(
+  'deletion_requests/{requestId}',
+  async (event) => {
+    const request = event.data?.data();
+    if (!request || typeof request.email !== 'string') return;
+
+    const email = request.email.trim().slice(0, 254);
+    const reason = typeof request.reason === 'string' ? request.reason.trim().slice(0, 1000) : '';
+    const requestId = event.params.requestId;
+    const mailRef = db.collection('mail_queue').doc(requestId);
+
+    await db.runTransaction(async (transaction) => {
+      const existing = await transaction.get(mailRef);
+      if (existing.exists) return;
+
+      transaction.create(mailRef, {
+        to: 'officialkojlux@gmail.com',
+        message: {
+          subject: 'Kojlux Study Hub account deletion request',
+          text: [
+            `Registered email: ${email}`,
+            `Requested at: ${request.requestedAt?.toDate?.()?.toISOString?.() ?? 'Timestamp unavailable'}`,
+            `Reason: ${reason || 'No reason provided.'}`,
+            `Request ID: ${requestId}`,
+          ].join('\n'),
+        },
+      });
+    });
+  }
+);
 
 interface DueDate {
   id: string;

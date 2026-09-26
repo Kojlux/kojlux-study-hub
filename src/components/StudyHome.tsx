@@ -8,7 +8,6 @@ import {
   Flame,
   ChevronRight,
   ArrowRight,
-  Clock,
   X,
   CheckCircle2,
   Printer,
@@ -69,86 +68,101 @@ export default function StudyHome({ username, streak, activityDays, history, onN
   }, []);
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-8">
       <div>
         <p className="text-xs text-slate-400 font-semibold">{greeting},</p>
-        <h1 className="text-2xl font-black text-slate-900 dark:text-white mt-0.5 tracking-tight">
+        <h1 className="font-serif text-2xl text-slate-900 dark:text-white mt-0.5 truncate">
           {username || 'Student'}
         </h1>
       </div>
 
-      <div className="space-y-2.5">
-        <button
-          onClick={() => setShowProgress(true)}
-          className="group relative w-full overflow-hidden rounded-3xl bg-gradient-to-br from-focus-primary to-focus-primary-dark p-5 text-left text-white shadow-lg shadow-focus-primary/25 transition active:scale-[0.99]"
-        >
-          <div className="pointer-events-none absolute -right-8 -top-10 h-44 w-44 rounded-full bg-white/10 blur-2xl transition group-hover:bg-white/15" />
-          <div className="pointer-events-none absolute -left-14 bottom-0 h-32 w-32 rounded-full bg-black/10 blur-2xl" />
-          <div className="relative flex items-center gap-4">
-            <div className="relative shrink-0">
-              <StreakRing progress={tierProgress} />
-              <Flame className="absolute inset-0 m-auto h-6 w-6 text-white drop-shadow" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-white/60">Day streak</p>
-              <p className="text-3xl font-black leading-none mt-1 tabular-nums">{streak}</p>
-              <p className="mt-2 text-[11px] text-white/75 leading-snug">
-                {remainingToNext > 0
-                  ? `${remainingToNext} active day${remainingToNext === 1 ? '' : 's'} to ${badgeName(nextMilestone)}`
-                  : 'Next badge is ready — tap to view'}
-              </p>
-            </div>
-            <ChevronRight className="h-4 w-4 text-white/50 shrink-0 transition group-hover:translate-x-0.5" />
+      {/* Streak badge, stats, and the "days to next badge" caption now live
+          in one row instead of being split across opposite corners of the
+          screen. The badge also gets a solid tint behind the progress ring
+          so it still reads as something at 0 progress, not an empty circle. */}
+      <button
+        onClick={() => setShowProgress(true)}
+        aria-label="View streak progress"
+        className="w-full flex items-center gap-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4 text-left transition active:scale-[0.98]"
+      >
+        <div className="relative shrink-0 w-14 h-14 rounded-full bg-focus-primary/15 flex items-center justify-center text-focus-primary">
+          <div className="absolute inset-0">
+            <StreakRing progress={tierProgress} size={56} stroke={4} color="currentColor" />
           </div>
-        </button>
+          <div className="relative flex flex-col items-center">
+            <Flame className="h-4 w-4" />
+            <span className="font-serif text-xs text-slate-900 dark:text-white leading-none mt-0.5 tabular-nums">{streak}</span>
+          </div>
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] text-slate-400">{creationsThisWeek} created this week · {history.length} total</p>
+          <p className="text-xs font-semibold text-focus-primary mt-1 truncate">
+            {remainingToNext > 0
+              ? `${remainingToNext} active day${remainingToNext === 1 ? '' : 's'} to ${badgeName(nextMilestone)}`
+              : `${badgeName(nextMilestone)} ready`}
+          </p>
+        </div>
+        <ChevronRight className="h-4 w-4 text-slate-300 dark:text-slate-700 shrink-0" />
+      </button>
 
-        <div className="grid grid-cols-2 gap-2.5">
-          <StatChip icon={Sparkles} label="This week" value={creationsThisWeek} />
-          <StatChip icon={Layers} label="Total created" value={history.length} />
+      {/* Study tools as a horizontal rail instead of a static 2x2 grid —
+          a different browsing gesture (swipe, not scan-and-tap), and it
+          leaves room to add a fifth tool later without reflowing a grid. */}
+      <div>
+        <p className="font-serif text-base text-slate-900 dark:text-white px-1 mb-3">Study tools</p>
+        <div className="flex gap-3 overflow-x-auto px-1 -mx-1 pb-1 snap-x snap-mandatory">
+          <div className="shrink-0 w-36 snap-start">
+            <ToolCard
+              icon={FileText}
+              label="Quiz Builder"
+              hint="Turn notes into a quiz"
+              accent="bg-focus-primary/10 text-focus-primary"
+              onClick={() => onNavigate('quiz')}
+            />
+          </div>
+          <div className="shrink-0 w-36 snap-start">
+            <ToolCard
+              icon={Brain}
+              label="Summarizer"
+              hint="Condense any topic"
+              accent="bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400"
+              onClick={() => onNavigate('summarizer')}
+            />
+          </div>
+          <div className="shrink-0 w-36 snap-start">
+            <ToolCard
+              icon={Link2}
+              label="Study materials"
+              hint="Browse shared sets"
+              accent="bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400"
+              onClick={() => onNavigate('community')}
+            />
+          </div>
+          <div className="shrink-0 w-36 snap-start">
+            <ToolCard
+              icon={Layers}
+              label="Review"
+              hint="Clear your due cards"
+              accent="bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400"
+              onClick={() => onNavigate('review')}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="space-y-2.5">
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide px-1">Study tools</p>
-        <div className="grid grid-cols-2 gap-2.5">
-          <ToolCard
-            icon={FileText}
-            label="Quiz Builder"
-            hint="Turn notes into a quiz"
-            accent="bg-focus-primary/10 text-focus-primary"
-            onClick={() => onNavigate('quiz')}
-          />
-          <ToolCard
-            icon={Brain}
-            label="Summarizer"
-            hint="Condense any topic"
-            accent="bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400"
-            onClick={() => onNavigate('summarizer')}
-          />
-          <ToolCard
-            icon={Link2}
-            label="Study materials"
-            hint="Browse shared sets"
-            accent="bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400"
-            onClick={() => onNavigate('community')}
-          />
-          <ToolCard
-            icon={Layers}
-            label="Review"
-            hint="Clear your due cards"
-            accent="bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400"
-            onClick={() => onNavigate('review')}
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2.5">
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide px-1">Recent</p>
+      {/* Recent, as a timeline rather than a stack of rows — a connecting
+          line plus a dot per entry, closer to an activity log than a list
+          of cards. */}
+      <div>
+        <p className="font-serif text-base text-slate-900 dark:text-white px-1 mb-3">Recent</p>
         {recent.length > 0 ? (
-          <div className="space-y-2">
-            {recent.map((h) => (
-              <RecentRow key={h.id} item={h} onClick={() => setSelected(h)} />
-            ))}
+          <div className="relative pl-6">
+            <div className="absolute left-[5px] top-1 bottom-1 w-px bg-slate-200 dark:bg-slate-800" />
+            <div className="space-y-4">
+              {recent.map((h) => (
+                <RecentRow key={h.id} item={h} onClick={() => setSelected(h)} />
+              ))}
+            </div>
           </div>
         ) : (
           <EmptyRecent onCreate={() => onNavigate('quiz')} />
@@ -175,19 +189,19 @@ export default function StudyHome({ username, streak, activityDays, history, onN
 // Streak hero bits
 // ---------------------------------------------------------------------------
 
-function StreakRing({ progress, size = 60, stroke = 5 }: { progress: number; size?: number; stroke?: number }) {
+function StreakRing({ progress, size = 60, stroke = 5, color = 'white' }: { progress: number; size?: number; stroke?: number; color?: string }) {
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - Math.min(Math.max(progress, 0), 1));
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
-      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="white" strokeOpacity={0.25} strokeWidth={stroke} />
+      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeOpacity={0.25} strokeWidth={stroke} />
       <circle
         cx={size / 2}
         cy={size / 2}
         r={radius}
         fill="none"
-        stroke="white"
+        stroke={color}
         strokeWidth={stroke}
         strokeDasharray={circumference}
         strokeDashoffset={offset}
@@ -195,20 +209,6 @@ function StreakRing({ progress, size = 60, stroke = 5 }: { progress: number; siz
         style={{ transition: 'stroke-dashoffset 0.6s ease' }}
       />
     </svg>
-  );
-}
-
-function StatChip({ icon: Icon, label, value }: { icon: any; label: string; value: number }) {
-  return (
-    <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 px-3.5 py-3">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-        <Icon className="h-4 w-4" />
-      </div>
-      <div className="min-w-0">
-        <p className="text-sm font-black text-slate-800 dark:text-slate-100 leading-none tabular-nums">{value}</p>
-        <p className="text-[10px] text-slate-400 mt-1 truncate">{label}</p>
-      </div>
-    </div>
   );
 }
 
@@ -899,7 +899,7 @@ function ToolCard({
   return (
     <button
       onClick={onClick}
-      className="group relative flex flex-col items-start gap-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md hover:border-transparent active:translate-y-0 active:scale-[0.97]"
+      className="group relative flex w-full h-full flex-col items-start gap-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md hover:border-transparent active:translate-y-0 active:scale-[0.97]"
     >
       <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${accent}`}>
         <Icon className="h-5 w-5" />
@@ -938,32 +938,30 @@ function RecentRow({ item, onClick }: { item: HistoryItem; onClick: () => void }
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-3 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-3 hover:border-focus-primary/50 hover:shadow-sm transition text-left active:scale-[0.99]"
+      className="relative w-full flex items-start gap-3 text-left group"
     >
-      <div className="w-9 h-9 rounded-xl bg-focus-primary/10 flex items-center justify-center shrink-0">
-        <Icon className="w-4 h-4 text-focus-primary" />
-      </div>
+      <span className="absolute -left-6 top-1.5 w-2.5 h-2.5 rounded-full bg-focus-primary ring-4 ring-focus-bg dark:ring-slate-950" />
       <div className="min-w-0 flex-1">
-        <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{item.title}</p>
+        <p className="text-sm text-slate-700 dark:text-slate-200 truncate group-hover:text-focus-primary transition">{item.title}</p>
         <p className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-          <Clock className="w-3 h-3" /> {formatRelativeTime(item.createdAt)}
+          <Icon className="w-3 h-3" /> {formatRelativeTime(item.createdAt)}
         </p>
       </div>
-      <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
+      <ChevronRight className="w-4 h-4 text-slate-300 shrink-0 mt-1" />
     </button>
   );
 }
 
 function EmptyRecent({ onCreate }: { onCreate: () => void }) {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 p-6 text-center space-y-3">
-      <div className="w-10 h-10 mx-auto rounded-xl bg-focus-primary/10 flex items-center justify-center">
-        <FileText className="w-5 h-5 text-focus-primary" />
+    <div className="py-8 text-center">
+      <div className="w-10 h-10 mx-auto rounded-full border border-focus-primary/30 flex items-center justify-center mb-3">
+        <FileText className="w-4 h-4 text-focus-primary" />
       </div>
-      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-[220px] mx-auto">
         Nothing here yet. Build your first quiz or summary to start your streak.
       </p>
-      <button onClick={onCreate} className="text-xs font-bold text-focus-primary">
+      <button onClick={onCreate} className="text-xs font-semibold text-focus-primary mt-2">
         Create your first quiz
       </button>
     </div>

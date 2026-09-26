@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
+import { onAuthStateChanged, signOut, updateProfile, type User } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection as fsCollection, increment } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { AlertCircle, X, ArrowLeft, Camera, Bell } from 'lucide-react';
 
-import { HistoryItem, RecallCard, ExamEvent, Collection, NotificationItem, SummaryData } from './types';
+import { AgeBand, HistoryItem, RecallCard, ExamEvent, Collection, NotificationItem, SummaryData } from './types';
 import { loadLocal, saveLocal, scopedKey } from './lib/storage';
 import { isDue } from './lib/spacedRepetition';
 import { isReminderDue } from './lib/examReminders';
@@ -78,6 +78,9 @@ function AppContent() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [gradeLevel, setGradeLevel] = useState<string>(GRADE_LEVEL_OPTIONS[2]);
+  const [ageBand, setAgeBand] = useState<AgeBand | null>(() => loadLocal<AgeBand | null>('kojlux_age_band', null));
+  const [displayName, setDisplayName] = useState<string>(() => loadLocal('kojlux_display_name', ''));
+  const deletionAuthRequested = new URLSearchParams(window.location.search).get('requireAuth') === 'account-deletion';
   const [streak, setStreak] = useState<number>(0);
   const [activityDays, setActivityDays] = useState<string[]>([]);
 
@@ -86,11 +89,20 @@ function AppContent() {
       setUser(firebaseUser);
       setAuthLoading(false);
       if (firebaseUser) {
+        if (deletionAuthRequested) {
+          window.location.replace(`${import.meta.env.BASE_URL}account-deletion.html`);
+          return;
+        }
         try {
           const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
           if (snap.exists()) {
             const data = snap.data();
+            if (typeof data.username === 'string' && data.username.trim()) setDisplayName(data.username.trim());
             if (data.gradeLevel) setGradeLevel(data.gradeLevel);
+            if (data.ageBand === 'under13' || data.ageBand === '13to17' || data.ageBand === '18plus') {
+              setAgeBand(data.ageBand);
+              saveLocal('kojlux_age_band', data.ageBand);
+            }
             if (typeof data.streak === 'number') setStreak(data.streak);
             if (Array.isArray(data.activityDays)) setActivityDays(data.activityDays.filter((day): day is string => typeof day === 'string'));
           }
@@ -100,7 +112,7 @@ function AppContent() {
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [deletionAuthRequested]);
 
   // ---- Guest access ----
   // Sign-in used to be forced at startup. Now the gate offers Skip or Sign
@@ -109,7 +121,7 @@ function AppContent() {
   // in this file), and `showAuthScreen` is only for whether the *gate* is
   // currently showing the sign-in form or its own Skip/Sign-In choice.
   const [guestMode, setGuestMode] = useState<boolean>(() => loadLocal('kojlux_guest_mode', false) || Boolean(initialDeepLinkCardId || initialDeepLinkCollectionId));
-  const [showAuthScreen, setShowAuthScreen] = useState(false);
+  const [showAuthScreen, setShowAuthScreen] = useState(deletionAuthRequested);
   useEffect(() => saveLocal('kojlux_guest_mode', guestMode), [guestMode]);
   // If a guest actually signs in later, they're no longer a guest.
   useEffect(() => {
@@ -182,6 +194,33 @@ function AppContent() {
     if (permission === 'granted' && user) registerPushForUser(user.uid);
   };
 
+  const completeAgeBand = (selectedAgeBand: AgeBand) => {
+    setAgeBand(selectedAgeBand);
+    saveLocal('kojlux_age_band', selectedAgeBand);
+    if (selectedAgeBand === 'under13') setActiveTab('home');
+    if (user) {
+      setDoc(doc(db, 'users', user.uid), { ageBand: selectedAgeBand }, { merge: true }).catch((err) =>
+        console.error('Failed to sync age band', err)
+      );
+    }
+  };
+
+  const handleDisplayNameChange = async (nextName: string) => {
+    const cleanedName = nextName.trim().slice(0, 40);
+    if (!cleanedName) return;
+    setDisplayName(cleanedName);
+    saveLocal('kojlux_display_name', cleanedName);
+    if (user) {
+      try {
+        await updateProfile(user, { displayName: cleanedName });
+        await setDoc(doc(db, 'users', user.uid), { username: cleanedName }, { merge: true });
+      } catch (err) {
+        console.error('Failed to sync display name', err);
+        setErrorMsg('Could not save your name right now.');
+      }
+    }
+  };
+
   const recallCardsRef = useRef<RecallCard[]>([]);
   // Seeded from localStorage (scoped per account) rather than starting null
   // every time the app mounts. Without this, closing the tab and reopening
@@ -213,8 +252,10 @@ function AppContent() {
   const checkForNewlyDueCards = () => {
     const currentlyDue = recallCardsRef.current.filter(isDue);
     const currentlyDueIds = currentlyDue.map((c) => c.id);
+    const newlyDue = previouslyDueIdsRef.current
+      ? currentlyDueIds.filter((id) => !previouslyDueIdsRef.current!.has(id))
+      : [];
     if (previouslyDueIdsRef.current) {
-      const newlyDue = currentlyDueIds.filter((id) => !previouslyDueIdsRef.current!.has(id));
       if (newlyDue.length > 0) notifyReviewsReady(newlyDue.length);
     }
     previouslyDueIdsRef.current = new Set(currentlyDueIds);
@@ -222,7 +263,9 @@ function AppContent() {
       saveLocal(scopedKey('kojlux_previously_due_ids', previouslyDueScopeRef.current), currentlyDueIds);
     }
     if (scopeIdRef.current) {
-      if (currentlyDue.length > 0) {
+      const storedNotifications = loadNotifications(scopeIdRef.current);
+      const hasReviewsReadyNotification = storedNotifications.some((notification) => notification.dedupeTag === 'reviews-ready');
+      if (currentlyDue.length > 0 && (newlyDue.length > 0 || !hasReviewsReadyNotification)) {
         setNotifications(
           upsertNotification(scopeIdRef.current, 'reviews-ready', {
             type: 'review_ready',
@@ -231,7 +274,7 @@ function AppContent() {
             targetTab: 'review',
           })
         );
-      } else {
+      } else if (currentlyDue.length === 0) {
         setNotifications(markNotificationsByTagRead(scopeIdRef.current, 'reviews-ready'));
       }
     }
@@ -468,15 +511,18 @@ function AppContent() {
     loadDraft<{ quizData: unknown }>('quiz_builder')
       .then((draft) => {
         if (cancelled || !draft || !draft.quizData) return;
-        setNotifications(
-          addNotification(scopeId, {
-            type: 'quiz_resume',
-            title: 'Resume your quiz',
-            body: "Looks like you left a quiz in progress — tap to pick up right where you left off.",
-            targetTab: 'quiz',
-            dedupeTag: 'quiz-resume',
-          })
-        );
+        const storedNotifications = loadNotifications(scopeId);
+        if (storedNotifications.some((notification) => notification.dedupeTag === 'quiz-resume')) {
+          setNotifications(storedNotifications);
+          return;
+        }
+        setNotifications(addNotification(scopeId, {
+          type: 'quiz_resume',
+          title: 'Resume your quiz',
+          body: "Looks like you left a quiz in progress — tap to pick up right where you left off.",
+          targetTab: 'quiz',
+          dedupeTag: 'quiz-resume',
+        }));
       })
       .catch((err) => console.error('Failed to check for an in-progress quiz draft', err));
     return () => {
@@ -722,6 +768,10 @@ function AppContent() {
     lastCloudGradeLevelRef.current = null;
   };
 
+  const openAccountDeletionPage = () => {
+    window.location.assign(`${import.meta.env.BASE_URL}account-deletion.html`);
+  };
+
   // ---- Resume a shared-link import queued before the guest signed up ----
   // See components/SharedLinkGate.tsx: a guest who tapped "Save to
   // Collection" on the restricted lock screen had their card/collection id
@@ -775,7 +825,7 @@ function AppContent() {
   // ---- Errors ----
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const username = user?.displayName || user?.email?.split('@')[0] || 'Student';
+  const username = displayName || user?.displayName || user?.email?.split('@')[0] || 'Student';
 
   if (authLoading) {
     return (
@@ -799,8 +849,13 @@ function AppContent() {
     );
   }
   if (!user && !guestMode) {
-    return <WelcomeGate onSkip={() => setGuestMode(true)} onSignIn={() => setShowAuthScreen(true)} />;
+    return <WelcomeGate onSkip={(selectedAgeBand) => { completeAgeBand(selectedAgeBand); setGuestMode(true); }} onSignIn={(selectedAgeBand) => { completeAgeBand(selectedAgeBand); setShowAuthScreen(true); }} />;
   }
+  if (!ageBand) {
+    return <AgeBandGate onComplete={completeAgeBand} />;
+  }
+
+  const isUnder13 = ageBand === 'under13';
 
   return (
     <SharedLinkGate
@@ -820,7 +875,7 @@ function AppContent() {
       {/* Nav renders itself as a bottom bar on phones and a left rail from
           md up — see BottomNav.tsx. It's fixed/full-height on desktop, so
           it lives outside the centered content column below. */}
-      <BottomNav active={activeTab} onChange={setActiveTab} />
+      <BottomNav active={activeTab} blockedTabs={isUnder13 ? ['community'] : []} onChange={setActiveTab} />
 
       <div className="md:pl-20 lg:pl-56 min-h-screen flex flex-col">
         {/* Content stays a comfortable single reading column on phones
@@ -891,6 +946,9 @@ function AppContent() {
           {activeTab === 'home' && (
             <StudyHome
               username={username}
+              ageBand={ageBand}
+              onDisplayNameChange={handleDisplayNameChange}
+              onAgeBandChange={completeAgeBand}
               streak={streak}
               activityDays={activityDays}
               history={history}
@@ -914,7 +972,7 @@ function AppContent() {
             />
           )}
 
-          {activeTab === 'community' && (
+          {activeTab === 'community' && !isUnder13 && (
             <MaterialsHub currentUserId={user?.uid ?? null} defaultGradeLevel={gradeLevel} onError={setErrorMsg} onStudyActivity={recordStudyActivity} />
           )}
 
@@ -944,6 +1002,7 @@ function AppContent() {
               isGuest={!user}
               onSignOut={handleSignOut}
               onSignIn={() => setShowAuthScreen(true)}
+              onDeleteAccount={openAccountDeletionPage}
               exams={examEvents}
               history={history}
               onAddExam={addExam}
@@ -970,7 +1029,11 @@ function AppContent() {
           onSelect={(item) => {
             if (scopeId) setNotifications(markNotificationRead(scopeId, item.id));
             setShowNotifications(false);
-            if (item.targetTab) setActiveTab(item.targetTab as NavTab);
+            if (item.targetTab === 'community' && isUnder13) {
+              setActiveTab('home');
+            } else if (item.targetTab) {
+              setActiveTab(item.targetTab as NavTab);
+            }
           }}
         />
       )}
@@ -1067,7 +1130,7 @@ function QuizBuilderOrSummarizer(props: {
 // up to Firestore), but it's no longer mandatory just to open the app —
 // "Skip for now" drops straight into a fully-functional local/guest session,
 // same as the rest of the app already treats a null `user`.
-function WelcomeGate({ onSkip, onSignIn }: { onSkip: () => void; onSignIn: () => void }) {
+function WelcomeGate({ onSkip, onSignIn }: { onSkip: (ageBand: AgeBand) => void; onSignIn: (ageBand: AgeBand) => void }) {
   const [consent, setConsent] = useState<'pending' | 'accepted' | 'declined'>(() => {
     try {
       return localStorage.getItem('kojlux_privacy_accepted') === 'true' ? 'accepted' : 'pending';
@@ -1075,6 +1138,7 @@ function WelcomeGate({ onSkip, onSignIn }: { onSkip: () => void; onSignIn: () =>
       return 'pending';
     }
   });
+  const [ageBand, setAgeBand] = useState<AgeBand | null>(() => loadLocal<AgeBand | null>('kojlux_age_band', null));
 
   const acceptPrivacy = () => {
     try {
@@ -1144,17 +1208,28 @@ function WelcomeGate({ onSkip, onSignIn }: { onSkip: () => void; onSignIn: () =>
           )}
         </div>
 
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-2.5">
+          <label className="block text-xs font-bold text-slate-700 dark:text-slate-200" htmlFor="age-band">Who will use this app?</label>
+          <select id="age-band" value={ageBand ?? ''} onChange={(event) => setAgeBand(event.target.value as AgeBand)} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-700 dark:text-slate-200">
+            <option value="" disabled>Select an age group</option>
+            <option value="under13">Under 13</option>
+            <option value="13to17">13–17</option>
+            <option value="18plus">18 or older</option>
+          </select>
+          {ageBand === 'under13' && <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">Materials and external links are disabled for extra protection.</p>}
+        </div>
+
         <div className="space-y-2.5">
           <button
-            onClick={onSignIn}
-            disabled={consent !== 'accepted'}
+            onClick={() => ageBand && onSignIn(ageBand)}
+            disabled={consent !== 'accepted' || !ageBand}
             className="w-full py-3.5 bg-focus-primary hover:bg-focus-primary-dark text-white rounded-2xl text-sm font-bold transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Sign In / Register
           </button>
           <button
-            onClick={onSkip}
-            disabled={consent !== 'accepted'}
+            onClick={() => ageBand && onSkip(ageBand)}
+            disabled={consent !== 'accepted' || !ageBand}
             className="w-full py-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl text-sm font-bold transition disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Skip for now
@@ -1178,6 +1253,27 @@ function WelcomeGate({ onSkip, onSignIn }: { onSkip: () => void; onSignIn: () =>
             ready.
           </p>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function AgeBandGate({ onComplete }: { onComplete: (ageBand: AgeBand) => void }) {
+  const [ageBand, setAgeBand] = useState<AgeBand | null>(null);
+  return (
+    <div className="min-h-screen bg-focus-bg dark:bg-slate-950 flex items-center justify-center p-5">
+      <div className="max-w-sm w-full bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 space-y-4">
+        <div>
+          <h1 className="text-base font-black text-slate-900 dark:text-white">Choose your age group</h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">This helps us apply stronger protections for younger students.</p>
+        </div>
+        <select value={ageBand ?? ''} onChange={(event) => setAgeBand(event.target.value as AgeBand)} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-700 dark:text-slate-200">
+          <option value="" disabled>Select an age group</option>
+          <option value="under13">Under 13</option>
+          <option value="13to17">13–17</option>
+          <option value="18plus">18 or older</option>
+        </select>
+        <button type="button" disabled={!ageBand} onClick={() => ageBand && onComplete(ageBand)} className="w-full py-3 bg-focus-primary text-white rounded-xl text-sm font-bold disabled:opacity-40">Continue</button>
       </div>
     </div>
   );
