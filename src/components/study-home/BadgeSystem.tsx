@@ -212,7 +212,7 @@ export function BadgeProgressModal({
   const collected = totalBadgesEarned(days);
 
   return (
-    <div className="fixed inset-0 z-[210] bg-focus-bg dark:bg-slate-950 overflow-y-auto">
+    <div className="fixed inset-0 z-[260] bg-focus-bg dark:bg-slate-950 overflow-y-auto">
       <BadgeCardStyles />
       {/* soft ambient glow behind the header — gives the page some depth
           instead of a flat single-color background */}
@@ -484,7 +484,7 @@ export function BadgePackReveal({ milestone, onClose }: { milestone: number; onC
 
   return (
     <div
-      className="fixed inset-0 z-[220] flex items-center justify-center p-5 overflow-hidden"
+      className="fixed inset-0 z-[270] flex items-center justify-center p-5 overflow-hidden"
       onClick={stage === 'revealed' ? onClose : undefined}
     >
       <BadgeRevealStyles />

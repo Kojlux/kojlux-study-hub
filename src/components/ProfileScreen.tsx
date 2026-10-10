@@ -5,6 +5,8 @@ import { AgeBand, ExamEvent, HistoryItem } from '../types';
 import { NotificationSupportState } from '../lib/notifications';
 import CalendarScreen from './CalendarScreen';
 import ThemeSwitcher from './ThemeSwitcher';
+import StreakPill from './study-home/StreakPill';
+import { BadgePackReveal, BadgeProgressModal } from './study-home/BadgeSystem';
 
 interface Props {
   email: string;
@@ -21,6 +23,7 @@ interface Props {
   darkMode?: boolean;
   onToggleDarkMode?: () => void;
   streak: number;
+  activityDays: string[];
   totalReviews: number;
   // Guests (the "Skip" path at launch) don't have an account to sign out
   // of — showing "Sign Out" to them was leaving a button on screen that
@@ -53,7 +56,7 @@ const AGE_BAND_OPTIONS = [
 ] as const;
 
 export default function ProfileScreen({
-  email, username, gradeLevel, onGradeLevelChange, streak, totalReviews,
+  email, username, gradeLevel, onGradeLevelChange, streak, activityDays, totalReviews,
   ageBand, onDisplayNameChange, onAgeBandChange,
   isGuest, onSignOut, onSignIn, exams, history, onAddExam, onUpdateExam, onDeleteExam,
   onDeleteAccount,
@@ -66,6 +69,8 @@ export default function ProfileScreen({
   // under the stats row for the Study Calendar to live inline instead of
   // just a short "upcoming exams" preview that linked out to it.
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showProgress, setShowProgress] = useState(false);
+  const [celebration, setCelebration] = useState<number | null>(null);
   const [editedName, setEditedName] = useState(username);
   const [editedAgeBand, setEditedAgeBand] = useState<AgeBand | null>(ageBand);
 
@@ -73,6 +78,10 @@ export default function ProfileScreen({
   useEffect(() => setEditedAgeBand(ageBand), [ageBand]);
 
   const selectedAgeBandCopy = AGE_BAND_OPTIONS.find(([value]) => value === editedAgeBand)?.[2];
+  const replayBadge = (day: number): void => {
+    setShowProgress(false);
+    setCelebration(day);
+  };
 
   return (
     <div>
@@ -212,6 +221,16 @@ export default function ProfileScreen({
               </SettingsRow>
             </SettingsSection>
 
+            <SettingsSection label="Study streak">
+              <div className="flex items-center justify-between gap-4 border-b border-slate-200 py-3 dark:border-slate-800">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">Creator streak</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">View milestones and badges</p>
+                </div>
+                <StreakPill streak={streak} daysActive={activityDays.length} onOpen={() => setShowProgress(true)} />
+              </div>
+            </SettingsSection>
+
             <SettingsSection label="Preferences">
               <NotificationRow permission={notifPermission} onEnable={onEnableNotifications} />
               <SettingsRow label="Appearance" stacked>
@@ -263,6 +282,14 @@ export default function ProfileScreen({
           </div>
         </div>
       </div>
+      {showProgress && (
+        <BadgeProgressModal
+          activityDays={activityDays}
+          onClose={() => setShowProgress(false)}
+          onReplay={replayBadge}
+        />
+      )}
+      {celebration !== null && <BadgePackReveal milestone={celebration} onClose={() => setCelebration(null)} />}
     </div>
   );
 }

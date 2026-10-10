@@ -511,9 +511,9 @@
   padding: 6px 16px 6px 6px;
   border: 0;
   border-radius: 999px;
-  background: var(--kh-surface);
-  box-shadow: var(--kh-shadow-rest);
-  color: var(--kh-accent);
+  background: var(--app-surface, var(--kh-surface, #ffffff));
+  box-shadow: var(--app-shadow-rest, var(--kh-shadow-rest));
+  color: var(--app-accent, var(--kh-accent));
   cursor: pointer;
   will-change: transform, box-shadow;
   transition: transform 0.4s var(--kh-spring), box-shadow 0.4s var(--kh-spring);
@@ -521,7 +521,7 @@
 
 .kh-streak:hover {
   transform: translateY(-2px);
-  box-shadow: var(--kh-shadow-lift);
+  box-shadow: var(--app-shadow-lift, var(--kh-shadow-lift));
 }
 
 .kh-streak:active {
@@ -536,7 +536,7 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--kh-accent-soft);
+  background: var(--app-accent-soft, var(--kh-accent-soft));
 }
 
 .kh-streak-ring > svg {
@@ -549,7 +549,7 @@
   font-size: 13px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: var(--kh-text);
+  color: var(--app-text, var(--kh-text));
 }
 
 .kh-streak-copy {
@@ -566,16 +566,16 @@
   gap: 4px;
   font-size: 12.5px;
   font-weight: 650;
-  color: var(--kh-text);
+  color: var(--app-text, var(--kh-text));
 }
 
 .kh-streak-title svg {
-  color: var(--kh-accent);
+  color: var(--app-accent, var(--kh-accent));
 }
 
 .kh-streak-sub {
   font-size: 11px;
-  color: var(--kh-text-muted);
+  color: var(--app-text-muted, var(--kh-text-muted));
 }
 
 /* Study tools grid — 4x1, folding to 2x2 when the canvas narrows. */

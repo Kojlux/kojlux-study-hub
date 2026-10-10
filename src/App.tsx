@@ -991,6 +991,7 @@ function AppContent() {
               gradeLevel={gradeLevel}
               onGradeLevelChange={handleGradeLevelChange}
               streak={streak}
+              activityDays={activityDays}
               totalReviews={totalReviews}
               isGuest={!user}
               onSignOut={handleSignOut}

@@ -2,11 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import { Bell, BookOpen, ChartNoAxesCombined } from 'lucide-react';
 import type { Collection, HistoryItem, RecallCard } from '../types';
-import { BadgePackReveal, BadgeProgressModal, earnedMilestone } from './study-home/BadgeSystem';
+import { BadgePackReveal, earnedMilestone } from './study-home/BadgeSystem';
 import { HistoryDetailModal } from './study-home/HistoryDetailModal';
 import RecentActivity from './study-home/RecentActivity';
 import Sidebar from './study-home/Sidebar';
-import StreakPill from './study-home/StreakPill';
 import StudyDesk from './study-home/StudyDesk';
 import StudyToolsGrid from './study-home/StudyToolsGrid';
 import { NAV_ITEMS, STUDY_TOOLS } from './study-home/data';
@@ -51,7 +50,6 @@ export default function StudyHome({
 }: StudyHomeProps): ReactElement {
   const { collapsed, toggle }: SidebarCollapse = useSidebarCollapse();
   const [selected, setSelected] = useState<HistoryItem | null>(null);
-  const [showProgress, setShowProgress] = useState<boolean>(false);
   const [celebration, setCelebration] = useState<number | null>(null);
 
   const daysActive: number = activityDays.length;
@@ -76,11 +74,6 @@ export default function StudyHome({
   const visibleNavItems = NAV_ITEMS.filter((item) => !blockedNavItems.includes(item.id));
   const visibleTools = STUDY_TOOLS.filter((tool) => !blockedNavItems.includes(tool.id));
 
-  const handleReplay = (day: number): void => {
-    setShowProgress(false);
-    setCelebration(day);
-  };
-
   return (
     <div className="kh-shell" data-collapsed={collapsed}>
       <Sidebar items={visibleNavItems} activeId="home" collapsed={collapsed} onToggle={toggle} onNavigate={onNavigate} />
@@ -104,7 +97,6 @@ export default function StudyHome({
               </p>
             </div>
             <div className="kh-header-actions">
-              <StreakPill streak={streak} daysActive={daysActive} onOpen={() => setShowProgress(true)} />
               <button
                 type="button"
                 className="kh-dashboard-mobile"
@@ -143,9 +135,6 @@ export default function StudyHome({
       />
 
       {selected && <HistoryDetailModal item={selected} onClose={() => setSelected(null)} />}
-      {showProgress && (
-        <BadgeProgressModal activityDays={activityDays} onClose={() => setShowProgress(false)} onReplay={handleReplay} />
-      )}
       {celebration !== null && <BadgePackReveal milestone={celebration} onClose={() => setCelebration(null)} />}
     </div>
   );
