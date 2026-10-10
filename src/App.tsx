@@ -334,6 +334,7 @@ function AppContent() {
 
   // ---- Navigation ----
   const [activeTab, setActiveTab] = useState<NavTab>('home');
+  const [reviewCollectionRequest, setReviewCollectionRequest] = useState<string | null>(null);
   const [quizSourceSummary, setQuizSourceSummary] = useState<SummaryData | null>(null);
 
   // ---- Shared study data: history + spaced-repetition cards ----
@@ -856,6 +857,44 @@ function AppContent() {
   }
 
   const isUnder13 = ageBand === 'under13';
+  const appNotices = (
+    <>
+      {!user && !guestBannerDismissed && (
+        <div className="px-5 pb-3">
+          <div className="flex items-start gap-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900 rounded-2xl p-3">
+            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <p className="flex-1 text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
+              You're using Kojlux as a guest. Refreshing this page or clearing your browser's cache can delete recents
+              and reviews that haven't been synced to an account.
+            </p>
+            <button onClick={() => setGuestBannerDismissed(true)} className="shrink-0 text-amber-500 hover:text-amber-700">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+      {isNotificationSupported() && notifPermission === 'default' && !notifBannerDismissed && (recallCards.length > 0 || user) && (
+        <div className="px-5 pb-3">
+          <div className="flex items-start gap-2.5 bg-focus-primary/10 dark:bg-focus-primary/15 border border-focus-primary/25 rounded-2xl p-3">
+            <Bell className="w-4 h-4 text-focus-primary shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                Want a nudge when a review is ready? Turn on notifications and we'll let you know.
+              </p>
+              <div className="flex gap-4 mt-1.5">
+                <button onClick={enableNotifications} className="text-[11px] font-bold text-focus-primary">
+                  Enable Notifications
+                </button>
+                <button onClick={() => setNotifBannerDismissed(true)} className="text-[11px] font-bold text-slate-400">
+                  Not now
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   return (
     <SharedLinkGate
@@ -871,90 +910,39 @@ function AppContent() {
       onDismiss={consumeDeepLink}
       onRequestAuth={() => setShowAuthScreen(true)}
     >
-    <div className="min-h-screen bg-focus-bg dark:bg-slate-950">
-      {/* Nav renders itself as a bottom bar on phones and a left rail from
-          md up — see BottomNav.tsx. It's fixed/full-height on desktop, so
-          it lives outside the centered content column below. */}
+    <>
       <BottomNav active={activeTab} blockedTabs={isUnder13 ? ['community'] : []} onChange={setActiveTab} />
 
-      <div className="md:pl-20 lg:pl-56 min-h-screen flex flex-col">
-        {/* Content stays a comfortable single reading column on phones
-            (max-w-md) and gradually claims more of the available width as
-            the viewport grows, instead of staying pinned to phone-width on
-            every screen size. */}
-        <div className="w-full max-w-md md:max-w-3xl lg:max-w-5xl xl:max-w-6xl mx-auto min-h-screen flex flex-col">
-        <header className="sticky top-0 z-30 bg-focus-bg/90 dark:bg-slate-950/90 backdrop-blur-md px-5 pt-6 pb-3 flex items-center justify-between gap-3">
-          <h1 className="text-sm font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
-            {SCREEN_TITLES[activeTab]}
-          </h1>
-          {activeTab === 'home' && (
-            <button
-              onClick={() => setShowNotifications(true)}
-              aria-label="Notifications"
-              className="relative shrink-0 w-8 h-8 rounded-full bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center justify-center"
-            >
-              <Bell className="w-4 h-4 text-focus-primary" />
-              {notifications.some((n) => !n.read) && (
-                <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">
-                  {notifications.filter((n) => !n.read).length > 9 ? '9+' : notifications.filter((n) => !n.read).length}
-                </span>
-              )}
-            </button>
-          )}
-        </header>
-
-        {!user && !guestBannerDismissed && (
-          <div className="px-5 pb-3">
-            <div className="flex items-start gap-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900 rounded-2xl p-3">
-              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-              <p className="flex-1 text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
-                You're using Kojlux as a guest. Refreshing this page or clearing your browser's cache can delete recents
-                and reviews that haven't been synced to an account.
-              </p>
-              <button onClick={() => setGuestBannerDismissed(true)} className="shrink-0 text-amber-500 hover:text-amber-700">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {isNotificationSupported() && notifPermission === 'default' && !notifBannerDismissed && (recallCards.length > 0 || user) && (
-          <div className="px-5 pb-3">
-            <div className="flex items-start gap-2.5 bg-focus-primary/10 dark:bg-focus-primary/15 border border-focus-primary/25 rounded-2xl p-3">
-              <Bell className="w-4 h-4 text-focus-primary shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
-                  Want a nudge when a review is ready? Turn on notifications and we'll let you know.
-                </p>
-                <div className="flex gap-4 mt-1.5">
-                  <button
-                    onClick={enableNotifications}
-                    className="text-[11px] font-bold text-focus-primary"
-                  >
-                    Enable Notifications
-                  </button>
-                  <button onClick={() => setNotifBannerDismissed(true)} className="text-[11px] font-bold text-slate-400">
-                    Not now
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <main className="flex-1 px-5 pb-28 md:pb-10">
-          {activeTab === 'home' && (
-            <StudyHome
-              username={username}
-              ageBand={ageBand}
-              onDisplayNameChange={handleDisplayNameChange}
-              onAgeBandChange={completeAgeBand}
-              streak={streak}
-              activityDays={activityDays}
-              history={history}
-              onNavigate={(tab) => setActiveTab(tab === 'summarizer' ? 'quiz' : (tab as NavTab))}
-            />
-          )}
+      {activeTab === 'home' ? (
+        <StudyHome
+          username={username}
+          streak={streak}
+          activityDays={activityDays}
+          history={history}
+          dueCards={recallCards.filter(isDue)}
+          collections={collections}
+          recallCards={recallCards}
+          blockedNavItems={isUnder13 ? ['community'] : []}
+          notificationCount={notifications.filter((notification) => !notification.read).length}
+          onOpenNotifications={() => setShowNotifications(true)}
+          onOpenCollection={(collection) => {
+            setReviewCollectionRequest(collection.id);
+            setActiveTab('review');
+          }}
+          onNavigate={(tab) => setActiveTab(tab === 'summarizer' ? 'quiz' : tab as NavTab)}
+        >
+          {appNotices}
+        </StudyHome>
+      ) : (
+        <div className="min-h-screen bg-focus-bg dark:bg-slate-950 md:pl-20 lg:pl-60">
+          <div className="w-full max-w-md md:max-w-3xl lg:max-w-5xl xl:max-w-6xl mx-auto min-h-screen flex flex-col">
+            <header className="sticky top-0 z-30 bg-focus-bg/90 dark:bg-slate-950/90 backdrop-blur-md px-5 pt-6 pb-3 flex items-center justify-between gap-3">
+              <h1 className="text-sm font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                {SCREEN_TITLES[activeTab]}
+              </h1>
+            </header>
+            {appNotices}
+            <main className="flex-1 px-5 pb-28 md:pb-10">
 
           {activeTab === 'quiz' && (
             <QuizBuilderOrSummarizer
@@ -988,6 +976,8 @@ function AppContent() {
               onRenameCollection={renameCollection}
               onDeleteCollection={deleteCollection}
               onError={setErrorMsg}
+              initialCollectionId={reviewCollectionRequest}
+              onCollectionRequestHandled={() => setReviewCollectionRequest(null)}
             />
           )}
 
@@ -995,6 +985,9 @@ function AppContent() {
             <ProfileScreen
               email={user?.email || ''}
               username={username}
+              ageBand={ageBand}
+              onDisplayNameChange={handleDisplayNameChange}
+              onAgeBandChange={completeAgeBand}
               gradeLevel={gradeLevel}
               onGradeLevelChange={handleGradeLevelChange}
               streak={streak}
@@ -1012,9 +1005,10 @@ function AppContent() {
               onEnableNotifications={enableNotifications}
             />
           )}
-        </main>
+            </main>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Opens as a full-screen overlay from the bell icon in the Home
           header, the same pattern the Study Calendar overlay used to use
@@ -1063,7 +1057,7 @@ function AppContent() {
           </div>
         </div>
       )}
-    </div>
+    </>
     </SharedLinkGate>
   );
 }

@@ -1,65 +1,163 @@
-import React from 'react';
-import { Home, FileText, Users, Brain, ChartNoAxesCombined } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import type { MouseEvent, PointerEvent, ReactElement } from 'react';
+import { BookOpen, ChartNoAxesCombined, FileText, Home, Layers, Link2, X } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 export type NavTab = 'home' | 'quiz' | 'community' | 'review' | 'profile';
 
-const TABS: { key: NavTab; label: string; icon: any }[] = [
+const TABS: { key: NavTab; label: string; icon: LucideIcon }[] = [
   { key: 'home', label: 'Home', icon: Home },
-  { key: 'quiz', label: 'Create', icon: FileText },
-  { key: 'review', label: 'Review', icon: Brain },
-  { key: 'community', label: 'Community', icon: Users },
+  { key: 'quiz', label: 'Quiz Builder', icon: FileText },
+  { key: 'review', label: 'Review', icon: Layers },
+  { key: 'community', label: 'Study materials', icon: Link2 },
   { key: 'profile', label: 'Dashboard', icon: ChartNoAxesCombined },
 ];
 
-export default function BottomNav({ active, blockedTabs = [], onChange }: { active: NavTab; blockedTabs?: NavTab[]; onChange: (t: NavTab) => void }) {
+interface BottomNavProps {
+  active: NavTab;
+  blockedTabs?: NavTab[];
+  onChange: (tab: NavTab) => void;
+}
+
+export default function BottomNav({ active, blockedTabs = [], onChange }: BottomNavProps): ReactElement {
+  const [expanded, setExpanded] = useState<boolean>(false);
+  const pointerStartY = useRef<number | null>(null);
+  const draggedHandle = useRef<boolean>(false);
+  const tabs = TABS.filter(({ key }) => !blockedTabs.includes(key));
+  useEffect(() => {
+    if (!expanded) return undefined;
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setExpanded(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [expanded]);
+
+  const handleNavigate = (tab: NavTab): void => {
+    onChange(tab);
+    setExpanded(false);
+  };
+
+  const handlePointerDown = (event: PointerEvent<HTMLButtonElement>): void => {
+    pointerStartY.current = event.clientY;
+    draggedHandle.current = false;
+  };
+
+  const handlePointerUp = (event: PointerEvent<HTMLButtonElement>): void => {
+    if (pointerStartY.current !== null && pointerStartY.current - event.clientY > 10) {
+      draggedHandle.current = true;
+      setExpanded(true);
+    }
+    pointerStartY.current = null;
+  };
+
+  const handleToggle = (_event: MouseEvent<HTMLButtonElement>): void => {
+    if (draggedHandle.current) {
+      draggedHandle.current = false;
+      return;
+    }
+    setExpanded((isExpanded) => !isExpanded);
+  };
+
   return (
     <>
-      {/* Phones: fixed bottom tab bar — unchanged from before. */}
-      <div className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200/80 dark:border-slate-800 pb-[env(safe-area-inset-bottom)]">
-        <div className="max-w-md mx-auto flex items-center justify-around px-2 py-2">
-          {TABS.filter(({ key }) => !blockedTabs.includes(key)).map(({ key, label, icon: Icon }) => (
+      <nav className="kh-nav kh-global-sidebar" data-active={active} aria-label="Primary">
+        <div className="kh-brand">
+          <span className="kh-brand-mark" aria-hidden="true">
+            <BookOpen size={18} strokeWidth={2.25} />
+          </span>
+          <span className="kh-brand-name kh-global-label">Kojlux Study Hub</span>
+        </div>
+        <ul className="kh-nav-list">
+          {tabs.map(({ key, label, icon: Icon }) => (
+            <li key={key} data-nav-id={key}>
+              <button
+                type="button"
+                className="kh-nav-item"
+                aria-current={active === key ? 'page' : undefined}
+                aria-label={label}
+                title={label}
+                onClick={() => handleNavigate(key)}
+              >
+                <Icon size={20} strokeWidth={2.25} aria-hidden="true" />
+                <span className="kh-global-label">{label}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      <div className="kh-global-mobile" data-active={active}>
+        <button
+          type="button"
+          className="kh-mobile-handle"
+          onPointerDown={handlePointerDown}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={() => { pointerStartY.current = null; }}
+          onClick={handleToggle}
+          aria-expanded={expanded}
+          aria-label={expanded ? 'Collapse navigation' : 'Expand navigation'}
+          title={expanded ? 'Collapse navigation' : 'Expand navigation'}
+        >
+          <span className="kh-mobile-handle-grip" aria-hidden="true" />
+        </button>
+        <div className="kh-mobile-icons" role="navigation" aria-label="Primary navigation">
+          {tabs.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
-              onClick={() => onChange(key)}
+              type="button"
+              className="kh-mobile-icon"
               aria-label={label}
+              aria-current={active === key ? 'page' : undefined}
               title={label}
-              className="relative w-14 h-14 flex flex-col items-center justify-center rounded-2xl transition"
+              onClick={() => handleNavigate(key)}
             >
-              <div className={`relative p-1.5 rounded-xl ${active === key ? 'text-focus-primary' : 'text-slate-400 dark:text-slate-500'}`}>
-                <Icon className="w-5 h-5" />
-              </div>
+              <Icon size={21} strokeWidth={2.35} aria-hidden="true" />
             </button>
           ))}
         </div>
       </div>
 
-      {/* Tablets and up: a fixed left rail instead of a bottom bar, so the
-          nav uses the extra vertical/horizontal room a bigger screen has
-          rather than staying pinned to a cramped strip along the bottom.
-          Icon-only rail from md, full labeled sidebar once there's enough
-          width at lg. */}
-      <div className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:left-0 md:z-40 md:w-20 lg:w-56 md:py-6 md:px-2 lg:px-3 md:gap-1 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-r border-slate-200/80 dark:border-slate-800">
-        <div className="hidden lg:block px-3 mb-5">
-          <span className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Kojlux</span>
-        </div>
-        {TABS.filter(({ key }) => !blockedTabs.includes(key)).map(({ key, label, icon: Icon }) => (
+      {expanded && (
+        <div className="kh-mobile-overlay">
           <button
-            key={key}
-            onClick={() => onChange(key)}
-            aria-label={label}
-            title={label}
-            className={`relative flex items-center gap-3 w-full px-3 py-3 rounded-xl transition ${
-              active === key
-                ? 'bg-focus-primary/10 text-focus-primary'
-                : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <span className="relative shrink-0">
-              <Icon className="w-5 h-5" />
-            </span>
-          </button>
-        ))}
-      </div>
+            type="button"
+            className="kh-mobile-backdrop"
+            onClick={() => setExpanded(false)}
+            aria-label="Close navigation"
+          />
+          <section className="kh-mobile-sheet" role="dialog" aria-modal="true" aria-label="Navigation menu">
+            <header className="kh-mobile-sheet-header">
+              <div className="kh-brand">
+                <span className="kh-brand-mark" aria-hidden="true">
+                  <BookOpen size={18} strokeWidth={2.25} />
+                </span>
+                <span className="kh-brand-name">Kojlux Study Hub</span>
+              </div>
+              <button type="button" className="kh-mobile-close" onClick={() => setExpanded(false)} aria-label="Close navigation">
+                <X size={20} aria-hidden="true" />
+              </button>
+            </header>
+            <nav aria-label="Primary expanded navigation">
+              <ul className="kh-nav-list">
+                {tabs.map(({ key, label, icon: Icon }) => (
+                  <li key={key} data-nav-id={key}>
+                    <button
+                      type="button"
+                      className="kh-nav-item"
+                      aria-current={active === key ? 'page' : undefined}
+                      onClick={() => handleNavigate(key)}
+                    >
+                      <Icon size={21} strokeWidth={2.25} aria-hidden="true" />
+                      <span>{label}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          </section>
+        </div>
+      )}
     </>
   );
 }

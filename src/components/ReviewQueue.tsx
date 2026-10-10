@@ -27,6 +27,8 @@ interface Props {
   onRenameCollection: (id: string, name: string) => void;
   onDeleteCollection: (id: string) => void;
   onError: (msg: string) => void;
+  initialCollectionId?: string | null;
+  onCollectionRequestHandled?: () => void;
 }
 
 // The toast system lives at the top of this page (see Toast.tsx) so every
@@ -56,6 +58,8 @@ function ReviewQueueInner({
   onRenameCollection,
   onDeleteCollection,
   onError,
+  initialCollectionId,
+  onCollectionRequestHandled,
 }: Props) {
   const { showToast } = useToast();
   const dueCards = useMemo(() => cards.filter(isDue), [cards]);
@@ -161,6 +165,19 @@ function ReviewQueueInner({
     setExplanation('');
     setRevealed(false);
   };
+
+  useEffect(() => {
+    if (!initialCollectionId) return;
+    const collection = collections.find((item) => item.id === initialCollectionId);
+    const collectionCards = cards.filter((card) => card.collectionId === initialCollectionId && card.saved);
+    if (collection && collectionCards.length > 0) {
+      setSessionQueue(collectionCards.map((card) => card.id));
+      setCollectionLabel(collection.name);
+      setExplanation('');
+      setRevealed(false);
+    }
+    onCollectionRequestHandled?.();
+  }, [initialCollectionId, cards, collections, onCollectionRequestHandled]);
 
   const library = (
     <StudyLibrary

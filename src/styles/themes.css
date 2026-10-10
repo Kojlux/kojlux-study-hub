@@ -9,13 +9,51 @@
    that file isn't used for colors on Tailwind v4 and can be ignored/removed
    for this project. */
 
-:root,
+:root {
+  --app-font: Inter, 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Roboto, Arial, sans-serif;
+}
+
+:root:not([data-theme]),
 [data-theme='light'] {
   --color-focus-primary: #4F46E5;
   --color-focus-primary-dark: #4338CA;
   --color-focus-sage: #6EE7B7;
   --color-focus-sage-dark: #059669;
-  --color-focus-bg: #F8FAFC;
+  --color-focus-bg: #FFFFFF;
+
+  --app-canvas: #FFFFFF;
+  --app-surface: #FFFFFF;
+  --app-desk: #FFFFFF;
+  --app-border: #000000;
+  --app-text: #000000;
+  --app-text-muted: #000000;
+  --app-text-dim: #000000;
+  --app-accent: var(--color-focus-primary);
+  --app-accent-soft: color-mix(in srgb, var(--color-focus-primary) 8%, transparent);
+  --app-accent-strong: color-mix(in srgb, var(--color-focus-primary) 16%, transparent);
+  --app-shadow-rest: 0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.04);
+  --app-shadow-lift: 0 4px 6px rgba(0, 0, 0, 0.05), 0 16px 24px rgba(0, 0, 0, 0.09);
+  --app-folder-tab: color-mix(in srgb, var(--app-accent) 14%, var(--app-surface));
+  --app-folder-from: color-mix(in srgb, var(--app-accent) 5%, var(--app-desk));
+  --app-folder-to: color-mix(in srgb, var(--app-accent) 10%, var(--app-desk));
+
+  --color-white: #FFFFFF;
+  --color-slate-50: #FFFFFF;
+  --color-slate-100: #FFFFFF;
+  --color-slate-200: #000000;
+  --color-slate-300: #000000;
+  --color-slate-400: #000000;
+  --color-slate-500: #000000;
+  --color-slate-600: #000000;
+  --color-slate-700: #000000;
+  --color-slate-800: #000000;
+  --color-slate-900: #000000;
+}
+
+body {
+  background-color: var(--app-canvas);
+  color: var(--app-text);
+  font-family: var(--app-font);
 }
 
 [data-theme='dark'] {
@@ -115,4 +153,66 @@
   --color-focus-sage: #F472B6;
   --color-focus-sage-dark: #EC4899;
   --color-focus-bg: #06070D;
+}
+
+[data-theme='sunset'],
+[data-theme='ocean'],
+[data-theme='rose'],
+[data-theme='cherry'],
+[data-theme='honeycomb'] {
+  --app-canvas: var(--color-focus-bg);
+  --app-surface: #FFFFFF;
+  --app-desk: color-mix(in srgb, var(--color-focus-bg) 72%, #FFFFFF);
+  --app-border: color-mix(in srgb, var(--color-focus-primary) 24%, #FFFFFF);
+  --app-text: #111111;
+  --app-text-muted: #222222;
+  --app-text-dim: #444444;
+  --app-accent: var(--color-focus-primary);
+  --app-accent-soft: color-mix(in srgb, var(--color-focus-primary) 10%, transparent);
+  --app-accent-strong: color-mix(in srgb, var(--color-focus-primary) 20%, transparent);
+  --app-shadow-rest: 0 1px 3px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.04);
+  --app-shadow-lift: 0 4px 6px rgba(0, 0, 0, 0.05), 0 16px 24px rgba(0, 0, 0, 0.09);
+  --app-folder-tab: color-mix(in srgb, var(--color-focus-primary) 14%, #FFFFFF);
+  --app-folder-from: color-mix(in srgb, var(--color-focus-primary) 5%, var(--app-desk));
+  --app-folder-to: color-mix(in srgb, var(--color-focus-primary) 10%, var(--app-desk));
+
+  --color-slate-50: var(--app-canvas);
+  --color-slate-100: var(--app-desk);
+  --color-slate-200: var(--app-border);
+  --color-slate-300: color-mix(in srgb, var(--color-focus-primary) 38%, #FFFFFF);
+  --color-slate-400: #555555;
+  --color-slate-500: #333333;
+  --color-slate-600: #222222;
+  --color-slate-700: #111111;
+  --color-slate-800: #000000;
+  --color-slate-900: #000000;
+}
+
+.dark {
+  --app-canvas: var(--color-focus-bg);
+  --app-surface: color-mix(in srgb, var(--color-focus-bg) 88%, white);
+  --app-desk: color-mix(in srgb, var(--color-focus-bg) 94%, white);
+  --app-border: color-mix(in srgb, var(--color-focus-primary) 28%, var(--color-focus-bg));
+  --app-text: #F3F4F6;
+  --app-text-muted: #9CA3AF;
+  --app-text-dim: #6B7280;
+  --app-accent: var(--color-focus-primary);
+  --app-accent-soft: color-mix(in srgb, var(--color-focus-primary) 14%, transparent);
+  --app-accent-strong: color-mix(in srgb, var(--color-focus-primary) 24%, transparent);
+  --app-shadow-rest: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.25);
+  --app-shadow-lift: 0 4px 6px rgba(0, 0, 0, 0.3), 0 16px 24px rgba(0, 0, 0, 0.45);
+  --app-folder-tab: color-mix(in srgb, var(--color-focus-primary) 26%, var(--app-surface));
+  --app-folder-from: color-mix(in srgb, var(--color-focus-primary) 16%, var(--app-desk));
+  --app-folder-to: color-mix(in srgb, var(--color-focus-primary) 22%, var(--app-desk));
+
+  --color-slate-50: color-mix(in srgb, var(--app-canvas) 45%, #FFFFFF);
+  --color-slate-100: color-mix(in srgb, var(--app-canvas) 60%, #FFFFFF);
+  --color-slate-200: var(--app-border);
+  --color-slate-300: color-mix(in srgb, var(--app-canvas) 62%, #FFFFFF);
+  --color-slate-400: #CBD5E1;
+  --color-slate-500: #94A3B8;
+  --color-slate-600: #64748B;
+  --color-slate-700: color-mix(in srgb, var(--app-canvas) 48%, #FFFFFF);
+  --color-slate-800: var(--app-surface);
+  --color-slate-900: var(--app-canvas);
 }

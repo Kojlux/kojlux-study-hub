@@ -3,14 +3,15 @@ export interface Theme {
   name: string;
   // Which base neutral palette this theme rides on — controls whether the
   // existing `dark:` Tailwind variants throughout the app are active.
-  // Themes don't need to reinvent every surface color, just the accent.
+    // Controls whether existing `dark:` Tailwind variants are active.
+    // The complete semantic surface palette is defined in styles/themes.css.
   mode: 'light' | 'dark';
   // Three preview dots shown in the theme picker: [background, primary, sage/accent]
   swatch: [string, string, string];
 }
 
 export const THEMES: Theme[] = [
-  { id: 'light', name: 'Light', mode: 'light', swatch: ['#F8FAFC', '#4F46E5', '#6EE7B7'] },
+  { id: 'light', name: 'Light', mode: 'light', swatch: ['#FFFFFF', '#4F46E5', '#6EE7B7'] },
   { id: 'dark', name: 'Dark', mode: 'dark', swatch: ['#0F172A', '#6366F1', '#6EE7B7'] },
   { id: 'sunset', name: 'Sunset', mode: 'light', swatch: ['#FFF7ED', '#EA580C', '#FDBA74'] },
   { id: 'ocean', name: 'Ocean', mode: 'light', swatch: ['#F0F9FF', '#0284C7', '#67E8F9'] },
