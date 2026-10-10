@@ -22,7 +22,7 @@ type StaggerStyle = CSSProperties & { '--i': number };
 const TONES: readonly TagTone[] = ['emerald', 'indigo', 'sky', 'rose'];
 
 function CollectionRow({ collection, cards, index, onOpen }: CollectionRowProps): ReactElement {
-  const collectionCards: RecallCard[] = cards.filter((card) => card.collectionId === collection.id);
+  const collectionCards: RecallCard[] = cards.filter((card) => card.saved && card.collectionId === collection.id);
   const masteredCount: number = collectionCards.filter((card) => card.reps >= 3 && card.intervalDays >= 7).length;
   const percent: number = collectionCards.length > 0 ? Math.round((masteredCount / collectionCards.length) * 100) : 0;
   const style: StaggerStyle = { '--i': index };
@@ -57,7 +57,7 @@ function CollectionRow({ collection, cards, index, onOpen }: CollectionRowProps)
 /** Stacked folder rows with a staggered entrance (delay driven by --i). */
 export default function SavedCollections({ collections, cards, onOpen }: SavedCollectionsProps): ReactElement {
   return (
-    <section aria-labelledby="kh-collections-title">
+    <section className="kh-saved-collections" aria-labelledby="kh-collections-title">
       <h2 id="kh-collections-title" className="kh-section-title">
         Saved collections
       </h2>

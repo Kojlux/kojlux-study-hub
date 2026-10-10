@@ -1228,6 +1228,7 @@
 
   .kh-desk-header {
     grid-column: 1 / -1;
+    order: 0;
   }
 }
 
@@ -1422,6 +1423,18 @@
     grid-column: 1;
     grid-template-columns: minmax(0, 1fr);
     padding: 24px 16px 40px;
+  }
+
+  .kh-desk-header {
+    order: 0;
+  }
+
+  .kh-saved-collections {
+    order: 1;
+  }
+
+  .kh-folder {
+    order: 2;
   }
 
   .kh-tools-section {
