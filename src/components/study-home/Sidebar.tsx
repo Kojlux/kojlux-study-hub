@@ -1,5 +1,6 @@
 import type { MouseEvent, ReactElement } from 'react';
-import { BookOpen, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { BookOpen, Brain, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import NavigationGlyph from './NavigationGlyph';
 import type { NavigateHandler, NavItem } from './types';
 
 interface SidebarProps {
@@ -32,7 +33,6 @@ export default function Sidebar({ items, activeId, collapsed, onToggle, onNaviga
 
       <ul className="kh-nav-list">
         {items.map((item) => {
-          const Icon = item.icon;
           const isActive: boolean = item.id === activeId;
           return (
             <li key={item.id} data-nav-id={item.id}>
@@ -43,7 +43,11 @@ export default function Sidebar({ items, activeId, collapsed, onToggle, onNaviga
                 title={collapsed ? item.label : undefined}
                 onClick={(event: MouseEvent<HTMLButtonElement>) => handleItemClick(event, item.id)}
               >
-                <Icon size={20} strokeWidth={2.25} aria-hidden="true" />
+                {item.id === 'summarizer' ? (
+                  <Brain size={20} strokeWidth={2.25} aria-hidden="true" />
+                ) : (
+                  <NavigationGlyph tab={item.id} active={isActive} size={20} />
+                )}
                 <span className="kh-nav-label">{item.label}</span>
               </button>
             </li>

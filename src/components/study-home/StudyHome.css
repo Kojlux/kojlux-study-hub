@@ -1201,7 +1201,7 @@
     overflow: visible;
   }
 
-  .kh-nav {
+  .kh-shell > .kh-nav {
     position: sticky;
     top: 0;
     grid-row: 1 / span 2;
@@ -1239,7 +1239,7 @@
     padding-bottom: 84px;
   }
 
-  .kh-nav {
+  .kh-shell > .kh-nav {
     position: fixed;
     inset: auto 0 0 0;
     z-index: 50;

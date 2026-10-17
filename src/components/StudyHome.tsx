@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactElement, ReactNode } from 'react';
-import { Bell, BookOpen, ChartNoAxesCombined } from 'lucide-react';
 import type { Collection, HistoryItem, RecallCard } from '../types';
 import { BadgePackReveal, earnedMilestone } from './study-home/BadgeSystem';
 import { HistoryDetailModal } from './study-home/HistoryDetailModal';
@@ -11,11 +10,81 @@ import StudyToolsGrid from './study-home/StudyToolsGrid';
 import { NAV_ITEMS, STUDY_TOOLS } from './study-home/data';
 import { useSidebarCollapse } from './study-home/hooks';
 import type { NavigateHandler, SidebarCollapse, WorkspaceNavId } from './study-home/types';
-import { getGreeting } from './study-home/utils';
 import './study-home/StudyHome.css';
 
 const BADGE_STORAGE_KEY = 'kojlux_last_badge_milestone';
-const WEEK_MS: number = 7 * 24 * 60 * 60 * 1000;
+
+// Compact header styles live here so everything stays in this one file.
+// Selectors are scoped under .kh-shell so they override StudyHome.css.
+// The divider line under the header is left alone.
+const HEADER_CSS = `
+.kh-shell .kh-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.kh-shell .kh-header .kh-header-copy {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.kh-shell .kh-header .kh-brand-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.3;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #18181c;
+  white-space: nowrap;
+}
+.kh-shell .kh-header .kh-header-actions {
+  display: flex;
+  align-items: center;
+}
+.kh-shell .kh-header .kh-notification-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: auto;
+  padding: 6px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: #373a41;
+  cursor: pointer;
+}
+.kh-shell .kh-header .kh-bell-icon {
+  display: block;
+}
+`;
+
+// Slim outline bell: top nub, straight-sided body, flared rim, small clapper.
+function BellIcon(): ReactElement {
+  return (
+    <svg
+      className="kh-bell-icon"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 2.75v1.5" />
+      <path d="M6.4 17.5v-7.2a5.6 5.6 0 0 1 11.2 0v7.2" />
+      <path d="M5 17.5h14" />
+      <path d="M10.9 20.5a1.1 1.1 0 0 0 2.2 0" />
+    </svg>
+  );
+}
 
 export interface StudyHomeProps {
   username: string;
@@ -34,10 +103,8 @@ export interface StudyHomeProps {
 }
 
 export default function StudyHome({
-  username,
-  streak,
-  activityDays,
   history,
+  activityDays,
   onNavigate,
   dueCards = [],
   collections = [],
@@ -64,18 +131,13 @@ export default function StudyHome({
     }
   }, [daysActive]);
 
-  const creationsThisWeek: number = useMemo(() => {
-    const cutoff: number = Date.now() - WEEK_MS;
-    return history.filter((h) => new Date(h.createdAt).getTime() >= cutoff).length;
-  }, [history]);
-
-  const greeting: string = useMemo(() => getGreeting(), []);
   const recent: HistoryItem[] = history.slice(0, 4);
   const visibleNavItems = NAV_ITEMS.filter((item) => !blockedNavItems.includes(item.id));
   const visibleTools = STUDY_TOOLS.filter((tool) => !blockedNavItems.includes(tool.id));
 
   return (
     <div className="kh-shell" data-collapsed={collapsed}>
+      <style>{HEADER_CSS}</style>
       <Sidebar items={visibleNavItems} activeId="home" collapsed={collapsed} onToggle={toggle} onNavigate={onNavigate} />
 
       <main className="kh-main">
@@ -83,29 +145,9 @@ export default function StudyHome({
           {children}
           <header className="kh-header">
             <div className="kh-header-copy">
-              <div className="kh-header-brand">
-                <span className="kh-brand-mark kh-home-brand-mark" aria-hidden="true">
-                  <BookOpen size={14} strokeWidth={2.25} />
-                </span>
-                <p className="kh-brand-title">Kojlux Study Hub</p>
-              </div>
-              <h1 className="kh-greeting">
-                {greeting}, <span className="kh-greeting-name">{username || 'Student'}</span>
-              </h1>
-              <p className="kh-header-meta">
-                {creationsThisWeek} created this week &middot; {history.length} total
-              </p>
+              <p className="kh-brand-title">Kojlux Study Hub</p>
             </div>
             <div className="kh-header-actions">
-              <button
-                type="button"
-                className="kh-dashboard-mobile"
-                onClick={() => onNavigate('profile')}
-                aria-label="Dashboard"
-                title="Dashboard"
-              >
-                <ChartNoAxesCombined size={18} aria-hidden="true" />
-              </button>
               {onOpenNotifications && (
                 <button
                   type="button"
@@ -114,7 +156,7 @@ export default function StudyHome({
                   aria-label={notificationCount > 0 ? `${notificationCount} unread notifications` : 'Notifications'}
                   title="Notifications"
                 >
-                  <Bell size={18} aria-hidden="true" />
+                  <BellIcon />
                   {notificationCount > 0 && <span className="kh-notification-count">{notificationCount > 9 ? '9+' : notificationCount}</span>}
                 </button>
               )}
