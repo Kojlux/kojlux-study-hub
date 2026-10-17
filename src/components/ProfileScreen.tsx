@@ -109,7 +109,7 @@ export default function ProfileScreen({
         <button
           onClick={() => setMenuOpen(true)}
           aria-label="Open settings menu"
-          className="shrink-0 flex items-center gap-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400"
+          className="shrink-0 flex items-center gap-1.5 h-9 px-3.5 rounded-full border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300 active:scale-95 transition"
         >
           <Menu className="w-4 h-4" /> Settings
         </button>
@@ -151,39 +151,39 @@ export default function ProfileScreen({
             menuOpen ? 'translate-y-0' : 'translate-y-full'
           }`}
         >
-          <div className="flex items-center gap-3 px-5 pt-6 pb-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
+          <div className="flex items-center gap-3 px-4 pt-5 pb-3 shrink-0">
             <button
               onClick={() => setMenuOpen(false)}
               aria-label="Close settings menu"
-              className="w-8 h-8 -ml-2 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400"
+              className="w-10 h-10 rounded-full flex items-center justify-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 active:scale-95 transition"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
             <div className="min-w-0">
-              <p className="font-serif text-lg text-slate-900 dark:text-white">Settings</p>
-              <p className="text-[11px] text-slate-400 truncate">{email || 'Signed in as guest'}</p>
+              <p className="font-serif text-xl leading-tight text-slate-900 dark:text-white">Settings</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{email || 'Signed in as guest'}</p>
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-5 pb-10">
+          <div className="flex-1 overflow-y-auto px-4 pb-12">
             <SettingsSection label="Profile">
               <GradeLevelRow gradeLevel={gradeLevel} onGradeLevelChange={onGradeLevelChange} />
 
               <SettingsRow label="Display name" stacked>
-                <div className="flex gap-2 mt-2">
+                <div className="flex gap-2 mt-2.5">
                   <input
                     id="profile-display-name"
                     aria-label="Display name"
                     value={editedName}
                     maxLength={40}
                     onChange={(event) => setEditedName(event.target.value)}
-                    className="min-w-0 flex-1 bg-transparent border-b border-slate-300 dark:border-slate-700 pb-1.5 text-sm text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary"
+                    className="min-w-0 flex-1 h-11 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-3.5 text-[15px] text-slate-900 dark:text-white outline-none focus:border-focus-primary"
                   />
                   <button
                     type="button"
                     onClick={() => void onDisplayNameChange(editedName)}
                     disabled={!editedName.trim() || editedName.trim() === username}
-                    className="text-xs font-semibold text-focus-primary disabled:opacity-30"
+                    className="h-11 px-5 rounded-xl bg-focus-primary text-white text-sm font-semibold disabled:opacity-40 active:scale-95 transition"
                   >
                     Save
                   </button>
@@ -191,16 +191,16 @@ export default function ProfileScreen({
               </SettingsRow>
 
               <SettingsRow label="Age group" stacked>
-                <div className="flex mt-2 border border-slate-200 dark:border-slate-800 rounded-full p-0.5 w-fit">
+                <div className="grid grid-cols-3 gap-1 mt-2.5 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/70">
                   {AGE_BAND_OPTIONS.map(([value, label]) => (
                     <button
                       key={value}
                       type="button"
                       onClick={() => setEditedAgeBand(value)}
-                      className={`px-3 py-1.5 rounded-full text-[11px] font-semibold transition ${
+                      className={`py-2 rounded-lg text-xs font-semibold transition ${
                         editedAgeBand === value
-                          ? 'bg-focus-primary text-white'
-                          : 'text-slate-500 dark:text-slate-400'
+                          ? 'bg-focus-primary text-white shadow-sm'
+                          : 'text-slate-600 dark:text-slate-300'
                       }`}
                     >
                       {label}
@@ -208,24 +208,28 @@ export default function ProfileScreen({
                   ))}
                 </div>
                 {selectedAgeBandCopy && (
-                  <p className="text-[11px] text-slate-400 mt-2">{selectedAgeBandCopy}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-2.5">{selectedAgeBandCopy}</p>
                 )}
-                <button
-                  type="button"
-                  onClick={() => editedAgeBand && onAgeBandChange(editedAgeBand)}
-                  disabled={!editedAgeBand || editedAgeBand === ageBand}
-                  className="text-xs font-semibold text-focus-primary disabled:opacity-30 mt-2"
-                >
-                  Save age group
-                </button>
+                {editedAgeBand && editedAgeBand !== ageBand && (
+                  <button
+                    type="button"
+                    onClick={() => onAgeBandChange(editedAgeBand)}
+                    className="mt-3 w-full h-11 rounded-xl bg-focus-primary text-white text-sm font-semibold active:scale-[0.98] transition"
+                  >
+                    Save age group
+                  </button>
+                )}
               </SettingsRow>
             </SettingsSection>
 
             <SettingsSection label="Study streak">
-              <div className="flex items-center justify-between gap-4 border-b border-slate-200 py-3 dark:border-slate-800">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900 dark:text-white">Creator streak</p>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">View milestones and badges</p>
+              <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Flame className="w-5 h-5 text-focus-primary shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[15px] font-medium text-slate-900 dark:text-white">Creator streak</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">View milestones and badges</p>
+                  </div>
                 </div>
                 <StreakPill streak={streak} daysActive={activityDays.length} onOpen={() => setShowProgress(true)} />
               </div>
@@ -234,7 +238,7 @@ export default function ProfileScreen({
             <SettingsSection label="Preferences">
               <NotificationRow permission={notifPermission} onEnable={onEnableNotifications} />
               <SettingsRow label="Appearance" stacked>
-                <div className="mt-2">
+                <div className="mt-2.5">
                   <ThemeSwitcher />
                 </div>
               </SettingsRow>
@@ -245,27 +249,27 @@ export default function ProfileScreen({
                 href={`${import.meta.env.BASE_URL}privacy.html`}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center justify-between py-3.5 border-b border-slate-200 dark:border-slate-800 text-sm text-slate-700 dark:text-slate-200"
+                className="flex items-center justify-between gap-3 px-4 min-h-[56px] text-[15px] font-medium text-slate-900 dark:text-white"
               >
-                <span className="flex items-center gap-2.5"><Shield className="w-4 h-4 text-slate-400" /> Privacy Policy</span>
-                <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                <span className="flex items-center gap-3"><Shield className="w-5 h-5 text-slate-500" /> Privacy Policy</span>
+                <ExternalLink className="w-4 h-4 text-slate-400" />
               </a>
             </SettingsSection>
 
-            <SettingsSection label="Session">
+            <SettingsSection label="Account">
               {isGuest ? (
                 <button
                   onClick={onSignIn}
-                  className="w-full flex items-center gap-2.5 py-3.5 border-b border-slate-200 dark:border-slate-800 text-sm font-semibold text-focus-primary"
+                  className="w-full flex items-center gap-3 px-4 min-h-[56px] text-[15px] font-semibold text-focus-primary"
                 >
-                  <LogIn className="w-4 h-4" /> Sign in
+                  <LogIn className="w-5 h-5" /> Sign in
                 </button>
               ) : (
                 <button
                   onClick={onSignOut}
-                  className="w-full flex items-center gap-2.5 py-3.5 border-b border-slate-200 dark:border-slate-800 text-sm font-semibold text-slate-700 dark:text-slate-200"
+                  className="w-full flex items-center gap-3 px-4 min-h-[56px] text-[15px] font-medium text-slate-900 dark:text-white"
                 >
-                  <LogOut className="w-4 h-4" /> Sign out
+                  <LogOut className="w-5 h-5 text-slate-500" /> Sign out
                 </button>
               )}
 
@@ -273,9 +277,9 @@ export default function ProfileScreen({
                 <button
                   type="button"
                   onClick={onDeleteAccount}
-                  className="w-full flex items-center gap-2.5 py-3.5 border-b border-slate-200 dark:border-slate-800 text-sm font-semibold text-rose-600 dark:text-rose-400"
+                  className="w-full flex items-center gap-3 px-4 min-h-[56px] text-[15px] font-medium text-rose-600 dark:text-rose-400"
                 >
-                  <Trash2 className="w-4 h-4" /> Delete account
+                  <Trash2 className="w-5 h-5" /> Delete account
                 </button>
               )}
             </SettingsSection>
@@ -294,14 +298,16 @@ export default function ProfileScreen({
   );
 }
 
-// Shared shell for a group of settings rows: a small heading followed by
-// flat, bottom-ruled rows — no boxed card wrapping the group.
+// Shared shell for a group of settings rows: a small heading above one
+// rounded panel, with a hairline between rows.
 function SettingsSection({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="pt-6 first:pt-6">
-      <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-400 uppercase mb-1">{label}</p>
-      <div>{children}</div>
-    </div>
+    <section className="pt-6">
+      <h3 className="px-1 mb-2 text-xs font-semibold tracking-wide text-slate-500 dark:text-slate-400">{label}</h3>
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 divide-y divide-slate-200 dark:divide-slate-800">
+        {children}
+      </div>
+    </section>
   );
 }
 
@@ -319,27 +325,25 @@ function SettingsRow({
 }) {
   if (stacked) {
     return (
-      <div className="py-3.5 border-b border-slate-200 dark:border-slate-800">
-        <span className="text-sm text-slate-700 dark:text-slate-200">{label}</span>
+      <div className="px-4 py-4">
+        <span className="text-[15px] font-medium text-slate-900 dark:text-white">{label}</span>
         {children}
       </div>
     );
   }
   return (
-    <div className="flex items-center justify-between gap-3 py-3.5 border-b border-slate-200 dark:border-slate-800">
-      <span className="text-sm text-slate-700 dark:text-slate-200">{label}</span>
+    <div className="flex items-center justify-between gap-3 px-4 min-h-[56px]">
+      <span className="text-[15px] font-medium text-slate-900 dark:text-white">{label}</span>
       {children}
     </div>
   );
 }
 
 // Always visible in Settings — not just the dismissible "enable
-// notifications?" banner on Home, which the student may have already
-// dismissed (or never seen, e.g. on desktop with no due cards yet). This is
-// read-only status plus, when it's actually actionable, a way to act on it:
-// 'granted'/'denied' can only be changed from the browser's own site
-// settings (the Notification API can't re-prompt once denied), so only the
-// 'default' state gets an in-app "Enable" button.
+// notifications?" banner on Home. Read-only status plus, only when it is
+// actionable, an Enable button: 'granted'/'denied' can only be changed from
+// the browser's own site settings (the Notification API can't re-prompt once
+// denied), so only the 'default' state gets an in-app button.
 function NotificationRow({
   permission,
   onEnable,
@@ -362,28 +366,32 @@ function NotificationRow({
   const Icon = permission === 'granted' ? BellRing : permission === 'denied' || permission === 'unsupported' ? BellOff : Bell;
 
   return (
-    <div className="flex items-center justify-between gap-3 py-3.5 border-b border-slate-200 dark:border-slate-800">
-      <div className="flex items-center gap-2.5 min-w-0">
-        <Icon className="w-4 h-4 text-slate-400 shrink-0" />
-        <span className="text-sm text-slate-700 dark:text-slate-200">Notifications</span>
+    <div className="flex items-center justify-between gap-3 px-4 py-3.5">
+      <div className="flex items-center gap-3 min-w-0">
+        <Icon className="w-5 h-5 text-slate-500 shrink-0" />
+        <div className="min-w-0">
+          <p className="text-[15px] font-medium text-slate-900 dark:text-white">Notifications</p>
+          <p className="flex items-center gap-1.5 mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClasses[permission]}`} />
+            {statusText[permission]}
+          </p>
+        </div>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <span className={`w-1.5 h-1.5 rounded-full ${dotClasses[permission]}`} />
-        <span className="text-[11px] text-slate-400">{statusText[permission]}</span>
-        {permission === 'default' && (
-          <button onClick={onEnable} className="text-[11px] font-semibold text-focus-primary ml-1">
-            Enable
-          </button>
-        )}
-      </div>
+      {permission === 'default' && (
+        <button
+          onClick={onEnable}
+          className="shrink-0 h-9 px-4 rounded-full bg-focus-primary text-white text-xs font-semibold active:scale-95 transition"
+        >
+          Enable
+        </button>
+      )}
     </div>
   );
 }
 
-// Grade level used to be a row of buttons, all visible at once, competing
-// for attention with everything else in the settings screen. A dropdown
-// keeps only the current pick on screen and reveals the rest on demand —
-// same open/close/outside-click behavior as ThemeSwitcher, for consistency.
+// Grade level is a dropdown: only the current pick stays on screen and the
+// rest is revealed on demand — same open/close/outside-click behavior as
+// ThemeSwitcher, for consistency.
 function GradeLevelRow({
   gradeLevel,
   onGradeLevelChange,
@@ -404,18 +412,18 @@ function GradeLevelRow({
   }, [open]);
 
   return (
-    <div className="relative py-3.5 border-b border-slate-200 dark:border-slate-800" ref={rootRef}>
+    <div className="relative px-4" ref={rootRef}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="Choose grade level"
         aria-expanded={open}
         title="Choose grade level"
-        className="w-full flex items-center justify-between"
+        className="w-full min-h-[56px] flex items-center justify-between gap-3"
       >
-        <span className="text-sm text-slate-700 dark:text-slate-200">Grade level</span>
-        <span className="flex items-center gap-1.5 text-slate-400">
-          <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{gradeLevel}</span>
+        <span className="text-[15px] font-medium text-slate-900 dark:text-white">Grade level</span>
+        <span className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
+          <span className="text-[15px]">{gradeLevel}</span>
           <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
         </span>
       </button>
@@ -423,7 +431,7 @@ function GradeLevelRow({
       {open && (
         <div
           role="menu"
-          className="absolute z-20 left-0 right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-1.5 shadow-xl"
+          className="absolute z-20 left-3 right-3 top-full -mt-1 max-h-64 overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-1.5 shadow-xl"
         >
           {GRADE_LEVEL_OPTIONS.map((g) => (
             <button
@@ -435,10 +443,10 @@ function GradeLevelRow({
                 onGradeLevelChange(g);
                 setOpen(false);
               }}
-              className="w-full flex items-center justify-between gap-2 p-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 text-left"
+              className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 text-left"
             >
-              <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{g}</span>
-              {gradeLevel === g && <Check className="w-3.5 h-3.5 text-focus-primary shrink-0" />}
+              <span className="text-sm text-slate-700 dark:text-slate-200">{g}</span>
+              {gradeLevel === g && <Check className="w-4 h-4 text-focus-primary shrink-0" />}
             </button>
           ))}
         </div>

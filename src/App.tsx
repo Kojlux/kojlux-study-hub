@@ -934,7 +934,7 @@ function AppContent() {
           {appNotices}
         </StudyHome>
       ) : (
-        <div className="min-h-screen bg-focus-bg dark:bg-slate-950 md:pl-20 lg:pl-60">
+        <div className="min-h-screen bg-focus-bg dark:bg-[#0B0F19] md:pl-20 lg:pl-60">
           <div className="w-full max-w-md md:max-w-3xl lg:max-w-5xl xl:max-w-6xl mx-auto min-h-screen flex flex-col">
             <header className="sticky top-0 z-30 bg-focus-bg/90 dark:bg-slate-950/90 backdrop-blur-md px-5 pt-6 pb-3 flex items-center justify-between gap-3">
               <h1 className="text-sm font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
@@ -1090,8 +1090,10 @@ function QuizBuilderOrSummarizer(props: {
           <button
             key={t}
             onClick={() => setSubTab(t)}
-            className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition ${
-              subTab === t ? 'bg-white dark:bg-slate-700 text-focus-primary shadow-sm' : 'text-slate-500 dark:text-slate-400'
+            className={`flex-1 py-2 rounded-lg text-xs font-medium uppercase tracking-wide transition ${
+              subTab === t
+                ? 'bg-violet-600 text-white'
+                : 'bg-transparent text-gray-500 dark:bg-[#161D30] dark:text-slate-400 dark:border dark:border-slate-800/40'
             }`}
           >
             {t === 'quiz' ? 'Quiz Builder' : 'NoteCraft'}

@@ -25,7 +25,7 @@ export function SubjectChips({
           className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold border transition whitespace-nowrap ${
             subject === opt.id
               ? 'bg-focus-primary text-white border-focus-primary'
-              : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'
+              : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-gray-500 dark:text-slate-400'
           }`}
         >
           {opt.label}
@@ -94,8 +94,8 @@ export default function TopicPicker({
               onClick={() => onModeChange(id)}
               className={`flex-1 py-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 transition ${
                 mode === id
-                  ? 'bg-white dark:bg-slate-700 text-focus-primary shadow-sm'
-                  : 'text-slate-500 dark:text-slate-400'
+                  ? 'bg-violet-600 text-white'
+                  : 'bg-transparent text-gray-500 dark:bg-[#161D30] dark:text-slate-400'
               }`}
             >
               <Icon className="w-3.5 h-3.5" /> {label}
@@ -115,7 +115,7 @@ export default function TopicPicker({
             : 'Paste your notes or textbook text here…'
         }
         rows={4}
-        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary resize-none"
+        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 text-xs text-gray-700 dark:text-slate-200 placeholder-slate-500 outline-none focus:border-focus-primary resize-none"
       />
     </div>
   );

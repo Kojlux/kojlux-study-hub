@@ -634,7 +634,7 @@ ${rules}`;
   // ---- Builder form ----
   return (
     <div className="space-y-5">
-      <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-6 text-center bg-white dark:bg-slate-900 space-y-3">
+      <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-6 text-center bg-white dark:bg-[#0F1524] space-y-3">
         {file ? (
           <div className="space-y-2">
             {file.kind === 'image' && <img src={file.dataUrl} className="max-h-40 mx-auto rounded-lg object-contain" />}
@@ -655,7 +655,7 @@ ${rules}`;
             </button>
           </div>
         ) : (
-          <div className="space-y-2 text-slate-400">
+          <div className="space-y-2 text-gray-400 dark:text-slate-400">
             <Upload className="w-6 h-6 mx-auto" />
             <p className="text-xs font-semibold">Add a photo, PDF, or video of your notes or textbook page</p>
           </div>
@@ -664,14 +664,14 @@ ${rules}`;
           <button
             type="button"
             onClick={() => uploadInputRef.current?.click()}
-            className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-focus-primary transition"
+            className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-slate-50 dark:bg-[#161D30] border border-slate-200 dark:border-slate-700 text-gray-600 dark:text-slate-200 hover:border-focus-primary transition"
           >
             <Upload className="w-3.5 h-3.5" /> Upload File
           </button>
           <button
             type="button"
             onClick={() => cameraInputRef.current?.click()}
-            className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-focus-primary transition"
+            className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-slate-50 dark:bg-[#161D30] border border-slate-200 dark:border-slate-700 text-gray-600 dark:text-slate-200 hover:border-focus-primary transition"
           >
             <Camera className="w-3.5 h-3.5" /> Take Photo
           </button>
@@ -723,7 +723,7 @@ ${rules}`;
               }}
               onBlur={() => setQuestionCount((c) => Math.min(50, Math.max(0, c === '' ? 0 : c)))}
               aria-label="Question count"
-              className="w-14 py-1 text-center text-xs font-bold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              className="w-14 py-1 text-center text-xs font-bold bg-slate-50 dark:bg-[#161D30] border border-slate-200 dark:border-slate-800 rounded-lg text-gray-700 dark:text-slate-200 outline-none focus:border-focus-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             />
           </div>
           <input
@@ -732,7 +732,7 @@ ${rules}`;
             max={10}
             value={questionCount === '' ? 3 : Math.min(10, Math.max(3, questionCount))}
             onChange={(e) => setQuestionCount(Number(e.target.value))}
-            className="w-full accent-focus-primary"
+            className="w-full accent-focus-primary bg-transparent dark:bg-slate-800"
           />
         </div>
         <div>
@@ -743,7 +743,7 @@ ${rules}`;
                 key={d}
                 onClick={() => setDifficulty(d)}
                 className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase border ${
-                  difficulty === d ? 'bg-focus-primary text-white border-focus-primary' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'
+                  difficulty === d ? 'bg-focus-primary text-white border-focus-primary' : 'bg-slate-50 dark:bg-[#161D30] text-gray-500 dark:text-slate-300 border-slate-200 dark:border-slate-800'
                 }`}
               >
                 {d}
@@ -759,7 +759,7 @@ ${rules}`;
             key={t}
             onClick={() => setQuizType(t)}
             className={`flex-1 py-2.5 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 ${
-              quizType === t ? 'bg-focus-primary text-white border-focus-primary' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'
+              quizType === t ? 'bg-focus-primary text-white border-focus-primary' : 'bg-slate-50 dark:bg-[#161D30] text-gray-500 dark:text-slate-300 border-slate-200 dark:border-slate-800'
             }`}
           >
             <Layers className="w-3.5 h-3.5" /> {t === 'multiple-choice' ? 'Multiple Choice' : 'Short Answer'}

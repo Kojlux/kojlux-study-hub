@@ -58,6 +58,12 @@ const HEADER_CSS = `
   color: #373a41;
   cursor: pointer;
 }
+.dark .kh-shell .kh-header .kh-brand-title {
+  color: #f1f5f9;
+}
+.dark .kh-shell .kh-header .kh-notification-button {
+  color: #94a3b8;
+}
 .kh-shell .kh-header .kh-bell-icon {
   display: block;
 }
