@@ -1092,7 +1092,7 @@ function QuizBuilderOrSummarizer(props: {
             onClick={() => setSubTab(t)}
             className={`flex-1 py-2 rounded-lg text-xs font-medium uppercase tracking-wide transition ${
               subTab === t
-                ? 'bg-violet-600 text-white'
+                ? 'bg-focus-primary text-white'
                 : 'bg-transparent text-gray-500 dark:bg-[#161D30] dark:text-slate-400 dark:border dark:border-slate-800/40'
             }`}
           >

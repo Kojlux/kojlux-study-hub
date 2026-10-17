@@ -94,7 +94,7 @@ export default function TopicPicker({
               onClick={() => onModeChange(id)}
               className={`flex-1 py-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 transition ${
                 mode === id
-                  ? 'bg-violet-600 text-white'
+                  ? 'bg-focus-primary text-white'
                   : 'bg-transparent text-gray-500 dark:bg-[#161D30] dark:text-slate-400'
               }`}
             >
