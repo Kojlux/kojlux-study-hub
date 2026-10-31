@@ -9,14 +9,13 @@ interface Props {
   onClose: () => void;
 }
 
-// Full-screen overlay, same pattern as the old Study Calendar overlay it
-// replaces in the Home header (see App.tsx) — a header with a Back button,
-// scrollable content below.
+// Rendered as a normal page beside the side nav (see App.tsx), so the nav and its
+// divider line stay visible. Header with a Back button, scrollable content below.
 export default function NotificationCenter({ notifications, onSelect, onMarkAllRead, onClose }: Props) {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
-    <div className="fixed inset-0 z-[150] bg-focus-bg dark:bg-slate-950 overflow-y-auto md:pl-20 lg:pl-56">
+    <div className="min-h-screen bg-focus-bg dark:bg-[#0B0F19] md:pl-20 lg:pl-60">
       <div className="max-w-md md:max-w-3xl lg:max-w-5xl mx-auto min-h-screen flex flex-col">
         <header className="sticky top-0 z-10 bg-focus-bg/90 dark:bg-slate-950/90 backdrop-blur-md px-5 pt-6 pb-3 flex items-center gap-3">
           <button
@@ -39,7 +38,7 @@ export default function NotificationCenter({ notifications, onSelect, onMarkAllR
           )}
         </header>
 
-        <main className="flex-1 px-5 pb-10 space-y-2.5">
+        <main className="flex-1 px-5 pb-28 md:pb-10 space-y-2.5">
           {notifications.length === 0 ? (
             <div className="flex flex-col items-center justify-center text-center gap-2.5 py-20">
               <div className="w-12 h-12 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center justify-center">

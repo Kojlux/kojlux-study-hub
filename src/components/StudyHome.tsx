@@ -24,6 +24,14 @@ const HEADER_CSS = `
   justify-content: space-between;
   gap: 12px;
 }
+.kh-shell .kh-header {
+  padding-bottom: 14px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.12);
+}
+.dark .kh-shell .kh-header {
+  border-bottom-color: rgba(148, 163, 184, 0.22);
+}
 .kh-shell .kh-header .kh-header-copy {
   display: flex;
   align-items: center;
@@ -66,6 +74,90 @@ const HEADER_CSS = `
 }
 .kh-shell .kh-header .kh-bell-icon {
   display: block;
+}
+
+/* Phone (under 768px): show the Cards / Due today folder above Saved collections. */
+@media (max-width: 767px) {
+  /* Phone: drop the short header divider; the full-width line below it is solid
+     black in light mode (white in dark mode, via the theme text color). */
+  .kh-shell .kh-header {
+    padding-bottom: 0;
+    margin-bottom: 0;
+    border-bottom: 0;
+  }
+  .kh-shell .kh-desk {
+    border-top-color: var(--kh-text);
+  }
+  .kh-shell .kh-desk .kh-folder {
+    order: 1;
+  }
+  .kh-shell .kh-desk .kh-saved-collections {
+    order: 2;
+  }
+}
+
+/* Tablet (768-1199px): header first, then the Study desk (due cards + saved
+   collections), then Study tools and Recent. Same trick the phone layout uses:
+   main and main-inner stop being boxes so their children can be reordered. */
+@media (min-width: 768px) and (max-width: 1199px) {
+  .kh-shell > .kh-nav {
+    grid-row: 1 / span 4;
+  }
+  .kh-shell .kh-main,
+  .kh-shell .kh-main-inner {
+    display: contents;
+  }
+  .kh-shell .kh-main-inner > div,
+  .kh-shell .kh-header,
+  .kh-shell .kh-tools-section,
+  .kh-shell .kh-recent-section {
+    grid-column: 2;
+    justify-self: center;
+    width: calc(100% - 72px);
+    max-width: 808px;
+  }
+  .kh-shell .kh-main-inner > div {
+    order: 0;
+    margin-top: 16px;
+  }
+  .kh-shell .kh-header {
+    order: 0;
+    margin: 32px 0 28px;
+  }
+  .kh-shell .kh-desk {
+    order: 1;
+    border-top: 0;
+    align-items: stretch;
+  }
+  /* Saved collections: bordered box exactly as tall as the Due today folder,
+     with the items scrolling top to bottom inside it. contain: size stops the
+     list from making the row taller than the folder. */
+  .kh-shell .kh-desk .kh-saved-collections {
+    contain: size;
+    margin-top: 30px; /* start where the folder body starts, under the tab */
+    min-height: 230px;
+    padding: 18px 16px 16px;
+    overflow-y: auto;
+    border: 0;
+    border-radius: 20px;
+    /* Same bluish folder tint as the Due today card. */
+    background: linear-gradient(160deg, var(--kh-folder-from) 0%, var(--kh-folder-to) 100%);
+    /* Same edge as the Due today folder body: soft outer shadow + light inner highlight. */
+    box-shadow: var(--kh-shadow-rest), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--kh-accent) 35%, transparent) transparent;
+  }
+  .kh-shell .kh-tools-section {
+    order: 2;
+    margin-top: 36px;
+    container-type: inline-size;
+    container-name: kh-main;
+  }
+  .kh-shell .kh-recent-section {
+    order: 3;
+    margin-top: 36px;
+    margin-bottom: 56px;
+  }
 }
 `;
 

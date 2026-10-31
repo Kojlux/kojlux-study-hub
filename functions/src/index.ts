@@ -30,6 +30,7 @@ import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 admin.initializeApp();
 const db = admin.firestore();
 const messaging = admin.messaging();
+const WEB_PUSH_TTL_SECONDS = '2419200';
 
 export const cleanupDeletedUserData = functionsV1
   .runWith({ timeoutSeconds: 540 })
@@ -106,91 +107,116 @@ function examReminderIsDue(dateStr: string): boolean {
   return Date.now() >= reminder.getTime();
 }
 
+const sendPush = (tokens: string[], data: Record<string, string>) =>
+  messaging.sendEachForMulticast({
+    tokens,
+    webpush: { headers: { TTL: WEB_PUSH_TTL_SECONDS, Urgency: 'high' } },
+    data,
+  });
+
+// Card keys are `${id}:${dueAt}` so a card that is reviewed (new dueAt) can notify again.
+const cardKey = (c: DueDate) => `${c.id}:${c.dueAt}`;
+
+async function processUser(userDoc: admin.firestore.QueryDocumentSnapshot) {
+  const data = userDoc.data();
+  const tokens: string[] = data.fcmTokens || [];
+  if (tokens.length === 0) return;
+
+  const dueDates: DueDate[] = data.recallCardDueDates || [];
+  const examReminders: ExamReminder[] = data.examReminders || [];
+  const notifiedCardKeys: string[] = data.notifiedCardKeys || [];
+  const notifiedExamIds: string[] = data.notifiedExamIds || [];
+
+  const now = Date.now();
+  const newlyDueCards = dueDates.filter(
+    (c) => new Date(c.dueAt).getTime() <= now && !notifiedCardKeys.includes(cardKey(c))
+  );
+  const newlyDueExams = examReminders.filter(
+    (e) => examReminderIsDue(e.date) && !notifiedExamIds.includes(e.id)
+  );
+
+  console.info('checkDueReminders user', {
+    uid: userDoc.id,
+    tokens: tokens.length,
+    newlyDueCards: newlyDueCards.length,
+    newlyDueExams: newlyDueExams.length,
+  });
+  if (newlyDueCards.length === 0 && newlyDueExams.length === 0) return;
+
+  const allResponses: admin.messaging.BatchResponse[] = [];
+  const succeededCardKeys: string[] = [];
+  const succeededExamIds: string[] = [];
+
+  if (newlyDueCards.length > 0) {
+    const r = await sendPush(tokens, {
+      title: newlyDueCards.length === 1 ? 'A review is ready' : `${newlyDueCards.length} reviews are ready`,
+      body: 'Head back to Kojlux Study Hub to keep your streak going.',
+      tag: 'kojlux-reviews-ready',
+      url: '/',
+    });
+    allResponses.push(r);
+    if (r.successCount > 0) succeededCardKeys.push(...newlyDueCards.map(cardKey));
+    console.info('cards push', { success: r.successCount, failure: r.failureCount });
+  }
+
+  for (const exam of newlyDueExams) {
+    const r = await sendPush(tokens, {
+      title: "Don't forget to study!",
+      body: `Your exam "${exam.title}" is tomorrow. Tap here to review your materials.`,
+      tag: `kojlux-exam-reminder-${exam.id}`,
+      url: '/',
+    });
+    allResponses.push(r);
+    if (r.successCount > 0) succeededExamIds.push(exam.id);
+    console.info('exam push', { examId: exam.id, success: r.successCount, failure: r.failureCount });
+  }
+
+  // Prune dead tokens (uninstalled app, cleared site data, revoked permission).
+  const deadTokens = new Set<string>();
+  for (const response of allResponses) {
+    response.responses.forEach((r, i) => {
+      const code = r.error?.code;
+      if (r.error) console.warn('push send error', { code, message: r.error.message });
+      if (
+        code === 'messaging/registration-token-not-registered' ||
+        code === 'messaging/invalid-registration-token'
+      ) {
+        deadTokens.add(tokens[i]);
+      }
+    });
+  }
+
+  // Only record reminders that actually reached at least one device, and drop
+  // old keys/ids that no longer exist so the arrays don't grow forever.
+  const currentCardKeys = new Set(dueDates.map(cardKey));
+  const currentExamIds = new Set(examReminders.map((e) => e.id));
+
+  await userDoc.ref.set(
+    {
+      notifiedCardKeys: [
+        ...notifiedCardKeys.filter((k) => currentCardKeys.has(k)),
+        ...succeededCardKeys,
+      ],
+      notifiedExamIds: [
+        ...notifiedExamIds.filter((id) => currentExamIds.has(id)),
+        ...succeededExamIds,
+      ],
+      ...(deadTokens.size > 0 ? { fcmTokens: tokens.filter((t) => !deadTokens.has(t)) } : {}),
+    },
+    { merge: true }
+  );
+}
+
 export const checkDueReminders = onSchedule('every 15 minutes', async () => {
   const usersSnap = await db.collection('users').get();
+  console.info('checkDueReminders run', { users: usersSnap.size });
 
   for (const userDoc of usersSnap.docs) {
-    const data = userDoc.data();
-    const tokens: string[] = data.fcmTokens || [];
-    if (tokens.length === 0) continue; // never enabled notifications
-
-    const dueDates: DueDate[] = data.recallCardDueDates || [];
-    const examReminders: ExamReminder[] = data.examReminders || [];
-    const notifiedCardIds: string[] = data.notifiedCardIds || [];
-    const notifiedExamIds: string[] = data.notifiedExamIds || [];
-
-    const now = Date.now();
-    const newlyDueCards = dueDates.filter(
-      (c) => new Date(c.dueAt).getTime() <= now && !notifiedCardIds.includes(c.id)
-    );
-    const newlyDueExams = examReminders.filter(
-      (e) => examReminderIsDue(e.date) && !notifiedExamIds.includes(e.id)
-    );
-
-    if (newlyDueCards.length === 0 && newlyDueExams.length === 0) continue;
-
-    const sends: Promise<admin.messaging.BatchResponse>[] = [];
-
-    if (newlyDueCards.length > 0) {
-      sends.push(
-        messaging.sendEachForMulticast({
-          tokens,
-          data: {
-            title: newlyDueCards.length === 1 ? 'A review is ready' : `${newlyDueCards.length} reviews are ready`,
-            body: 'Head back to Kojlux Study Hub to keep your streak going.',
-            tag: 'kojlux-reviews-ready',
-            url: '/', // App.tsx routes activeTab='review' from here if you wire that up
-          },
-        })
-      );
+    try {
+      await processUser(userDoc);
+    } catch (err) {
+      // One bad user must not abort everyone after them.
+      console.error('checkDueReminders failed for user', { uid: userDoc.id, err });
     }
-
-    for (const exam of newlyDueExams) {
-      sends.push(
-        messaging.sendEachForMulticast({
-          tokens,
-          data: {
-            title: "Don't forget to study!",
-            body: `Your exam "${exam.title}" is tomorrow. Tap here to review your materials.`,
-            tag: `kojlux-exam-reminder-${exam.id}`,
-            url: '/',
-          },
-        })
-      );
-    }
-
-    const responses = await Promise.all(sends);
-
-    // Prune dead tokens (uninstalled app, cleared site data, revoked
-    // permission, etc.) instead of leaving them in fcmTokens forever.
-    // sendEachForMulticast reports per-token failures in the same order the
-    // tokens were passed in, so index i of every response maps back to
-    // tokens[i] here. Without this, a token that will never succeed again
-    // stays in the array indefinitely, and on a multi-device account it can
-    // also mask a *different* real, working token's send failing for an
-    // unrelated transient reason during log review.
-    const deadTokens = new Set<string>();
-    for (const response of responses) {
-      response.responses.forEach((r, i) => {
-        const code = r.error?.code;
-        if (
-          code === 'messaging/registration-token-not-registered' ||
-          code === 'messaging/invalid-registration-token'
-        ) {
-          deadTokens.add(tokens[i]);
-        }
-      });
-    }
-
-    await userDoc.ref.set(
-      {
-        notifiedCardIds: [...notifiedCardIds, ...newlyDueCards.map((c) => c.id)],
-        notifiedExamIds: [...notifiedExamIds, ...newlyDueExams.map((e) => e.id)],
-        ...(deadTokens.size > 0
-          ? { fcmTokens: tokens.filter((t) => !deadTokens.has(t)) }
-          : {}),
-      },
-      { merge: true }
-    );
   }
 });

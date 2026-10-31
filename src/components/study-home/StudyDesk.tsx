@@ -16,7 +16,7 @@ interface StudyDeskProps {
 export default function StudyDesk({ dueCards, collections, recallCards, onNavigate, onOpenCollection }: StudyDeskProps): ReactElement {
   return (
     <aside className="kh-desk" aria-label="Study desk">
-      <FlashcardFolder cards={dueCards} onStartReview={() => onNavigate('review')} />
+      <FlashcardFolder cards={dueCards} fallbackCards={recallCards} onStartReview={() => onNavigate('review')} />
       <SavedCollections
         collections={collections}
         cards={recallCards}

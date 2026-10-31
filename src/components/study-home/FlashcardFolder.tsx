@@ -5,6 +5,8 @@ import type { RecallCard } from '../../types';
 
 interface FlashcardFolderProps {
   cards: readonly RecallCard[];
+  /** Shown instead when there are no due cards (e.g. cards from saved collections). The label becomes "Cards". */
+  fallbackCards?: readonly RecallCard[];
   onStartReview: () => void;
   /** Time each question stays on screen before moving to the next card. Defaults to 4000ms. */
   intervalMs?: number;
@@ -47,8 +49,16 @@ const CARD_CSS = `
  * Shows only the question of each card, then moves on to the next one
  * (automatically, or immediately when the card is tapped).
  */
-export default function FlashcardFolder({ cards, onStartReview, intervalMs = 4000 }: FlashcardFolderProps): ReactElement {
+export default function FlashcardFolder({
+  cards: dueCards,
+  fallbackCards = [],
+  onStartReview,
+  intervalMs = 4000,
+}: FlashcardFolderProps): ReactElement {
   const [index, setIndex] = useState<number>(0);
+  // Only when nothing at all is due do we showcase the saved cards under the label "Cards".
+  const showingSaved: boolean = dueCards.length === 0 && fallbackCards.length > 0;
+  const cards: readonly RecallCard[] = showingSaved ? fallbackCards : dueCards;
   const count: number = cards.length;
   const current: RecallCard | undefined = count > 0 ? cards[index % count] : undefined;
   const activeIndex: number = count > 0 ? index % count : 0;
@@ -66,11 +76,11 @@ export default function FlashcardFolder({ cards, onStartReview, intervalMs = 400
   const handleStart = (_event: MouseEvent<HTMLButtonElement>): void => onStartReview();
 
   return (
-    <article className="kh-folder" aria-label="Due cards preview">
+    <article className="kh-folder" aria-label={showingSaved ? 'Cards preview' : 'Due cards preview'}>
       <style>{CARD_CSS}</style>
       <div className="kh-folder-tab">
         <Layers size={13} aria-hidden="true" />
-        Due today
+        {showingSaved ? 'Cards' : 'Due today'}
         <span className="kh-folder-count">{cards.length}</span>
       </div>
 

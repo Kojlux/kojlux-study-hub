@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, MouseEvent, PointerEvent, ReactElement } from 'react';
-import { BookOpen, X } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 
 export type NavTab = 'home' | 'quiz' | 'community' | 'review' | 'profile';
 
 const TABS: { key: NavTab; label: string }[] = [
   { key: 'home', label: 'Home' },
-  { key: 'quiz', label: 'Quiz Builder' },
+  { key: 'quiz', label: 'Create' },
   { key: 'review', label: 'Review' },
   { key: 'community', label: 'Study Materials' },
   { key: 'profile', label: 'Dashboard' },
@@ -16,6 +16,13 @@ interface BottomNavProps {
   active: NavTab;
   blockedTabs?: NavTab[];
   onChange: (tab: NavTab) => void;
+  /** Optional: pass these to control the desktop sidebar's collapsed state from a parent.
+   *  If omitted, the sidebar keeps its own collapsed state. */
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
+  /** True while a page like Notifications is open: the sidebar stays visible on every screen
+   *  size (even over Home) and no tab is highlighted. */
+  overlayOpen?: boolean;
 }
 
 // Phone bar shape (no colors changed). Only the inner bar and its buttons get inline
@@ -41,7 +48,8 @@ const barButtonStyle = (isActive: boolean): CSSProperties => ({
   ...(isActive ? {} : { background: 'transparent' }),
 });
 
-// Nav icons (all in this file). They use currentColor unless a color is passed.
+// Nav icons (all in this file). They use currentColor, so the colors come from the CSS
+// (same accent / muted colors as the side bar, light and dark).
 interface NavIconProps {
   tab: NavTab;
   active: boolean;
@@ -108,11 +116,33 @@ function NavIcon({ tab, active, size = 20, color }: NavIconProps): ReactElement 
   }
 }
 
-const MOBILE_ICON_ACTIVE = '#0f172a';
-const MOBILE_ICON_IDLE = '#4b5563';
+// The logo replaces the old book icon inside the same .kh-brand-mark box, so the
+// box keeps its size. The box background is cleared so the logo isn't framed twice.
+const brandMarkStyle: CSSProperties = { background: 'transparent', boxShadow: 'none', padding: 0, overflow: 'hidden' };
+const brandLogoStyle: CSSProperties = { width: '100%', height: '100%', objectFit: 'contain', display: 'block' };
 
-export default function BottomNav({ active, blockedTabs = [], onChange }: BottomNavProps): ReactElement {
+// icon.png lives in /public, so Vite serves it from the site root (no import needed).
+const appLogo: string = `${import.meta.env.BASE_URL}icon.png`;
+
+export default function BottomNav({
+  active,
+  blockedTabs = [],
+  onChange,
+  collapsed: collapsedProp,
+  onToggleCollapse,
+  overlayOpen = false,
+}: BottomNavProps): ReactElement {
+  const current: NavTab | null = overlayOpen ? null : active;
+  const dataActive: string = overlayOpen ? 'overlay' : active;
   const [expanded, setExpanded] = useState<boolean>(false);
+  const [collapsedInternal, setCollapsedInternal] = useState<boolean>(true); // collapsed by default
+  const collapsed: boolean = collapsedProp ?? collapsedInternal;
+  const handleCollapseToggle = (): void => {
+    if (onToggleCollapse) onToggleCollapse();
+    else setCollapsedInternal((isCollapsed) => !isCollapsed);
+  };
+  const ToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
+  const labelStyle: CSSProperties | undefined = collapsed ? { display: 'none' } : undefined;
   const pointerStartY = useRef<number | null>(null);
   const draggedHandle = useRef<boolean>(false);
   const tabs = TABS.filter(({ key }) => !blockedTabs.includes(key));
@@ -153,12 +183,18 @@ export default function BottomNav({ active, blockedTabs = [], onChange }: Bottom
 
   return (
     <>
-      <nav className="kh-nav kh-global-sidebar" data-active={active} aria-label="Primary">
+      <nav
+        className="kh-nav kh-global-sidebar"
+        data-active={dataActive}
+        data-collapsed={collapsed}
+        style={collapsed ? { width: 80 } : undefined}
+        aria-label="Primary"
+      >
         <div className="kh-brand">
-          <span className="kh-brand-mark" aria-hidden="true">
-            <BookOpen size={18} strokeWidth={2.25} />
+          <span className="kh-brand-mark" aria-hidden="true" style={brandMarkStyle}>
+            <img src={appLogo} alt="" style={brandLogoStyle} draggable={false} />
           </span>
-          <span className="kh-brand-name kh-global-label">Kojlux Study Hub</span>
+          <span className="kh-brand-name kh-global-label" style={labelStyle}>Kojlux Study Hub</span>
         </div>
         <ul className="kh-nav-list">
           {tabs.map(({ key, label }) => (
@@ -166,20 +202,31 @@ export default function BottomNav({ active, blockedTabs = [], onChange }: Bottom
               <button
                 type="button"
                 className="kh-nav-item"
-                aria-current={active === key ? 'page' : undefined}
+                aria-current={current === key ? 'page' : undefined}
                 aria-label={label}
                 title={label}
                 onClick={() => handleNavigate(key)}
               >
-                <NavIcon tab={key} active={active === key} size={20} />
-                <span className="kh-global-label">{label}</span>
+                <NavIcon tab={key} active={current === key} size={22} />
+                <span className="kh-global-label" style={labelStyle}>{label}</span>
               </button>
             </li>
           ))}
         </ul>
+        <button
+          type="button"
+          className="kh-nav-item kh-collapse"
+          onClick={handleCollapseToggle}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? 'Expand sidebar' : undefined}
+        >
+          <ToggleIcon size={20} strokeWidth={1.9} aria-hidden="true" />
+          <span className="kh-global-label" style={labelStyle}>Collapse</span>
+        </button>
       </nav>
 
-      <div className="kh-global-mobile" data-active={active}>
+      <div className="kh-global-mobile" data-active={dataActive}>
         <button
           type="button"
           className="kh-mobile-handle"
@@ -199,13 +246,13 @@ export default function BottomNav({ active, blockedTabs = [], onChange }: Bottom
               key={key}
               type="button"
               className="kh-mobile-icon"
-              style={barButtonStyle(active === key)}
+              style={barButtonStyle(current === key)}
               aria-label={label}
-              aria-current={active === key ? 'page' : undefined}
+              aria-current={current === key ? 'page' : undefined}
               title={label}
               onClick={() => handleNavigate(key)}
             >
-              <NavIcon tab={key} active={active === key} size={22} color={active === key ? MOBILE_ICON_ACTIVE : MOBILE_ICON_IDLE} />
+              <NavIcon tab={key} active={current === key} size={22} />
             </button>
           ))}
         </div>
@@ -222,8 +269,8 @@ export default function BottomNav({ active, blockedTabs = [], onChange }: Bottom
           <section className="kh-mobile-sheet" role="dialog" aria-modal="true" aria-label="Navigation menu">
             <header className="kh-mobile-sheet-header">
               <div className="kh-brand">
-                <span className="kh-brand-mark" aria-hidden="true">
-                  <BookOpen size={18} strokeWidth={2.25} />
+                <span className="kh-brand-mark" aria-hidden="true" style={brandMarkStyle}>
+                  <img src={appLogo} alt="" style={brandLogoStyle} draggable={false} />
                 </span>
                 <span className="kh-brand-name">Kojlux Study Hub</span>
               </div>
@@ -238,10 +285,10 @@ export default function BottomNav({ active, blockedTabs = [], onChange }: Bottom
                     <button
                       type="button"
                       className="kh-nav-item"
-                      aria-current={active === key ? 'page' : undefined}
+                      aria-current={current === key ? 'page' : undefined}
                       onClick={() => handleNavigate(key)}
                     >
-                      <NavIcon tab={key} active={active === key} />
+                      <NavIcon tab={key} active={current === key} />
                       <span>{label}</span>
                     </button>
                   </li>

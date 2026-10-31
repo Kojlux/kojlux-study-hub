@@ -911,9 +911,36 @@ function AppContent() {
       onRequestAuth={() => setShowAuthScreen(true)}
     >
     <>
-      <BottomNav active={activeTab} blockedTabs={isUnder13 ? ['community'] : []} onChange={setActiveTab} />
+      <BottomNav
+        active={activeTab}
+        blockedTabs={isUnder13 ? ['community'] : []}
+        overlayOpen={showNotifications}
+        onChange={(tab) => {
+          setShowNotifications(false);
+          setActiveTab(tab);
+        }}
+      />
 
-      {activeTab === 'home' ? (
+      {/* Notifications open from the bell icon as a page beside the side nav, so the nav
+          and its divider line stay on screen. Picking any tab closes it. */}
+      {showNotifications ? (
+        <NotificationCenter
+          notifications={notifications}
+          onClose={() => setShowNotifications(false)}
+          onMarkAllRead={() => {
+            if (scopeId) setNotifications(markAllNotificationsRead(scopeId));
+          }}
+          onSelect={(item) => {
+            if (scopeId) setNotifications(markNotificationRead(scopeId, item.id));
+            setShowNotifications(false);
+            if (item.targetTab === 'community' && isUnder13) {
+              setActiveTab('home');
+            } else if (item.targetTab) {
+              setActiveTab(item.targetTab as NavTab);
+            }
+          }}
+        />
+      ) : activeTab === 'home' ? (
         <StudyHome
           username={username}
           streak={streak}
@@ -1009,28 +1036,6 @@ function AppContent() {
             </main>
           </div>
         </div>
-      )}
-
-      {/* Opens as a full-screen overlay from the bell icon in the Home
-          header, the same pattern the Study Calendar overlay used to use
-          before it moved to living inline on the Profile screen. */}
-      {showNotifications && (
-        <NotificationCenter
-          notifications={notifications}
-          onClose={() => setShowNotifications(false)}
-          onMarkAllRead={() => {
-            if (scopeId) setNotifications(markAllNotificationsRead(scopeId));
-          }}
-          onSelect={(item) => {
-            if (scopeId) setNotifications(markNotificationRead(scopeId, item.id));
-            setShowNotifications(false);
-            if (item.targetTab === 'community' && isUnder13) {
-              setActiveTab('home');
-            } else if (item.targetTab) {
-              setActiveTab(item.targetTab as NavTab);
-            }
-          }}
-        />
       )}
 
       {errorMsg && (
