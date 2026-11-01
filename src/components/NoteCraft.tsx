@@ -296,7 +296,7 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
                   <div className="space-y-3">
                     {file.kind === 'image' && <img src={file.dataUrl} className="max-h-40 mx-auto rounded-xl object-contain" />}
                     {file.kind === 'pdf' && (
-                      <div className="flex items-center justify-center gap-2 text-black">
+                      <div className="flex items-center justify-center gap-2 text-slate-900 dark:text-slate-400">
                         <FileText className="w-6 h-6 shrink-0" />
                         <span className="text-xs font-bold truncate max-w-[220px]">{file.name}</span>
                       </div>
@@ -304,7 +304,7 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
                     {file.kind === 'video' && (
                       <div className="space-y-2">
                         <video src={file.dataUrl} controls className="max-h-40 mx-auto rounded-xl" />
-                        <p className="text-xs font-bold text-black truncate">{file.name}</p>
+                        <p className="text-xs font-bold text-slate-900 dark:text-slate-400 truncate">{file.name}</p>
                       </div>
                     )}
                     <button type="button" onClick={() => setFile(null)} className={ui.link}>
@@ -313,8 +313,8 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <Upload className="w-7 h-7 mx-auto text-black" strokeWidth={1.5} />
-                    <p className="text-sm font-medium text-black leading-relaxed">Add a photo, PDF, or video of your notes or textbook page</p>
+                    <Upload className="w-7 h-7 mx-auto text-slate-900 dark:text-slate-400" strokeWidth={1.5} />
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-400 leading-relaxed">Add a photo, PDF, or video of your notes or textbook page</p>
                   </div>
                 )}
                 <div className={ui.btnGroup}>
@@ -396,7 +396,7 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
           <div className="space-y-3">
             <section className={ui.tile}>
               <span className={ui.eyebrow}>Overview</span>
-              <p className="text-sm text-black leading-relaxed">{summaryData.overview}</p>
+              <p className="text-sm text-slate-900 dark:text-slate-400 leading-relaxed">{summaryData.overview}</p>
             </section>
 
             {summaryData.diagramNodes && summaryData.diagramNodes.length > 0 && (
@@ -409,7 +409,7 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
                     </span>
                   ))}
                 </div>
-                <p className="text-xs text-black leading-relaxed mt-4">
+                <p className="text-xs text-slate-900 dark:text-slate-400 leading-relaxed mt-4">
                   Ask the Visualizer to diagram "{summaryData.title}" to see these labeled interactively.
                 </p>
               </section>
@@ -420,7 +420,7 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
                 <span className={ui.eyebrow}>Places</span>
                 <div className="space-y-2">
                   {summaryData.regions.map((r, i) => (
-                    <div key={i} className="text-sm text-black">
+                    <div key={i} className="text-sm text-slate-900 dark:text-slate-400">
                       <span className="font-bold">{r.name}</span>
                       {r.note ? <span> — {r.note}</span> : null}
                     </div>
@@ -432,7 +432,7 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
             {summaryData.dataset && summaryData.dataset.series.length > 0 && (
               <section className={`${ui.tile} overflow-x-auto`}>
                 <span className={ui.eyebrow}>Data</span>
-                <table className="text-xs w-full min-w-[280px] border-collapse text-black">
+                <table className="text-xs w-full min-w-[280px] border-collapse text-slate-900 dark:text-slate-400">
                   <thead>
                     <tr>
                       <th className="border-b border-focus-primary/15 px-3 py-2"> </th>
@@ -459,7 +459,7 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
               <span className={ui.eyebrow}>Key points</span>
               <div className="space-y-3">
                 {summaryData.keyPoints.map((kp, i) => (
-                  <div key={i} className="flex items-start gap-3 text-sm text-black leading-relaxed">
+                  <div key={i} className="flex items-start gap-3 text-sm text-slate-900 dark:text-slate-400 leading-relaxed">
                     <span className="w-1.5 h-1.5 rounded-full bg-focus-primary mt-2 shrink-0" />
                     <span>{kp}</span>
                   </div>
@@ -472,7 +472,7 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
                 <span className={ui.eyebrow}>Glossary</span>
                 <div className="space-y-3">
                   {summaryData.glossary.map((g, i) => (
-                    <div key={i} className="text-sm text-black leading-relaxed">
+                    <div key={i} className="text-sm text-slate-900 dark:text-slate-400 leading-relaxed">
                       <span className="font-bold">{g.term}: </span>
                       <span>{g.definition}</span>
                     </div>
@@ -484,7 +484,7 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
 
           <div className="rounded-2xl bg-focus-primary/5 p-5 flex items-center gap-3 print:hidden">
             <BookOpenCheck className="w-5 h-5 text-focus-primary shrink-0" />
-            <p className="text-xs text-black">Key points added to <span className="font-bold">Review</span> for spaced repetition.</p>
+            <p className="text-xs text-slate-900 dark:text-slate-400">Key points added to <span className="font-bold">Review</span> for spaced repetition.</p>
           </div>
 
           <button
@@ -494,8 +494,8 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
             <span className="flex items-center gap-3 min-w-0">
               <ClipboardCheck className="w-5 h-5 text-focus-primary shrink-0" />
               <span>
-                <span className="block text-sm font-bold text-black">Test your knowledge</span>
-                <span className="block text-xs text-black mt-0.5">Quiz yourself on this summary and check your understanding.</span>
+                <span className="block text-sm font-bold text-slate-900 dark:text-slate-400">Test your knowledge</span>
+                <span className="block text-xs text-slate-900 dark:text-slate-400 mt-0.5">Quiz yourself on this summary and check your understanding.</span>
               </span>
             </span>
             <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-focus-primary shrink-0">Make a quiz</span>

@@ -490,14 +490,14 @@ ${rules}`;
                   {ev?.isCorrect ? (
                     <CheckCircle className="w-5 h-5 text-focus-primary shrink-0 mt-0.5" />
                   ) : (
-                    <XCircle className="w-5 h-5 text-black shrink-0 mt-0.5" />
+                    <XCircle className="w-5 h-5 text-slate-900 dark:text-slate-400 shrink-0 mt-0.5" />
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-black">{q.question}</p>
-                    <p className="text-xs text-black mt-2">Your answer: {userAnswers[i] || '(blank)'}</p>
-                    {!ev?.isCorrect && <p className="text-xs text-black mt-1 font-bold">Correct: {q.correctAnswer}</p>}
+                    <p className="text-sm font-bold text-slate-900 dark:text-slate-400">{q.question}</p>
+                    <p className="text-xs text-slate-900 dark:text-slate-400 mt-2">Your answer: {userAnswers[i] || '(blank)'}</p>
+                    {!ev?.isCorrect && <p className="text-xs text-slate-900 dark:text-slate-400 mt-1 font-bold">Correct: {q.correctAnswer}</p>}
                     {(ev?.feedback || q.explanation) && (
-                      <p className="text-xs text-black mt-2 italic leading-relaxed">{ev?.feedback || q.explanation}</p>
+                      <p className="text-xs text-slate-900 dark:text-slate-400 mt-2 italic leading-relaxed">{ev?.feedback || q.explanation}</p>
                     )}
                   </div>
                 </div>
@@ -542,7 +542,7 @@ ${rules}`;
         {/* Progress */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-bold tracking-[0.2em] text-black uppercase tabular-nums">
+            <span className="text-[10px] font-bold tracking-[0.2em] text-slate-900 dark:text-slate-400 uppercase tabular-nums">
               Question {currentQ + 1} of {total}
             </span>
             <button onClick={exportPdf} className={ui.link}>
@@ -559,7 +559,7 @@ ${rules}`;
                   i === currentQ
                     ? 'bg-focus-primary'
                     : (userAnswers[i] || '').trim().length > 0
-                    ? 'bg-black'
+                    ? 'bg-focus-primary/60'
                     : 'bg-focus-primary/15'
                 }`}
               />
@@ -574,7 +574,7 @@ ${rules}`;
 
         {/* Current question only */}
         <div className="rounded-2xl bg-focus-primary/5 p-5 sm:p-6 min-h-[220px] flex flex-col">
-          <p className="text-base font-bold text-black mb-5 leading-snug">{currentQ + 1}. {q.question}</p>
+          <p className="text-base font-bold text-slate-900 dark:text-slate-400 mb-5 leading-snug">{currentQ + 1}. {q.question}</p>
           {q.type === 'multiple-choice' && q.options ? (
             <div className="space-y-2">
               {q.options.map((opt, oi) => (
@@ -584,7 +584,7 @@ ${rules}`;
                   className={`w-full text-left px-4 py-3 rounded-xl text-sm transition-all duration-150 ${
                     userAnswers[currentQ] === opt
                       ? 'bg-focus-primary text-white font-bold'
-                      : 'bg-white text-black font-medium shadow-[0_1px_3px_rgba(0,0,0,0.08)] hover:shadow-md'
+                      : 'bg-white dark:bg-slate-800 text-black dark:text-slate-100 font-medium shadow-[0_1px_3px_rgba(0,0,0,0.08)] hover:shadow-md'
                   }`}
                 >
                   {opt}
@@ -645,7 +645,7 @@ ${rules}`;
               <div className="space-y-3">
                 {file.kind === 'image' && <img src={file.dataUrl} className="max-h-40 mx-auto rounded-xl object-contain" />}
                 {file.kind === 'pdf' && (
-                  <div className="flex items-center justify-center gap-2 text-black">
+                  <div className="flex items-center justify-center gap-2 text-slate-900 dark:text-slate-400">
                     <FileText className="w-6 h-6 shrink-0" />
                     <span className="text-xs font-bold truncate max-w-[220px]">{file.name}</span>
                   </div>
@@ -653,7 +653,7 @@ ${rules}`;
                 {file.kind === 'video' && (
                   <div className="space-y-2">
                     <video src={file.dataUrl} controls className="max-h-40 mx-auto rounded-xl" />
-                    <p className="text-xs font-bold text-black truncate">{file.name}</p>
+                    <p className="text-xs font-bold text-slate-900 dark:text-slate-400 truncate">{file.name}</p>
                   </div>
                 )}
                 <button type="button" onClick={() => setFile(null)} className={ui.link}>
@@ -662,8 +662,8 @@ ${rules}`;
               </div>
             ) : (
               <div className="space-y-3">
-                <Upload className="w-7 h-7 mx-auto text-black" strokeWidth={1.5} />
-                <p className="text-sm font-medium text-black leading-relaxed">Add a photo, PDF, or video of your notes or textbook page</p>
+                <Upload className="w-7 h-7 mx-auto text-slate-900 dark:text-slate-400" strokeWidth={1.5} />
+                <p className="text-sm font-medium text-slate-900 dark:text-slate-400 leading-relaxed">Add a photo, PDF, or video of your notes or textbook page</p>
               </div>
             )}
             <div className={ui.btnGroup}>

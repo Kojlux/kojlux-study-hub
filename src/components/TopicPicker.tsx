@@ -4,14 +4,14 @@ import { Subject, SUBJECT_OPTIONS } from '../lib/subjects';
 
 // ---------------------------------------------------------------------------
 // Design tokens — one place for the whole look.
-// Rules: black text, no outlines or divider lines, soft rounded shapes, and
+// Rules: theme-aware text, no outlines or divider lines, soft rounded shapes, and
 // the purple accent (focus-primary) used only for what is selected, focused
 // or the main action — the same language as the Quiz Builder / NoteCraft tab.
 // Exported so NoteCraft and QuizBuilder share exactly the same styles.
 // ---------------------------------------------------------------------------
 export const ui = {
-  h1: 'text-3xl font-black tracking-tighter text-black',
-  eyebrow: 'block text-[10px] font-bold tracking-[0.2em] text-black uppercase mb-3',
+  h1: 'text-3xl font-black tracking-tighter text-slate-900 dark:text-slate-400',
+  eyebrow: 'block text-[10px] font-bold tracking-[0.2em] text-slate-900 dark:text-slate-400 uppercase mb-3',
   // Sections are separated by whitespace only — no lines.
   frame: 'space-y-9',
   section: '',
@@ -21,12 +21,13 @@ export const ui = {
   dropzone: 'rounded-2xl bg-focus-primary/5 px-6 py-9 text-center space-y-6',
   // Standalone secondary button.
   btn:
-    'h-11 px-6 rounded-xl bg-focus-primary/5 text-black text-[11px] font-bold uppercase tracking-[0.15em] ' +
+    'h-11 px-6 rounded-xl bg-focus-primary/5 text-slate-900 dark:text-slate-400 text-[11px] font-bold uppercase tracking-[0.15em] ' +
     'inline-flex items-center justify-center gap-2 transition-all duration-150 hover:bg-focus-primary/10 active:scale-[0.98]',
-  // Side-by-side white buttons with a soft lift.
+  // Side-by-side buttons use a white surface in light mode and a dark surface
+  // in dark mode.
   btnGroup: 'grid grid-cols-2 gap-3',
   btnCell:
-    'h-11 rounded-xl bg-white text-black text-[11px] font-bold uppercase tracking-[0.15em] flex items-center justify-center gap-2 ' +
+    'h-11 rounded-xl bg-white dark:bg-slate-800 text-black dark:text-slate-100 text-[11px] font-bold uppercase tracking-[0.15em] flex items-center justify-center gap-2 ' +
     'shadow-[0_1px_3px_rgba(0,0,0,0.10)] transition-all duration-150 hover:shadow-md active:scale-[0.98]',
   // Main action. Add w-full (ctaFull) or flex-1 where it's used.
   cta:
@@ -38,17 +39,17 @@ export const ui = {
     'inline-flex items-center justify-center gap-2.5 shadow-lg shadow-focus-primary/25 ' +
     'transition-all duration-150 hover:bg-focus-primary-dark active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100',
   link:
-    'inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-black ' +
+    'inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-900 dark:text-slate-400 ' +
     'hover:text-focus-primary transition-colors duration-150',
-  // Text inputs: soft tint at rest, white with a purple glow on focus.
+  // Text inputs: soft tint at rest, theme-aware surface with a purple glow on focus.
   field:
-    'w-full rounded-xl bg-focus-primary/5 text-black px-4 py-3.5 text-sm leading-relaxed ' +
-    'placeholder:text-black/40 outline-none transition-all duration-150 ' +
-    'focus:bg-white focus:ring-2 focus:ring-focus-primary/50 resize-none',
+    'w-full rounded-xl bg-focus-primary/5 text-slate-900 dark:text-slate-400 px-4 py-3.5 text-sm leading-relaxed ' +
+    'placeholder:text-slate-500 dark:placeholder:text-slate-400 outline-none transition-all duration-150 ' +
+    'focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-focus-primary/50 resize-none',
   // Same, for use on top of a tinted tile.
   fieldSolid:
-    'w-full rounded-xl bg-white text-black px-4 py-3.5 text-sm leading-relaxed shadow-[0_1px_3px_rgba(0,0,0,0.08)] ' +
-    'placeholder:text-black/40 outline-none transition-all duration-150 focus:ring-2 focus:ring-focus-primary/50 resize-none',
+    'w-full rounded-xl bg-white dark:bg-slate-800 text-black dark:text-slate-100 px-4 py-3.5 text-sm leading-relaxed shadow-[0_1px_3px_rgba(0,0,0,0.08)] ' +
+    'placeholder:text-black/40 dark:placeholder:text-slate-400 outline-none transition-all duration-150 focus:ring-2 focus:ring-focus-primary/50 resize-none',
   slider:
     'flex-1 h-5 appearance-none bg-transparent cursor-pointer ' +
     '[&::-webkit-slider-runnable-track]:h-2 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-focus-primary/15 ' +
@@ -65,7 +66,7 @@ const SEG_BTN =
   'h-9 px-4 rounded-lg text-[10px] font-bold uppercase tracking-[0.15em] flex items-center justify-center gap-1.5 ' +
   'transition-all duration-150';
 const SEG_ON = 'bg-focus-primary text-white shadow-sm';
-const SEG_OFF = 'text-black hover:bg-focus-primary/10';
+const SEG_OFF = 'text-slate-900 dark:text-slate-400 hover:bg-focus-primary/10';
 
 // ---------------------------------------------------------------------------
 // SegmentedTrack — equal-width options on a soft track. The selected option
