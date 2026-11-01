@@ -1,10 +1,8 @@
-// In-app Notification Center storage. Every notification the app would
-// otherwise only fire as a fleeting browser Notification (see
-// lib/notifications.ts) is also recorded here, scoped per account/guest the
-// same way history and recall cards are (see lib/storage.ts) — so it's
-// visible any time the student opens the app, not just in the instant the
-// OS notification popped up (and still visible at all if the student never
-// granted browser notification permission in the first place).
+// In-app Notification Center storage. Browser notifications (see
+// lib/notifications.ts) are recorded here too, alongside in-app-only items,
+// scoped per account/guest the same way history and recall cards are (see
+// lib/storage.ts). This keeps them visible after the OS notification
+// disappears and when browser notification permission wasn't granted.
 //
 // Deliberately plain localStorage, not Firestore — this is meant to be
 // lightweight, device-local "what did I miss" state, not a synced record.
@@ -55,6 +53,7 @@ export interface AddNotificationInput {
   title: string;
   body: string;
   targetTab?: NotificationTargetTab;
+  targetId?: string;
   dedupeTag?: string;
 }
 
@@ -118,6 +117,7 @@ export function upsertNotification(
     title: input.title,
     body: input.body,
     targetTab: input.targetTab,
+    targetId: input.targetId,
     type: input.type,
     createdAt: new Date().toISOString(),
   };

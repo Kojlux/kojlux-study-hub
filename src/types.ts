@@ -336,6 +336,8 @@ export interface NotificationItem {
   read: boolean;
   // Which tab tapping this notification should switch to, if any.
   targetTab?: NotificationTargetTab;
+  // Optional target within that tab, such as the exam that triggered a reminder.
+  targetId?: string;
   // Collapses repeat notifications of the same kind (e.g. re-checking the
   // same due exam on the next poll) into a single unread entry instead of
   // stacking duplicates — same idea as the browser Notification `tag` in

@@ -3,6 +3,7 @@ import { LogOut, LogIn, Flame, CheckSquare, CalendarDays, Settings, Plus, Chevro
 import { GRADE_LEVEL_OPTIONS } from '../constants';
 import { AgeBand, ExamEvent, HistoryItem } from '../types';
 import { NotificationSupportState } from '../lib/notifications';
+import { PushRegistrationStatus } from '../lib/push';
 import { parseDateOnly, formatDateOnly } from '../lib/examReminders';
 import { ExamSheet, examColor } from './CalendarScreen';
 import ThemeSwitcher from './ThemeSwitcher';
@@ -48,6 +49,9 @@ interface Props {
   // drift out of sync with each other.
   notifPermission: NotificationSupportState;
   onEnableNotifications: () => void;
+  pushRegistrationStatus: PushRegistrationStatus;
+  initialExamId: string | null;
+  onNotificationTargetHandled: () => void;
 }
 
 const AGE_BAND_OPTIONS = [
@@ -61,7 +65,8 @@ export default function ProfileScreen({
   ageBand, onDisplayNameChange, onAgeBandChange,
   isGuest, onSignOut, onSignIn, exams, history, onAddExam, onUpdateExam, onDeleteExam,
   onDeleteAccount,
-  notifPermission, onEnableNotifications,
+  notifPermission, onEnableNotifications, pushRegistrationStatus,
+  initialExamId, onNotificationTargetHandled,
 }: Props) {
   // Grade level, appearance, account email, and sign out/in used to live
   // inline on this screen. They're account/settings-flavored rather than
@@ -119,6 +124,14 @@ export default function ProfileScreen({
     const d = parseDateOnly(key);
     setView((v) => (v.month === d.getMonth() && v.year === d.getFullYear() ? v : { year: d.getFullYear(), month: d.getMonth() }));
   }, []);
+  useEffect(() => {
+    if (!initialExamId) return;
+    const exam = exams.find((item) => item.id === initialExamId);
+    if (!exam) return;
+    handleSelectDate(exam.date);
+    setSheetExam(exam);
+    onNotificationTargetHandled();
+  }, [initialExamId, exams, handleSelectDate, onNotificationTargetHandled]);
   const handleAddExam = useCallback<AddExamHandler>(() => setSheetExam('new'), []);
   const handleEditExam = useCallback<EditExamHandler>((exam) => setSheetExam(exam), []);
   const selectedExams = examsByDate.get(selectedKey) ?? [];
@@ -147,7 +160,7 @@ export default function ProfileScreen({
   };
 
   return (
-    <div className="-mx-5 sm:mx-auto sm:w-full sm:max-w-2xl pb-6 antialiased">
+    <div className="mx-auto w-full max-w-2xl pb-6 antialiased">
       <style>{`
         @keyframes dash-pop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         .animate-dash-pop { animation: dash-pop 220ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
@@ -233,7 +246,11 @@ export default function ProfileScreen({
                 onAgeBandSave={saveAgeBand}
               />
               <StreakMilestoneCard streak={streak} daysActive={activityDays.length} onOpen={openProgress} />
-              <PreferencesPanel permission={notifPermission} onEnable={onEnableNotifications} />
+              <PreferencesPanel
+                permission={notifPermission}
+                onEnable={onEnableNotifications}
+                pushStatus={pushRegistrationStatus}
+              />
               <LegalSection />
               <DestructiveAccountActions
                 isGuest={isGuest}
@@ -293,6 +310,7 @@ interface StreakMilestoneCardProps {
 interface PreferencesPanelProps {
   permission: NotificationSupportState;
   onEnable: () => void;
+  pushStatus: PushRegistrationStatus;
 }
 interface DestructiveAccountActionsProps {
   isGuest: boolean;
@@ -475,9 +493,9 @@ const StreakMilestoneCard = memo(function StreakMilestoneCard({ streak, daysActi
 // notifications?" banner on Home. Only the 'default' state gets an in-app
 // button: 'granted'/'denied' can only be changed from the browser's own site
 // settings (the Notification API can't re-prompt once denied).
-const NotificationStatus = memo(function NotificationStatus({ permission, onEnable }: PreferencesPanelProps) {
+const NotificationStatus = memo(function NotificationStatus({ permission, onEnable, pushStatus }: PreferencesPanelProps) {
   const statusText: Record<NotificationSupportState, string> = {
-    granted: 'Allowed',
+    granted: 'Allowed by browser',
     denied: 'Blocked',
     default: 'Not enabled yet',
     unsupported: 'Not supported on this device',
@@ -489,6 +507,13 @@ const NotificationStatus = memo(function NotificationStatus({ permission, onEnab
     unsupported: 'bg-slate-300 dark:bg-slate-600',
   };
   const Icon = permission === 'granted' ? BellRing : permission === 'denied' || permission === 'unsupported' ? BellOff : Bell;
+  const pushStatusText: Record<PushRegistrationStatus, string> = {
+    idle: 'Background delivery not checked',
+    checking: 'Setting up background delivery…',
+    registered: 'Background push is registered',
+    failed: 'Background push setup failed',
+    'local-only': 'Notifications are available while the app is open',
+  };
 
   return (
     <div>
@@ -503,9 +528,16 @@ const NotificationStatus = memo(function NotificationStatus({ permission, onEnab
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClasses[permission]}`} />
               {statusText[permission]}
             </p>
+            {permission === 'granted' && (
+              <p className={`mt-1 text-xs ${
+                pushStatus === 'failed' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'
+              }`}>
+                {pushStatusText[pushStatus]}
+              </p>
+            )}
           </div>
         </div>
-        {permission === 'default' && (
+        {permission === 'default' ? (
           <button
             type="button"
             onClick={onEnable}
@@ -513,7 +545,15 @@ const NotificationStatus = memo(function NotificationStatus({ permission, onEnab
           >
             Enable
           </button>
-        )}
+        ) : permission === 'granted' && pushStatus !== 'checking' ? (
+          <button
+            type="button"
+            onClick={onEnable}
+            className="shrink-0 h-9 px-4 rounded-full bg-focus-primary text-white text-xs font-semibold active:scale-95 transition"
+          >
+            {pushStatus === 'registered' ? 'Refresh' : 'Retry setup'}
+          </button>
+        ) : null}
       </div>
 
       {permission === 'denied' && (
@@ -540,7 +580,7 @@ const PreferencesPanel = memo(function PreferencesPanel({ permission, onEnable }
   return (
     <SettingsGroup label="Preferences">
       <div className={`${CARD_CLASS} divide-y divide-slate-100 dark:divide-slate-800`}>
-        <NotificationStatus permission={permission} onEnable={onEnable} />
+        <NotificationStatus permission={permission} onEnable={onEnable} pushStatus={pushStatus} />
         <div className="px-4 py-4">
           <span className={ROW_LABEL_CLASS}>Appearance</span>
           <div className="mt-2.5">

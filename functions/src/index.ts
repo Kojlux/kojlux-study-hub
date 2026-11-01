@@ -32,6 +32,12 @@ const db = admin.firestore();
 const messaging = admin.messaging();
 const WEB_PUSH_TTL_SECONDS = '2419200';
 
+function notificationUrl(tab: 'review' | 'profile', examId?: string): string {
+  const params = new URLSearchParams({ notification: '1', tab });
+  if (examId) params.set('examId', examId);
+  return `?${params.toString()}`;
+}
+
 export const cleanupDeletedUserData = functionsV1
   .runWith({ timeoutSeconds: 540 })
   .auth.user()
@@ -120,7 +126,10 @@ const cardKey = (c: DueDate) => `${c.id}:${c.dueAt}`;
 async function processUser(userDoc: admin.firestore.QueryDocumentSnapshot) {
   const data = userDoc.data();
   const tokens: string[] = data.fcmTokens || [];
-  if (tokens.length === 0) return;
+  if (tokens.length === 0) {
+    console.warn('Skipping reminders: user has no registered FCM token', { uid: userDoc.id });
+    return;
+  }
 
   const dueDates: DueDate[] = data.recallCardDueDates || [];
   const examReminders: ExamReminder[] = data.examReminders || [];
@@ -152,7 +161,7 @@ async function processUser(userDoc: admin.firestore.QueryDocumentSnapshot) {
       title: newlyDueCards.length === 1 ? 'A review is ready' : `${newlyDueCards.length} reviews are ready`,
       body: 'Head back to Kojlux Study Hub to keep your streak going.',
       tag: 'kojlux-reviews-ready',
-      url: '/',
+      url: notificationUrl('review'),
     });
     allResponses.push(r);
     if (r.successCount > 0) succeededCardKeys.push(...newlyDueCards.map(cardKey));
@@ -164,7 +173,7 @@ async function processUser(userDoc: admin.firestore.QueryDocumentSnapshot) {
       title: "Don't forget to study!",
       body: `Your exam "${exam.title}" is tomorrow. Tap here to review your materials.`,
       tag: `kojlux-exam-reminder-${exam.id}`,
-      url: '/',
+      url: notificationUrl('profile', exam.id),
     });
     allResponses.push(r);
     if (r.successCount > 0) succeededExamIds.push(exam.id);

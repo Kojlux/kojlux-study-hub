@@ -1,6 +1,8 @@
 import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
-import { doc, setDoc, arrayUnion } from 'firebase/firestore';
+import { arrayUnion, doc, runTransaction } from 'firebase/firestore';
 import { app, db } from '../firebase';
+
+export type PushRegistrationStatus = 'idle' | 'checking' | 'registered' | 'failed' | 'local-only';
 
 if (!app) {
   console.error(
@@ -15,28 +17,35 @@ const VAPID_KEY = 'BO8UFVwIO8lJS5tkoF1aYoUEsT61YYO078T3r-gobhR-TU3ieo2BWbqtoC9NF
 type ShowOptions = NotificationOptions & { renotify?: boolean; badge?: string };
 
 let unsubscribeForeground: (() => void) | null = null; // exactly one onMessage listener at a time
-let inFlight: Promise<string | null> | null = null;     // dedupes concurrent calls
+const inFlight = new Map<string, Promise<string | null>>();
 
-async function doRegister(uid: string): Promise<string | null> {
-  if (!app) return null;
+export async function registerNotificationServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     console.warn('[push] service workers unsupported in this browser');
     return null;
   }
-  if (!(await isSupported())) {
-    console.warn('[push] Firebase Messaging not supported here (needs secure context, Push API, IndexedDB)');
-    return null;
-  }
+
+  const swUrl = `${import.meta.env.BASE_URL}sw.js`;
+  const registration = await navigator.serviceWorker.register(swUrl, { updateViaCache: 'none' });
+  await navigator.serviceWorker.ready;
+  return registration;
+}
+
+async function doRegister(uid: string): Promise<string | null> {
+  if (!app) return null;
   if (Notification.permission !== 'granted') {
     console.warn('[push] notification permission is', Notification.permission);
     return null;
   }
-
   try {
-    const swUrl = `${import.meta.env.BASE_URL}sw.js`;
-    const registration = await navigator.serviceWorker.register(swUrl, { updateViaCache: 'none' });
+    if (!(await isSupported())) {
+      console.warn('[push] Firebase Messaging not supported here (needs secure context, Push API, IndexedDB)');
+      return null;
+    }
+
+    const registration = await registerNotificationServiceWorker();
+    if (!registration) return null;
     await registration.update();
-    await navigator.serviceWorker.ready;
 
     const messaging = getMessaging(app);
     const token = await getToken(messaging, {
@@ -49,7 +58,16 @@ async function doRegister(uid: string): Promise<string | null> {
     }
     console.info('[push] token acquired', `${token.slice(0, 12)}…`, 'sw scope:', registration.scope);
 
-    await setDoc(doc(db, 'users', uid), { fcmTokens: arrayUnion(token) }, { merge: true });
+    const userRef = doc(db, 'users', uid);
+    await runTransaction(db, async (transaction) => {
+      const userSnapshot = await transaction.get(userRef);
+      const userData = userSnapshot.data();
+      transaction.set(userRef, {
+        fcmTokens: arrayUnion(token),
+        notifiedCardKeys: Array.isArray(userData?.notifiedCardKeys) ? userData.notifiedCardKeys : [],
+        notifiedExamIds: Array.isArray(userData?.notifiedExamIds) ? userData.notifiedExamIds : [],
+      }, { merge: true });
+    });
 
     // Replace (never stack) the foreground listener.
     unsubscribeForeground?.();
@@ -62,7 +80,7 @@ async function doRegister(uid: string): Promise<string | null> {
         body: data.body,
         tag: data.tag || 'kojlux-notification',
         renotify: true,
-        data: { url: data.url || '/' },
+        data: { url: data.url || './' },
         icon: `${base}icon.png`,
         badge: `${base}notification-badge.svg`,
       };
@@ -79,6 +97,9 @@ async function doRegister(uid: string): Promise<string | null> {
 // App.tsx already calls this on load (effect keyed on user + permission) and
 // from the "Enable Notifications" click. Concurrent calls share one run.
 export function registerPushForUser(uid: string): Promise<string | null> {
-  if (!inFlight) inFlight = doRegister(uid).finally(() => { inFlight = null; });
-  return inFlight;
+  const existing = inFlight.get(uid);
+  if (existing) return existing;
+  const registration = doRegister(uid).finally(() => inFlight.delete(uid));
+  inFlight.set(uid, registration);
+  return registration;
 }

@@ -1,12 +1,15 @@
 // Thin wrapper around the browser Notification API.
 //
 // Reviews are scheduled by data (each RecallCard's `dueAt`, see
-// spacedRepetition.ts) but nothing pushes a notification while the tab is
-// closed — there's no service worker or push backend in this app. Instead,
-// while the app is open, App.tsx polls for cards that just became due and
-// fires a local notification through here. Permission is only ever
-// requested from a real click (see the banner in App.tsx), never
-// automatically, since browsers ignore or block silent/auto requests.
+// spacedRepetition.ts). App.tsx polls while open and fires local
+// notifications through here; signed-in users can also receive background
+// FCM pushes through lib/push.ts and the deployed Cloud Function.
+// Permission is only ever requested from a real click (see the banner in
+// App.tsx), never automatically, since browsers ignore or block silent/auto
+// requests.
+
+import type { NotificationTargetTab } from '../types';
+import { buildNotificationUrl } from './notificationLinks';
 
 export type NotificationSupportState = NotificationPermission | 'unsupported';
 
@@ -29,19 +32,46 @@ export async function requestNotificationPermission(): Promise<NotificationSuppo
   }
 }
 
-// Fires a single local notification letting the student know reviews are
-// ready. `tag` collapses repeats into one notification instead of stacking
-// a new one every time the poll in App.tsx runs.
-export function notifyReviewsReady(count: number) {
+async function showNotification(title: string, tag: string, url: string, body: string): Promise<void> {
   if (!isNotificationSupported() || Notification.permission !== 'granted') return;
   try {
-    new Notification(count === 1 ? 'A review is ready' : `${count} reviews are ready`, {
-      body: 'Head back to Kojlux Study Hub to keep your streak going.',
-      tag: 'kojlux-reviews-ready',
-    });
+    const base = import.meta.env.BASE_URL;
+    const options: NotificationOptions & { renotify?: boolean; badge?: string } = {
+      body,
+      tag,
+      renotify: true,
+      data: { url },
+      icon: `${base}icon.png`,
+      badge: `${base}notification-badge.svg`,
+    };
+    const registration = 'serviceWorker' in navigator
+      ? await navigator.serviceWorker.getRegistration()
+      : undefined;
+    if (registration) {
+      await registration.showNotification(title, options);
+      return;
+    }
+
+    const notification = new Notification(title, options);
+    notification.onclick = () => {
+      window.focus();
+      window.location.assign(url);
+    };
   } catch (err) {
     console.error('Failed to show notification', err);
   }
+}
+
+// Fires a single local notification letting the student know reviews are
+// ready. `tag` collapses repeats instead of stacking notifications.
+export function notifyReviewsReady(count: number): void {
+  const title = count === 1 ? 'A review is ready' : `${count} reviews are ready`;
+  void showNotification(
+    title,
+    'kojlux-reviews-ready',
+    buildNotificationUrl('review'),
+    'Head back to Kojlux Study Hub to keep your streak going.'
+  );
 }
 
 // The Study Calendar's 1-day-before exam reminder. `examId` is folded into
@@ -60,14 +90,11 @@ export function notifyReviewsReady(count: number) {
 // ever change this tag, change the matching one in functions/index.ts too
 // (they're separate deployable projects, so nothing enforces this
 // automatically — it's a manual "keep these two in sync" spot).
-export function notifyExamReminder(examTitle: string, examId: string) {
-  if (!isNotificationSupported() || Notification.permission !== 'granted') return;
-  try {
-    new Notification("Don't forget to study!", {
-      body: `Your exam "${examTitle}" is tomorrow. Tap here to review your materials.`,
-      tag: `kojlux-exam-reminder-${examId}`,
-    });
-  } catch (err) {
-    console.error('Failed to show exam reminder notification', err);
-  }
+export function notifyExamReminder(examTitle: string, examId: string): void {
+  void showNotification(
+    "Don't forget to study!",
+    `kojlux-exam-reminder-${examId}`,
+    buildNotificationUrl('profile', examId),
+    `Your exam "${examTitle}" is tomorrow. Tap here to review your materials.`
+  );
 }

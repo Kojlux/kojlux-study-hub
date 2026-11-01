@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { onAuthStateChanged, signOut, updateProfile, type User } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection as fsCollection, increment } from 'firebase/firestore';
 import { auth, db } from './firebase';
@@ -26,7 +26,7 @@ import {
 } from './lib/notificationCenter';
 import { loadDraft } from './lib/draftStore';
 import { GRADE_LEVEL_OPTIONS } from './constants';
-import { registerPushForUser } from './lib/push';
+import { PushRegistrationStatus, registerNotificationServiceWorker, registerPushForUser } from './lib/push';
 
 import AuthScreen from './components/AuthScreen';
 import StudyHome from './components/StudyHome';
@@ -44,6 +44,7 @@ import { fetchSharedCard, fetchSharedCollection } from './lib/sharedCards';
 import { cardFromSharedSnapshot } from './lib/sharedImport';
 import { getPendingImport, clearPendingImport } from './lib/pendingImport';
 import { makeCollection } from './lib/collections';
+import { clearNotificationLink, parseNotificationLink } from './lib/notificationLinks';
 
 const SCREEN_TITLES: Record<NavTab, string> = {
   home: 'Kojlux Study Hub',
@@ -65,6 +66,12 @@ export default function App() {
 }
 
 function AppContent() {
+  const [notificationLink] = useState(parseNotificationLink);
+  const [notificationExamId, setNotificationExamId] = useState<string | null>(notificationLink?.examId ?? null);
+  useEffect(() => {
+    if (notificationLink) clearNotificationLink();
+  }, []);
+
   const initialDeepLinkCardId = parseDeepLinkCardId();
   const initialDeepLinkCollectionId = parseDeepLinkCollectionId();
   const [deepLinkCardId, setDeepLinkCardId] = useState<string | null>(initialDeepLinkCardId);
@@ -120,7 +127,10 @@ function AppContent() {
   // stays local, same as it already does whenever `user` is null elsewhere
   // in this file), and `showAuthScreen` is only for whether the *gate* is
   // currently showing the sign-in form or its own Skip/Sign-In choice.
-  const [guestMode, setGuestMode] = useState<boolean>(() => loadLocal('kojlux_guest_mode', false) || Boolean(initialDeepLinkCardId || initialDeepLinkCollectionId));
+  const [guestMode, setGuestMode] = useState<boolean>(() =>
+    loadLocal('kojlux_guest_mode', false) ||
+    Boolean(initialDeepLinkCardId || initialDeepLinkCollectionId || notificationLink)
+  );
   const [showAuthScreen, setShowAuthScreen] = useState(deletionAuthRequested);
   useEffect(() => saveLocal('kojlux_guest_mode', guestMode), [guestMode]);
   // If a guest actually signs in later, they're no longer a guest.
@@ -155,18 +165,20 @@ function AppContent() {
   }, [scopeId]);
 
   // ---- Notification Center ----
-  // Every notification below (review-ready, exam reminders, quiz-resume) is
-  // recorded here in addition to being fired as a browser Notification, so
-  // it's visible any time the student opens the app — including when
-  // browser notifications were never granted. See lib/notificationCenter.ts.
+  // Review-ready and exam reminders are also fired as browser notifications;
+  // quiz-resume is in-app only. All are recorded here so they're visible any
+  // time the student opens the app, even without browser notification access.
+  // See lib/notificationCenter.ts.
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
   // ---- Review-ready notifications ----
-  // No service worker/push backend here, so this only works while the app is
-  // open: poll for cards that just became due and fire a local notification.
+  // Foreground polling provides local notifications for guests and remains
+  // the fallback; signed-in users can also receive background FCM pushes
+  // after permission is granted and push registration succeeds.
   // Permission is requested from the banner's button click, never silently.
   const [notifPermission, setNotifPermission] = useState<NotificationSupportState>(() => getNotificationPermission());
+  const [pushRegistrationStatus, setPushRegistrationStatus] = useState<PushRegistrationStatus>('idle');
   const [notifBannerDismissed, setNotifBannerDismissed] = useState(false);
 
   useEffect(() => {
@@ -179,11 +191,30 @@ function AppContent() {
     };
   }, []);
 
-  useEffect(() => {
-    if (user && notifPermission === 'granted') {
-      registerPushForUser(user.uid).catch((err) => console.error('Failed to enable push notifications', err));
+  const setupPushNotifications = useCallback(async (uid: string | null) => {
+    setPushRegistrationStatus('checking');
+    try {
+      const registration = await registerNotificationServiceWorker();
+      if (!registration) {
+        setPushRegistrationStatus('failed');
+        return;
+      }
+      if (!uid) {
+        setPushRegistrationStatus('local-only');
+        return;
+      }
+      const token = await registerPushForUser(uid);
+      setPushRegistrationStatus(token ? 'registered' : 'failed');
+    } catch (err) {
+      console.error('Failed to enable push notifications', err);
+      setPushRegistrationStatus('failed');
     }
-  }, [user, notifPermission]);
+  }, []);
+
+  useEffect(() => {
+    if (notifPermission === 'granted') void setupPushNotifications(user?.uid ?? null);
+    else setPushRegistrationStatus('idle');
+  }, [user, notifPermission, setupPushNotifications]);
 
   // Shared by the "enable notifications" banner and the always-visible
   // status row in Profile > Settings, so both stay in sync with a single
@@ -191,7 +222,7 @@ function AppContent() {
   const enableNotifications = async () => {
     const permission = await requestNotificationPermission();
     setNotifPermission(permission);
-    if (permission === 'granted' && user) registerPushForUser(user.uid);
+    if (permission === 'granted') await setupPushNotifications(user?.uid ?? null);
   };
 
   const completeAgeBand = (selectedAgeBand: AgeBand) => {
@@ -297,6 +328,7 @@ function AppContent() {
             title: "Don't forget to study!",
             body: `Your exam "${exam.title}" is tomorrow. Tap to review your materials.`,
             targetTab: 'profile',
+            targetId: exam.id,
             dedupeTag: `exam-reminder-${exam.id}`,
           })
         );
@@ -333,7 +365,8 @@ function AppContent() {
   }, []);
 
   // ---- Navigation ----
-  const [activeTab, setActiveTab] = useState<NavTab>('home');
+  const [activeTab, setActiveTab] = useState<NavTab>(() => notificationLink?.tab ?? 'home');
+  const handleNotificationTargetHandled = useCallback(() => setNotificationExamId(null), []);
   const [reviewCollectionRequest, setReviewCollectionRequest] = useState<string | null>(null);
   const [quizSourceSummary, setQuizSourceSummary] = useState<SummaryData | null>(null);
 
@@ -933,6 +966,9 @@ function AppContent() {
           onSelect={(item) => {
             if (scopeId) setNotifications(markNotificationRead(scopeId, item.id));
             setShowNotifications(false);
+            if (item.type === 'exam_reminder' && item.targetId) {
+              setNotificationExamId(item.targetId);
+            }
             if (item.targetTab === 'community' && isUnder13) {
               setActiveTab('home');
             } else if (item.targetTab) {
@@ -1035,6 +1071,9 @@ function AppContent() {
               onDeleteExam={deleteExam}
               notifPermission={notifPermission}
               onEnableNotifications={enableNotifications}
+              pushRegistrationStatus={pushRegistrationStatus}
+              initialExamId={notificationExamId}
+              onNotificationTargetHandled={handleNotificationTargetHandled}
             />
           )}
             </main>

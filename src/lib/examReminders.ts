@@ -4,22 +4,17 @@ import { ExamEvent } from '../types';
 // Study Calendar: exam reminder scheduling
 //
 // This mirrors the shape of spacedRepetition.ts: pure functions that decide
-// *when* something is due, with no side effects of their own. The actual
-// firing of a notification (and marking `reminderSent`) happens in App.tsx,
-// the same place that already polls recall cards for isDue() — see the
-// `checkExamReminders` effect there.
+// *when* something is due, with no side effects of their own. The in-app
+// notification and `reminderSent` update happen in App.tsx alongside the
+// recall-card poll; background delivery is handled by functions/src/index.ts.
 //
-// IMPORTANT — reliability while the app is closed: exactly like the review
-// notifications in lib/notifications.ts, there is no push backend or
-// service worker wired up here, so a reminder can only fire while the app
-// is open (foreground or backgrounded-but-not-killed) to run this check.
-// A student who never reopens the tab between now and the reminder time
-// won't get a push. Closing that gap for real needs a server that can wake
-// the device (Web Push + VAPID keys, or a native push service) — genuinely
-// reliable "OS background delivery" isn't something a client-only PWA can
-// promise on its own. Until that exists, the Calendar and Profile "upcoming
-// exams" views are the reliable fallback: the reminder is a bonus nudge,
-// not the only way the student finds out.
+// IMPORTANT — reliability while the app is closed: this client-side check
+// only runs while the app is open. Signed-in users can also receive
+// background FCM reminders through the deployed Cloud Function and service
+// worker; that path depends on browser support, notification permission,
+// successful push registration, and the Firebase function being deployed.
+// Guests and users without a working push setup rely on the client-side
+// check, so Calendar and Profile's upcoming-exams views remain the fallback.
 // ---------------------------------------------------------------------------
 
 // How long before the exam's date the reminder becomes due. Fixed at one
