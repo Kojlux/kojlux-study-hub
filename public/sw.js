@@ -34,7 +34,7 @@ messaging.onBackgroundMessage((payload) => {
     body: data.body || 'You have something to review.',
     tag: data.tag || 'kojlux-notification',
     renotify: true, // alert again even when replacing a same-tag notification
-    data: { url: data.url || self.registration.scope },
+    data: { url: data.url || './' },
     icon: `${self.registration.scope}icon.png`,
     badge: `${self.registration.scope}notification-badge.svg`,
   });

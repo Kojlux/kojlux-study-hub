@@ -33,7 +33,7 @@ const REQUIRED_VARS = [
   'VITE_FIREBASE_APP_ID',
 ];
 
-const missing = REQUIRED_VARS.filter((key) => !process.env[key]);
+const missing = REQUIRED_VARS.filter((key) => !process.env[key]?.trim());
 if (missing.length > 0) {
   // Fail loudly at build time instead of silently shipping a broken service
   // worker — this is exactly the failure mode we're fixing: a bad SW config
@@ -48,13 +48,23 @@ if (missing.length > 0) {
 }
 
 const firebaseConfig = {
-  apiKey: process.env.VITE_FIREBASE_API_KEY,
-  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.VITE_FIREBASE_APP_ID,
+  apiKey: process.env.VITE_FIREBASE_API_KEY.trim(),
+  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN.trim(),
+  projectId: process.env.VITE_FIREBASE_PROJECT_ID.trim(),
+  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET.trim(),
+  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID.trim(),
+  appId: process.env.VITE_FIREBASE_APP_ID.trim(),
 };
+
+const appIdPrefix = `1:${firebaseConfig.messagingSenderId}:web:`;
+if (!/^1:\d+:web:[A-Za-z0-9_-]+$/.test(firebaseConfig.appId) || !firebaseConfig.appId.startsWith(appIdPrefix)) {
+  console.error(
+    '[generate-sw] VITE_FIREBASE_APP_ID must be the Web App ID from Firebase Project settings ' +
+    '(format: 1:<project-number>:web:<app-id>) and its project number must match ' +
+    'VITE_FIREBASE_MESSAGING_SENDER_ID. Check the GitHub Actions secret; no service worker was generated.'
+  );
+  process.exit(1);
+}
 
 const template = fs.readFileSync(TEMPLATE_PATH, 'utf8');
 const firebaseConfigLiteral = JSON.stringify(firebaseConfig, null, 2);

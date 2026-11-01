@@ -16,14 +16,22 @@ import { getStorage } from 'firebase/storage';
 // Auth + Firestore remain, used to sync each student's grade level, study
 // streak, and spaced-repetition Review queue across devices.
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY.trim(),
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN.trim(),
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID.trim(),
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET.trim(),
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID.trim(),
+  appId: import.meta.env.VITE_FIREBASE_APP_ID.trim(),
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID?.trim(),
 };
+
+const appIdPrefix = `1:${firebaseConfig.messagingSenderId}:web:`;
+if (!/^1:\d+:web:[A-Za-z0-9_-]+$/.test(firebaseConfig.appId) || !firebaseConfig.appId.startsWith(appIdPrefix)) {
+  throw new Error(
+    '[firebase] VITE_FIREBASE_APP_ID must be the Web App ID from Firebase Project settings ' +
+    'and match VITE_FIREBASE_MESSAGING_SENDER_ID.'
+  );
+}
 
 export const app = initializeApp(firebaseConfig);
 
