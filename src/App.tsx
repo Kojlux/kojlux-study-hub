@@ -14,6 +14,7 @@ import {
   requestNotificationPermission,
   notifyReviewsReady,
   notifyExamReminder,
+  dismissBrowserNotification,
   NotificationSupportState,
 } from './lib/notifications';
 import {
@@ -321,6 +322,7 @@ function AppContent() {
     if (due.length === 0) return;
     due.forEach((exam) => {
       notifyExamReminder(exam.title, exam.id);
+      upsertCloudItem('examEvents', exam.id, { ...exam, reminderSent: true });
       if (scopeIdRef.current) {
         setNotifications(
           addNotification(scopeIdRef.current, {
@@ -961,9 +963,13 @@ function AppContent() {
           notifications={notifications}
           onClose={() => setShowNotifications(false)}
           onMarkAllRead={() => {
-            if (scopeId) setNotifications(markAllNotificationsRead(scopeId));
+            if (scopeId) {
+              notifications.forEach((item) => void dismissBrowserNotification(item));
+              setNotifications(markAllNotificationsRead(scopeId));
+            }
           }}
           onSelect={(item) => {
+            void dismissBrowserNotification(item);
             if (scopeId) setNotifications(markNotificationRead(scopeId, item.id));
             setShowNotifications(false);
             if (item.type === 'exam_reminder' && item.targetId) {

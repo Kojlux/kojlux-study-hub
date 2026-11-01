@@ -8,7 +8,7 @@
 // App.tsx), never automatically, since browsers ignore or block silent/auto
 // requests.
 
-import type { NotificationTargetTab } from '../types';
+import type { NotificationItem, NotificationTargetTab } from '../types';
 import { buildNotificationUrl } from './notificationLinks';
 
 export type NotificationSupportState = NotificationPermission | 'unsupported';
@@ -32,14 +32,20 @@ export async function requestNotificationPermission(): Promise<NotificationSuppo
   }
 }
 
-async function showNotification(title: string, tag: string, url: string, body: string): Promise<void> {
+async function showNotification(
+  title: string,
+  tag: string,
+  url: string,
+  body: string,
+  renotify = true
+): Promise<void> {
   if (!isNotificationSupported() || Notification.permission !== 'granted') return;
   try {
     const base = import.meta.env.BASE_URL;
     const options: NotificationOptions & { renotify?: boolean; badge?: string } = {
       body,
       tag,
-      renotify: true,
+      renotify,
       data: { url },
       icon: `${base}icon.png`,
       badge: `${base}notification-badge.svg`,
@@ -59,6 +65,24 @@ async function showNotification(title: string, tag: string, url: string, body: s
     };
   } catch (err) {
     console.error('Failed to show notification', err);
+  }
+}
+
+export async function dismissBrowserNotification(item: NotificationItem): Promise<void> {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+  const tag = item.type === 'review_ready'
+    ? 'kojlux-reviews-ready'
+    : item.type === 'exam_reminder' && item.targetId
+      ? `kojlux-exam-reminder-${item.targetId}`
+      : null;
+  if (!tag) return;
+
+  try {
+    const registration = await navigator.serviceWorker.getRegistration();
+    const notifications = await registration?.getNotifications({ tag });
+    notifications?.forEach((notification) => notification.close());
+  } catch (err) {
+    console.error('Failed to dismiss browser notification', err);
   }
 }
 
@@ -95,6 +119,7 @@ export function notifyExamReminder(examTitle: string, examId: string): void {
     "Don't forget to study!",
     `kojlux-exam-reminder-${examId}`,
     buildNotificationUrl('profile', examId),
-    `Your exam "${examTitle}" is tomorrow. Tap here to review your materials.`
+    `Your exam "${examTitle}" is tomorrow. Tap here to review your materials.`,
+    false
   );
 }

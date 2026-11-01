@@ -1,4 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
-  <path fill="#000" d="M48 28c-11-8-25-8-38-3v48c14-5 27-4 38 4 11-8 24-9 38-4V25c-13-5-27-5-38 3Zm-6 37c-8-4-17-5-26-3V33c9-2 18-1 26 3v29Zm38-3c-9-2-18-1-26 3V36c8-4 17-5 26-3v29Z"/>
-  <path fill="#000" d="m73 9 3.5 8.5L85 21l-8.5 3.5L73 33l-3.5-8.5L61 21l8.5-3.5L73 9Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none" stroke="#000" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Rounded-square frame (like Instagram) -->
+  <rect x="7" y="7" width="82" height="82" rx="24"/>
+
+  <!-- Open book -->
+  <path d="M48 33C42 29 33 28 24 31V63C33 60 42 61 48 65C54 61 63 60 72 63V31C63 28 54 29 48 33Z"/>
+
+  <!-- Spine, broken around the star -->
+  <path d="M48 34V37M48 59V64"/>
+
+  <!-- Star in the middle of the book -->
+  <path fill="#000" stroke-width="2" d="M48 38L51.2 44.8L58 48L51.2 51.2L48 58L44.8 51.2L38 48L44.8 44.8Z"/>
 </svg>

@@ -33,7 +33,7 @@ messaging.onBackgroundMessage((payload) => {
   return self.registration.showNotification(data.title || 'Kojlux Study Hub', {
     body: data.body || 'You have something to review.',
     tag: data.tag || 'kojlux-notification',
-    renotify: true, // alert again even when replacing a same-tag notification
+    renotify: !data.tag?.startsWith('kojlux-exam-reminder-'),
     data: { url: data.url || './' },
     icon: `${self.registration.scope}icon.png`,
     badge: `${self.registration.scope}notification-badge.svg`,

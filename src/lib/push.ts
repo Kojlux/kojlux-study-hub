@@ -79,7 +79,7 @@ async function doRegister(uid: string): Promise<string | null> {
       const options: ShowOptions = {
         body: data.body,
         tag: data.tag || 'kojlux-notification',
-        renotify: true,
+        renotify: !data.tag?.startsWith('kojlux-exam-reminder-'),
         data: { url: data.url || './' },
         icon: `${base}icon.png`,
         badge: `${base}notification-badge.svg`,
