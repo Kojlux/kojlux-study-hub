@@ -963,13 +963,17 @@ function AppContent() {
       ) : (
         <div className="min-h-screen bg-focus-bg dark:bg-[#0B0F19] md:pl-20 lg:pl-60">
           <div className="w-full max-w-md md:max-w-3xl lg:max-w-5xl xl:max-w-6xl mx-auto min-h-screen flex flex-col">
-            <header className="sticky top-0 z-30 bg-focus-bg/90 dark:bg-slate-950/90 backdrop-blur-md px-5 pt-6 pb-3 flex items-center justify-between gap-3">
-              <h1 className="text-sm font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                {SCREEN_TITLES[activeTab]}
-              </h1>
-            </header>
+            {/* The Dashboard (profile) screen draws its own title, so the shared
+                top bar is skipped there to avoid showing "Dashboard" twice. */}
+            {activeTab !== 'profile' && (
+              <header className="sticky top-0 z-30 bg-focus-bg/90 dark:bg-slate-950/90 backdrop-blur-md px-5 pt-6 pb-3 flex items-center justify-between gap-3">
+                <h1 className="text-sm font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                  {SCREEN_TITLES[activeTab]}
+                </h1>
+              </header>
+            )}
             {appNotices}
-            <main className="flex-1 px-5 pb-28 md:pb-10">
+            <main className={`flex-1 px-5 pb-28 md:pb-10 ${activeTab === 'profile' ? 'pt-6' : ''}`}>
 
           {activeTab === 'quiz' && (
             <QuizBuilderOrSummarizer

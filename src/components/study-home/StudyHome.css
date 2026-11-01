@@ -59,10 +59,6 @@
   transition: grid-template-columns 0.4s var(--kh-spring);
 }
 
-.dark .kh-shell {
-  --kh-canvas: #0B0F19;
-}
-
 .kh-shell[data-collapsed='true'] {
   --kh-nav-w: 80px;
 }
@@ -194,8 +190,8 @@
 }
 
 .dark .kh-global-mobile {
-  border-top-color: rgb(30 41 59 / 0.7);
-  background: #161D30;
+  border-top-color: var(--app-border);
+  background: var(--app-surface);
 }
 
 .kh-mobile-overlay {
@@ -1033,9 +1029,14 @@
 }
 
 .dark .kh-cta {
-  background: #7C3AED;
+  background: var(--kh-accent);
   color: #fff;
   font-weight: 500;
+  box-shadow: none;
+}
+
+.dark .kh-cta:hover {
+  box-shadow: none;
 }
 
 .kh-cta:hover {
@@ -1093,25 +1094,66 @@
 
 .dark .kh-collection,
 .dark .kh-collection::before {
-  background: #161D30;
+  background: var(--kh-surface);
 }
 
 .dark .kh-collection {
-  border: 1px solid rgb(30 41 59 / 0.5);
+  border: 1px solid var(--kh-border);
+  box-shadow: none;
+}
+
+.dark .kh-collection:hover,
+.dark .kh-collection:focus-visible {
+  box-shadow: none;
 }
 
 .dark .kh-collection-meta,
 .dark .kh-folder-empty,
 .dark .kh-fc-top .kh-chip {
-  color: #94a3b8;
+  color: var(--kh-text-muted);
+}
+
+/* Dark themes: the folder and its cards are flat theme surfaces. No gradient,
+   no white inner highlight, no stacked drop shadows (that's what read as a gray
+   film inside the borders). */
+.dark .kh-folder-body {
+  background: var(--kh-surface);
+  border: 1px solid var(--kh-border);
+  box-shadow: none;
 }
 
 .dark .kh-fc {
-  background: #0F1524;
+  background: var(--kh-canvas);
+  border: 1px solid var(--kh-border);
+  box-shadow: none;
+}
+
+.dark .kh-fc:hover {
+  box-shadow: none;
+}
+
+.dark .kh-fc-wrap::before,
+.dark .kh-fc-wrap::after {
+  background: var(--kh-canvas);
+  border: 1px solid var(--kh-border);
+  box-shadow: none;
+}
+
+.dark .kh-tool,
+.dark .kh-recent-card,
+.dark .kh-streak {
+  box-shadow: none;
+  border: 1px solid var(--kh-border);
+}
+
+.dark .kh-tool:hover,
+.dark .kh-tool:focus-visible,
+.dark .kh-streak:hover {
+  box-shadow: none;
 }
 
 .dark .kh-fc-face {
-  color: #e2e8f0;
+  color: var(--kh-text);
 }
 
 /* Folder tab peeking above each row. */
@@ -1307,7 +1349,7 @@
   }
 
   .dark .kh-global-mobile {
-    background: #161D30;
+    background: var(--app-surface);
   }
 
   .kh-mobile-handle {
@@ -1354,7 +1396,7 @@
   }
 
   .dark .kh-mobile-icon {
-    color: #64748b;
+    color: var(--app-text-muted);
   }
 
   .kh-mobile-icon[aria-current='page'] {
@@ -1363,8 +1405,8 @@
   }
 
   .dark .kh-mobile-icon[aria-current='page'] {
-    background: rgb(167 139 250 / 0.15);
-    color: #a78bfa;
+    background: var(--app-accent-soft);
+    color: var(--app-accent);
   }
 
   .dark .kh-nav {

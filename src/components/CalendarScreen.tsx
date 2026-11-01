@@ -235,7 +235,7 @@ export default function CalendarScreen({ exams, history, onAddExam, onUpdateExam
   );
 }
 
-function ExamSheet({
+export function ExamSheet({
   exam,
   defaultDate,
   history,

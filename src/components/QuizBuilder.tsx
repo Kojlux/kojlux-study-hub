@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Upload, Camera, Sparkles, CheckCircle, XCircle, RefreshCw, Printer,
-  ChevronRight, Trash, Layers, FileText,
+  ChevronRight, Trash, FileText,
 } from 'lucide-react';
 import { loadDraft, saveDraft, clearDraft } from '../lib/draftStore';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
@@ -17,7 +17,7 @@ import {
 import { makeRecallCard } from '../lib/spacedRepetition';
 import { RecallCard } from '../types';
 import { Subject, subjectPromptHint, buildStructuredFieldsClause } from '../lib/subjects';
-import TopicPicker from './TopicPicker';
+import TopicPicker, { SegmentedTrack, ui } from './TopicPicker';
 import SubjectContentBlocks from './blocks/SubjectContentBlocks';
 import { renderStructuredContentToPdf } from '../lib/pdfStructuredContent';
 import { sanitizeForPdf } from '../lib/pdfTextSanitizer';
@@ -30,6 +30,9 @@ interface Props {
   onAddRecallCards: (cards: RecallCard[]) => void;
   onError: (msg: string) => void;
 }
+
+// Max-width only: the app shell already supplies side padding.
+const WRAP = 'mx-auto w-full max-w-2xl';
 
 export default function QuizBuilder({ gradeLevel, summarySource, onSummarySourceConsumed, onSaveHistory, onAddRecallCards, onError }: Props) {
   const [file, setFile] = useState<StudyFile | null>(null);
@@ -471,30 +474,30 @@ ${rules}`;
   // ---- Results view ----
   if (quizData && evaluation) {
     return (
-      <div className="space-y-5">
-        <div className="bg-focus-primary rounded-3xl p-6 text-center text-white shadow-lg shadow-focus-primary/20">
-          <p className="text-xs font-bold uppercase tracking-widest text-white/70">Score</p>
-          <p className="text-4xl font-black mt-1">{evaluation.score}/{evaluation.totalQuestions}</p>
-          <p className="text-xs text-white/80 mt-2 leading-relaxed">{evaluation.overallFeedback}</p>
+      <div className={`${WRAP} space-y-6`}>
+        <div className="rounded-2xl bg-focus-primary text-white p-6 sm:p-8 shadow-lg shadow-focus-primary/25">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white">Score</p>
+          <p className="text-6xl font-black tracking-tighter mt-2 tabular-nums">{evaluation.score}/{evaluation.totalQuestions}</p>
+          <p className="text-sm text-white mt-4 leading-relaxed">{evaluation.overallFeedback}</p>
         </div>
         <SubjectContentBlocks data={quizData} />
-        <div className="space-y-3 md:space-y-0 md:grid md:grid-cols-2 md:gap-3">
+        <div className="space-y-3">
           {quizData.questions.map((q, i) => {
             const ev = evaluation.evaluations.find((e) => e.questionIndex === i);
             return (
-              <div key={i} className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4">
-                <div className="flex items-start gap-2.5">
+              <div key={i} className={ui.tile}>
+                <div className="flex items-start gap-3">
                   {ev?.isCorrect ? (
-                    <CheckCircle className="w-4.5 h-4.5 text-focus-sage shrink-0 mt-0.5" />
+                    <CheckCircle className="w-5 h-5 text-focus-primary shrink-0 mt-0.5" />
                   ) : (
-                    <XCircle className="w-4.5 h-4.5 text-rose-500 shrink-0 mt-0.5" />
+                    <XCircle className="w-5 h-5 text-black shrink-0 mt-0.5" />
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{q.question}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Your answer: {userAnswers[i] || '(blank)'}</p>
-                    {!ev?.isCorrect && <p className="text-xs text-focus-sage-dark dark:text-focus-sage mt-1 font-semibold">Correct: {q.correctAnswer}</p>}
+                    <p className="text-sm font-bold text-black">{q.question}</p>
+                    <p className="text-xs text-black mt-2">Your answer: {userAnswers[i] || '(blank)'}</p>
+                    {!ev?.isCorrect && <p className="text-xs text-black mt-1 font-bold">Correct: {q.correctAnswer}</p>}
                     {(ev?.feedback || q.explanation) && (
-                      <p className="text-xs text-slate-400 mt-1.5 italic">{ev?.feedback || q.explanation}</p>
+                      <p className="text-xs text-black mt-2 italic leading-relaxed">{ev?.feedback || q.explanation}</p>
                     )}
                   </div>
                 </div>
@@ -502,16 +505,16 @@ ${rules}`;
             );
           })}
         </div>
-        <div className="space-y-2.5">
-          <button onClick={resetQuiz} className="w-full py-3 bg-focus-primary text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2">
-            <RefreshCw className="w-4 h-4" /> New Quiz
+        <div className="space-y-4">
+          <button onClick={resetQuiz} className={ui.ctaFull}>
+            <RefreshCw className="w-4 h-4 shrink-0" /> <span className="leading-none">New quiz</span>
           </button>
-          <div className="flex gap-2.5">
-            <button onClick={exportPdf} className="flex-1 py-3 px-4 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
-              <Printer className="w-4 h-4" /> PDF
+          <div className={ui.btnGroup}>
+            <button onClick={exportPdf} className={ui.btnCell}>
+              <Printer className="w-4 h-4 shrink-0" /> PDF
             </button>
-            <button onClick={exportGradedPdf} className="flex-1 py-3 px-4 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
-              <Printer className="w-4 h-4" /> Print Graded Work
+            <button onClick={exportGradedPdf} className={ui.btnCell}>
+              <Printer className="w-4 h-4 shrink-0" /> Print graded work
             </button>
           </div>
         </div>
@@ -528,40 +531,40 @@ ${rules}`;
     const currentAnswered = (userAnswers[currentQ] || '').trim().length > 0;
 
     return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-black text-slate-900 dark:text-white">{quizData.title}</h2>
-          <button onClick={resetQuiz} className="text-xs text-slate-400 hover:text-rose-500 flex items-center gap-1">
+      <div className={`${WRAP} space-y-6`}>
+        <div className="flex items-start justify-between gap-4">
+          <h2 className={ui.h1}>{quizData.title}</h2>
+          <button onClick={resetQuiz} className={`${ui.link} pt-2 shrink-0`}>
             <Trash className="w-3.5 h-3.5" /> Discard
           </button>
         </div>
 
         {/* Progress */}
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">
-            Question {currentQ + 1} of {total}
-          </span>
-          <button
-            onClick={exportPdf}
-            className="text-[11px] font-bold text-slate-400 hover:text-focus-primary flex items-center gap-1"
-          >
-            <Printer className="w-3.5 h-3.5" /> Print blank copy
-          </button>
-        </div>
-        <div className="flex gap-1.5">
-          {quizData.questions.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setCurrentQ(i)}
-              className={`h-1.5 flex-1 rounded-full transition-all ${
-                i === currentQ
-                  ? 'bg-focus-primary'
-                  : (userAnswers[i] || '').trim().length > 0
-                  ? 'bg-focus-sage'
-                  : 'bg-slate-200 dark:bg-slate-700'
-              }`}
-            />
-          ))}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-bold tracking-[0.2em] text-black uppercase tabular-nums">
+              Question {currentQ + 1} of {total}
+            </span>
+            <button onClick={exportPdf} className={ui.link}>
+              <Printer className="w-3.5 h-3.5" /> Print blank copy
+            </button>
+          </div>
+          <div className="flex gap-1">
+            {quizData.questions.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setCurrentQ(i)}
+                aria-label={`Go to question ${i + 1}`}
+                className={`h-1.5 flex-1 rounded-full transition-colors duration-150 ${
+                  i === currentQ
+                    ? 'bg-focus-primary'
+                    : (userAnswers[i] || '').trim().length > 0
+                    ? 'bg-black'
+                    : 'bg-focus-primary/15'
+                }`}
+              />
+            ))}
+          </div>
         </div>
 
         {/* Dynamic Forms: passage, formulas/solution steps, process flow,
@@ -570,18 +573,18 @@ ${rules}`;
         <SubjectContentBlocks data={quizData} />
 
         {/* Current question only */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 min-h-[220px] flex flex-col">
-          <p className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3">{currentQ + 1}. {q.question}</p>
+        <div className="rounded-2xl bg-focus-primary/5 p-5 sm:p-6 min-h-[220px] flex flex-col">
+          <p className="text-base font-bold text-black mb-5 leading-snug">{currentQ + 1}. {q.question}</p>
           {q.type === 'multiple-choice' && q.options ? (
             <div className="space-y-2">
               {q.options.map((opt, oi) => (
                 <button
                   key={oi}
                   onClick={() => setUserAnswers((p) => ({ ...p, [currentQ]: opt }))}
-                  className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-semibold border transition ${
+                  className={`w-full text-left px-4 py-3 rounded-xl text-sm transition-all duration-150 ${
                     userAnswers[currentQ] === opt
-                      ? 'bg-focus-primary/10 border-focus-primary text-focus-primary'
-                      : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                      ? 'bg-focus-primary text-white font-bold'
+                      : 'bg-white text-black font-medium shadow-[0_1px_3px_rgba(0,0,0,0.08)] hover:shadow-md'
                   }`}
                 >
                   {opt}
@@ -593,18 +596,18 @@ ${rules}`;
               value={userAnswers[currentQ] || ''}
               onChange={(e) => setUserAnswers((p) => ({ ...p, [currentQ]: e.target.value }))}
               placeholder="Type your answer — try to explain it in your own words."
-              className="w-full flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-focus-primary resize-none"
+              className={`${ui.fieldSolid} flex-1`}
               rows={4}
             />
           )}
         </div>
 
         {/* Nav controls — grading only happens on final Submit, never per-question */}
-        <div className="flex gap-2.5">
+        <div className="flex gap-4">
           <button
             onClick={() => setCurrentQ((i) => Math.max(0, i - 1))}
             disabled={currentQ === 0}
-            className="py-3 px-5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl text-sm font-bold disabled:opacity-40"
+            className={`${ui.btn} h-14 px-8 disabled:opacity-40`}
           >
             Back
           </button>
@@ -612,18 +615,18 @@ ${rules}`;
             <button
               onClick={submitQuiz}
               disabled={!allAnswered || isEvaluating}
-              className="flex-1 py-3 bg-focus-primary text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2"
+              className={`${ui.cta} flex-1`}
             >
-              {isEvaluating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ChevronRight className="w-4 h-4" />}
-              {isEvaluating ? 'Grading…' : allAnswered ? 'Submit Quiz' : 'Answer all questions to submit'}
+              {isEvaluating ? <RefreshCw className="w-4 h-4 animate-spin shrink-0" /> : <ChevronRight className="w-4 h-4 shrink-0" />}
+              <span className="leading-none">{isEvaluating ? 'Grading…' : allAnswered ? 'Submit quiz' : 'Answer all questions to submit'}</span>
             </button>
           ) : (
             <button
               onClick={() => setCurrentQ((i) => Math.min(total - 1, i + 1))}
               disabled={!currentAnswered}
-              className="flex-1 py-3 bg-focus-primary text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2"
+              className={`${ui.cta} flex-1`}
             >
-              Next <ChevronRight className="w-4 h-4" />
+              <span className="leading-none">Next</span> <ChevronRight className="w-4 h-4 shrink-0" />
             </button>
           )}
         </div>
@@ -633,147 +636,135 @@ ${rules}`;
 
   // ---- Builder form ----
   return (
-    <div className="space-y-5">
-      <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-6 text-center bg-white dark:bg-[#0F1524] space-y-3">
-        {file ? (
-          <div className="space-y-2">
-            {file.kind === 'image' && <img src={file.dataUrl} className="max-h-40 mx-auto rounded-lg object-contain" />}
-            {file.kind === 'pdf' && (
-              <div className="flex items-center justify-center gap-2 text-slate-500 dark:text-slate-400">
-                <FileText className="w-6 h-6 shrink-0" />
-                <span className="text-xs font-semibold truncate max-w-[220px]">{file.name}</span>
+    <div className={`${WRAP} space-y-6`}>
+      <div className={ui.frame}>
+        <section className={ui.section}>
+          <span className={ui.eyebrow}>Source</span>
+          <div className={ui.dropzone}>
+            {file ? (
+              <div className="space-y-3">
+                {file.kind === 'image' && <img src={file.dataUrl} className="max-h-40 mx-auto rounded-xl object-contain" />}
+                {file.kind === 'pdf' && (
+                  <div className="flex items-center justify-center gap-2 text-black">
+                    <FileText className="w-6 h-6 shrink-0" />
+                    <span className="text-xs font-bold truncate max-w-[220px]">{file.name}</span>
+                  </div>
+                )}
+                {file.kind === 'video' && (
+                  <div className="space-y-2">
+                    <video src={file.dataUrl} controls className="max-h-40 mx-auto rounded-xl" />
+                    <p className="text-xs font-bold text-black truncate">{file.name}</p>
+                  </div>
+                )}
+                <button type="button" onClick={() => setFile(null)} className={ui.link}>
+                  Remove file
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <Upload className="w-7 h-7 mx-auto text-black" strokeWidth={1.5} />
+                <p className="text-sm font-medium text-black leading-relaxed">Add a photo, PDF, or video of your notes or textbook page</p>
               </div>
             )}
-            {file.kind === 'video' && (
-              <div className="space-y-2">
-                <video src={file.dataUrl} controls className="max-h-40 mx-auto rounded-lg" />
-                <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate">{file.name}</p>
-              </div>
-            )}
-            <button type="button" onClick={() => setFile(null)} className="text-[11px] font-bold text-slate-400 hover:text-rose-500">
-              Remove file
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-2 text-gray-400 dark:text-slate-400">
-            <Upload className="w-6 h-6 mx-auto" />
-            <p className="text-xs font-semibold">Add a photo, PDF, or video of your notes or textbook page</p>
-          </div>
-        )}
-        <div className="flex gap-2.5">
-          <button
-            type="button"
-            onClick={() => uploadInputRef.current?.click()}
-            className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-slate-50 dark:bg-[#161D30] border border-slate-200 dark:border-slate-700 text-gray-600 dark:text-slate-200 hover:border-focus-primary transition"
-          >
-            <Upload className="w-3.5 h-3.5" /> Upload File
-          </button>
-          <button
-            type="button"
-            onClick={() => cameraInputRef.current?.click()}
-            className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-slate-50 dark:bg-[#161D30] border border-slate-200 dark:border-slate-700 text-gray-600 dark:text-slate-200 hover:border-focus-primary transition"
-          >
-            <Camera className="w-3.5 h-3.5" /> Take Photo
-          </button>
-        </div>
-        {/* Upload from files — image, PDF, or video; no capture attribute so mobile browsers offer the full picker, not just the camera */}
-        <input
-          ref={uploadInputRef}
-          type="file"
-          accept={STUDY_FILE_ACCEPT}
-          className="hidden"
-          onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-        />
-        {/* Take a new photo — capture="environment" opens the camera directly. Camera capture is still photo-only. */}
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-        />
-      </div>
-
-      <TopicPicker
-        subject={subject}
-        onSubjectChange={setSubject}
-        mode={inputMode}
-        onModeChange={setInputMode}
-        value={textInput}
-        onValueChange={setTextInput}
-        hasFile={!!file}
-      />
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <div className="flex items-center justify-between mb-1.5 gap-2">
-            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase">Questions: {questionCount}</span>
+            <div className={ui.btnGroup}>
+              <button type="button" onClick={() => uploadInputRef.current?.click()} className={ui.btnCell}>
+                <Upload className="w-3.5 h-3.5" /> Upload file
+              </button>
+              <button type="button" onClick={() => cameraInputRef.current?.click()} className={ui.btnCell}>
+                <Camera className="w-3.5 h-3.5" /> Take photo
+              </button>
+            </div>
+            {/* Upload from files — image, PDF, or video; no capture attribute so mobile browsers offer the full picker, not just the camera */}
             <input
-              type="number"
-              inputMode="numeric"
-              min={0}
-              max={50}
-              value={questionCount}
-              onChange={(e) => {
-                const raw = e.target.value;
-                if (raw === '') { setQuestionCount(''); return; }
-                const parsed = Number(raw);
-                if (!Number.isNaN(parsed)) setQuestionCount(Math.round(parsed));
-              }}
-              onBlur={() => setQuestionCount((c) => Math.min(50, Math.max(0, c === '' ? 0 : c)))}
-              aria-label="Question count"
-              className="w-14 py-1 text-center text-xs font-bold bg-slate-50 dark:bg-[#161D30] border border-slate-200 dark:border-slate-800 rounded-lg text-gray-700 dark:text-slate-200 outline-none focus:border-focus-primary [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              ref={uploadInputRef}
+              type="file"
+              accept={STUDY_FILE_ACCEPT}
+              className="hidden"
+              onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+            />
+            {/* Take a new photo — capture="environment" opens the camera directly. Camera capture is still photo-only. */}
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
             />
           </div>
-          <input
-            type="range"
-            min={3}
-            max={10}
-            value={questionCount === '' ? 3 : Math.min(10, Math.max(3, questionCount))}
-            onChange={(e) => setQuestionCount(Number(e.target.value))}
-            className="w-full accent-focus-primary bg-transparent dark:bg-slate-800"
+        </section>
+
+        <section className={ui.section}>
+          <TopicPicker
+            subject={subject}
+            onSubjectChange={setSubject}
+            mode={inputMode}
+            onModeChange={setInputMode}
+            value={textInput}
+            onValueChange={setTextInput}
+            hasFile={!!file}
           />
-        </div>
-        <div>
-          <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1.5">Difficulty</span>
-          <div className="flex gap-1.5">
-            {(['easy', 'medium', 'hard'] as const).map((d) => (
-              <button
-                key={d}
-                onClick={() => setDifficulty(d)}
-                className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase border ${
-                  difficulty === d ? 'bg-focus-primary text-white border-focus-primary' : 'bg-slate-50 dark:bg-[#161D30] text-gray-500 dark:text-slate-300 border-slate-200 dark:border-slate-800'
-                }`}
-              >
-                {d}
-              </button>
-            ))}
+        </section>
+
+        <section className={`${ui.section} space-y-8`}>
+          <div>
+            <span className={ui.eyebrow}>Questions</span>
+            <div className="flex items-center gap-4">
+              <input
+                type="range"
+                min={3}
+                max={10}
+                value={questionCount === '' ? 3 : Math.min(10, Math.max(3, questionCount))}
+                onChange={(e) => setQuestionCount(Number(e.target.value))}
+                aria-label="Question count slider"
+                className={ui.slider}
+              />
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={50}
+                value={questionCount}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') { setQuestionCount(''); return; }
+                  const parsed = Number(raw);
+                  if (!Number.isNaN(parsed)) setQuestionCount(Math.round(parsed));
+                }}
+                onBlur={() => setQuestionCount((c) => Math.min(50, Math.max(0, c === '' ? 0 : c)))}
+                aria-label="Question count"
+                className="w-14 h-10 shrink-0 text-center text-sm font-bold tabular-nums rounded-xl bg-focus-primary/10 text-focus-primary outline-none transition-all duration-150 focus:ring-2 focus:ring-focus-primary/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+            </div>
           </div>
-        </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div>
+              <span className={ui.eyebrow}>Difficulty</span>
+              <SegmentedTrack
+                label="Difficulty"
+                options={['easy', 'medium', 'hard'] as const}
+                value={difficulty}
+                onChange={setDifficulty}
+              />
+            </div>
+            <div>
+              <span className={ui.eyebrow}>Format</span>
+              <SegmentedTrack
+                label="Quiz format"
+                options={['multiple-choice', 'short-answer'] as const}
+                value={quizType}
+                onChange={setQuizType}
+                renderOption={(t) => (t === 'multiple-choice' ? 'Multiple choice' : 'Short answer')}
+              />
+            </div>
+          </div>
+        </section>
       </div>
 
-      <div className="flex gap-1.5">
-        {(['multiple-choice', 'short-answer'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setQuizType(t)}
-            className={`flex-1 py-2.5 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 ${
-              quizType === t ? 'bg-focus-primary text-white border-focus-primary' : 'bg-slate-50 dark:bg-[#161D30] text-gray-500 dark:text-slate-300 border-slate-200 dark:border-slate-800'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" /> {t === 'multiple-choice' ? 'Multiple Choice' : 'Short Answer'}
-          </button>
-        ))}
-      </div>
-
-      <button
-        onClick={handleGenerateClick}
-        disabled={loading}
-        className="w-full py-3.5 bg-focus-primary hover:bg-focus-primary-dark text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-60"
-      >
-        {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-        {loading ? 'Building your quiz…' : 'Generate Quiz'}
+      <button onClick={handleGenerateClick} disabled={loading} className={ui.ctaFull}>
+        {loading ? <RefreshCw className="w-4 h-4 animate-spin shrink-0" /> : <Sparkles className="w-4 h-4 shrink-0" />}
+        <span className="leading-none">{loading ? 'Building your quiz…' : 'Generate quiz'}</span>
       </button>
     </div>
   );

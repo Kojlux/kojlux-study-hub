@@ -147,6 +147,11 @@ const HEADER_CSS = `
     scrollbar-width: thin;
     scrollbar-color: color-mix(in srgb, var(--kh-accent) 35%, transparent) transparent;
   }
+  .dark .kh-shell .kh-desk .kh-saved-collections {
+    background: var(--kh-surface);
+    border: 1px solid var(--kh-border);
+    box-shadow: none;
+  }
   .kh-shell .kh-tools-section {
     order: 2;
     margin-top: 36px;

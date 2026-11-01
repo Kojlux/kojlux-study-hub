@@ -13,7 +13,7 @@ import {
 } from '../lib/gemini';
 import { makeRecallCard } from '../lib/spacedRepetition';
 import { Subject, subjectPromptHint, buildStructuredFieldsClause } from '../lib/subjects';
-import TopicPicker from './TopicPicker';
+import TopicPicker, { SegmentedTrack, ui } from './TopicPicker';
 import SubjectContentBlocks from './blocks/SubjectContentBlocks';
 import { renderStructuredContentToPdf } from '../lib/pdfStructuredContent';
 import { sanitizeForPdf } from '../lib/pdfTextSanitizer';
@@ -285,120 +285,105 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
   };
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto w-full max-w-2xl">
       {!summaryData && (
-        <>
-          <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-6 text-center bg-white dark:bg-[#0F1524] space-y-3">
-            {file ? (
-              <div className="space-y-2">
-                {file.kind === 'image' && <img src={file.dataUrl} className="max-h-40 mx-auto rounded-lg object-contain" />}
-                {file.kind === 'pdf' && (
-                  <div className="flex items-center justify-center gap-2 text-slate-500 dark:text-slate-400">
-                    <FileText className="w-6 h-6 shrink-0" />
-                    <span className="text-xs font-semibold truncate max-w-[220px]">{file.name}</span>
+        <div className="space-y-6">
+          <div className={ui.frame}>
+            <section className={ui.section}>
+              <span className={ui.eyebrow}>Source</span>
+              <div className={ui.dropzone}>
+                {file ? (
+                  <div className="space-y-3">
+                    {file.kind === 'image' && <img src={file.dataUrl} className="max-h-40 mx-auto rounded-xl object-contain" />}
+                    {file.kind === 'pdf' && (
+                      <div className="flex items-center justify-center gap-2 text-black">
+                        <FileText className="w-6 h-6 shrink-0" />
+                        <span className="text-xs font-bold truncate max-w-[220px]">{file.name}</span>
+                      </div>
+                    )}
+                    {file.kind === 'video' && (
+                      <div className="space-y-2">
+                        <video src={file.dataUrl} controls className="max-h-40 mx-auto rounded-xl" />
+                        <p className="text-xs font-bold text-black truncate">{file.name}</p>
+                      </div>
+                    )}
+                    <button type="button" onClick={() => setFile(null)} className={ui.link}>
+                      Remove file
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <Upload className="w-7 h-7 mx-auto text-black" strokeWidth={1.5} />
+                    <p className="text-sm font-medium text-black leading-relaxed">Add a photo, PDF, or video of your notes or textbook page</p>
                   </div>
                 )}
-                {file.kind === 'video' && (
-                  <div className="space-y-2">
-                    <video src={file.dataUrl} controls className="max-h-40 mx-auto rounded-lg" />
-                    <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate">{file.name}</p>
-                  </div>
-                )}
-                <button type="button" onClick={() => setFile(null)} className="text-[11px] font-bold text-slate-400 hover:text-rose-500">
-                  Remove file
-                </button>
+                <div className={ui.btnGroup}>
+                  <button type="button" onClick={() => uploadInputRef.current?.click()} className={ui.btnCell}>
+                    <Upload className="w-3.5 h-3.5" /> Upload file
+                  </button>
+                  <button type="button" onClick={() => cameraInputRef.current?.click()} className={ui.btnCell}>
+                    <Camera className="w-3.5 h-3.5" /> Take photo
+                  </button>
+                </div>
+                {/* Upload from files — image, PDF, or video; no capture attribute so mobile browsers offer the full picker, not just the camera */}
+                <input
+                  ref={uploadInputRef}
+                  type="file"
+                  accept={STUDY_FILE_ACCEPT}
+                  className="hidden"
+                  onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+                />
+                {/* Take a new photo — capture="environment" opens the camera directly. Camera capture is still photo-only. */}
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+                />
               </div>
-            ) : (
-              <div className="space-y-2 text-gray-400 dark:text-slate-400">
-                <Upload className="w-6 h-6 mx-auto" />
-                <p className="text-xs font-semibold">Add a photo, PDF, or video of your notes or textbook page</p>
-              </div>
-            )}
-            <div className="flex gap-2.5">
-              <button
-                type="button"
-                onClick={() => uploadInputRef.current?.click()}
-                className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-slate-50 dark:bg-[#161D30] border border-slate-200 dark:border-slate-700 text-gray-600 dark:text-slate-200 hover:border-focus-primary transition"
-              >
-                <Upload className="w-3.5 h-3.5" /> Upload File
-              </button>
-              <button
-                type="button"
-                onClick={() => cameraInputRef.current?.click()}
-                className="flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-slate-50 dark:bg-[#161D30] border border-slate-200 dark:border-slate-700 text-gray-600 dark:text-slate-200 hover:border-focus-primary transition"
-              >
-                <Camera className="w-3.5 h-3.5" /> Take Photo
-              </button>
-            </div>
-            {/* Upload from files — image, PDF, or video; no capture attribute so mobile browsers offer the full picker, not just the camera */}
-            <input
-              ref={uploadInputRef}
-              type="file"
-              accept={STUDY_FILE_ACCEPT}
-              className="hidden"
-              onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-            />
-            {/* Take a new photo — capture="environment" opens the camera directly. Camera capture is still photo-only. */}
-            <input
-              ref={cameraInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-            />
+            </section>
+
+            <section className={ui.section}>
+              <TopicPicker
+                subject={subject}
+                onSubjectChange={setSubject}
+                mode={inputMode}
+                onModeChange={setInputMode}
+                value={textInput}
+                onValueChange={setTextInput}
+                hasFile={!!file}
+              />
+            </section>
+
+            <section className={ui.section}>
+              <span className={ui.eyebrow}>Detail level</span>
+              <SegmentedTrack
+                label="Detail level"
+                options={['concise', 'standard', 'thorough'] as const}
+                value={detailLevel}
+                onChange={setDetailLevel}
+              />
+            </section>
           </div>
 
-          <TopicPicker
-            subject={subject}
-            onSubjectChange={setSubject}
-            mode={inputMode}
-            onModeChange={setInputMode}
-            value={textInput}
-            onValueChange={setTextInput}
-            hasFile={!!file}
-          />
-
-          <div>
-            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1.5">Detail level</span>
-            <div className="flex gap-1.5">
-              {(['concise', 'standard', 'thorough'] as const).map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setDetailLevel(d)}
-                  className={`flex-1 py-2 rounded-xl text-[11px] font-bold capitalize border ${
-                    detailLevel === d ? 'bg-focus-primary text-white border-focus-primary' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'
-                  }`}
-                >
-                  {d}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <button
-            onClick={handleSummarizeClick}
-            disabled={loading}
-            className="w-full py-3.5 bg-focus-primary hover:bg-focus-primary-dark text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-60"
-          >
-            {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            {loading ? 'Summarizing…' : 'Summarize'}
+          <button onClick={handleSummarizeClick} disabled={loading} className={ui.ctaFull}>
+            {loading ? <RefreshCw className="w-4 h-4 animate-spin shrink-0" /> : <Sparkles className="w-4 h-4 shrink-0" />}
+            <span className="leading-none">{loading ? 'Summarizing…' : 'Summarize'}</span>
           </button>
-        </>
+        </div>
       )}
 
       {summaryData && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-base font-black text-slate-900 dark:text-white">{summaryData.title}</h2>
-            <div className="flex items-center gap-3 shrink-0 print:hidden">
-              <button
-                onClick={exportPdf}
-                className="text-xs text-slate-400 hover:text-focus-primary font-bold flex items-center gap-1"
-              >
+        <div className="space-y-6">
+          <div className="flex items-start justify-between gap-4">
+            <h2 className={ui.h1}>{summaryData.title}</h2>
+            <div className="flex items-center gap-5 shrink-0 pt-2 print:hidden">
+              <button onClick={exportPdf} className={ui.link}>
                 <Printer className="w-3.5 h-3.5" /> PDF
               </button>
-              <button onClick={resetNotes} className="text-xs text-focus-primary font-bold flex items-center gap-1">
+              <button onClick={resetNotes} className={ui.link}>
                 <RefreshCw className="w-3.5 h-3.5" /> New
               </button>
             </div>
@@ -408,105 +393,112 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
               timeline, tables, and images — whichever are present. */}
           <SubjectContentBlocks data={summaryData} />
 
-          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4">
-            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">{summaryData.overview}</p>
-          </div>
+          <div className="space-y-3">
+            <section className={ui.tile}>
+              <span className={ui.eyebrow}>Overview</span>
+              <p className="text-sm text-black leading-relaxed">{summaryData.overview}</p>
+            </section>
 
-          {summaryData.diagramNodes && summaryData.diagramNodes.length > 0 && (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-2">
-              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Diagram parts to know</p>
-              <div className="flex flex-wrap gap-1.5">
-                {summaryData.diagramNodes.map((n, i) => (
-                  <span key={i} className="px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-900 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
-                    {n.label}
-                  </span>
-                ))}
-              </div>
-              <p className="text-[10.5px] text-slate-400 leading-relaxed pt-1">
-                Ask the Visualizer to diagram "{summaryData.title}" to see these labeled interactively.
-              </p>
-            </div>
-          )}
-
-          {summaryData.regions && summaryData.regions.length > 0 && (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-2">
-              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Places</p>
-              {summaryData.regions.map((r, i) => (
-                <div key={i} className="text-xs text-slate-600 dark:text-slate-300">
-                  <span className="font-bold text-slate-800 dark:text-slate-100">{r.name}</span>
-                  {r.note ? <span className="text-slate-400"> — {r.note}</span> : null}
+            {summaryData.diagramNodes && summaryData.diagramNodes.length > 0 && (
+              <section className={ui.tile}>
+                <span className={ui.eyebrow}>Diagram parts to know</span>
+                <div className="flex flex-wrap gap-2">
+                  {summaryData.diagramNodes.map((n, i) => (
+                    <span key={i} className="inline-flex items-center h-8 px-3 rounded-lg bg-focus-primary/10 text-focus-primary text-[10px] font-bold uppercase tracking-[0.15em]">
+                      {n.label}
+                    </span>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
+                <p className="text-xs text-black leading-relaxed mt-4">
+                  Ask the Visualizer to diagram "{summaryData.title}" to see these labeled interactively.
+                </p>
+              </section>
+            )}
 
-          {summaryData.dataset && summaryData.dataset.series.length > 0 && (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-2 overflow-x-auto">
-              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Data</p>
-              <table className="text-xs w-full min-w-[280px]">
-                <thead>
-                  <tr>
-                    <th className="text-left text-slate-400 font-semibold pb-1"> </th>
-                    {summaryData.dataset.labels.map((l, i) => (
-                      <th key={i} className="text-left text-slate-400 font-semibold pb-1 px-2">{l}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {summaryData.dataset.series.map((s, i) => (
-                    <tr key={i}>
-                      <td className="font-bold text-slate-700 dark:text-slate-200 pr-2">{s.name}</td>
-                      {s.values.map((v, vi) => (
-                        <td key={vi} className="text-slate-600 dark:text-slate-300 px-2">{v}</td>
+            {summaryData.regions && summaryData.regions.length > 0 && (
+              <section className={ui.tile}>
+                <span className={ui.eyebrow}>Places</span>
+                <div className="space-y-2">
+                  {summaryData.regions.map((r, i) => (
+                    <div key={i} className="text-sm text-black">
+                      <span className="font-bold">{r.name}</span>
+                      {r.note ? <span> — {r.note}</span> : null}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {summaryData.dataset && summaryData.dataset.series.length > 0 && (
+              <section className={`${ui.tile} overflow-x-auto`}>
+                <span className={ui.eyebrow}>Data</span>
+                <table className="text-xs w-full min-w-[280px] border-collapse text-black">
+                  <thead>
+                    <tr>
+                      <th className="border-b border-focus-primary/15 px-3 py-2"> </th>
+                      {summaryData.dataset.labels.map((l, i) => (
+                        <th key={i} className="border-b border-focus-primary/15 px-3 py-2 text-left text-[10px] font-bold uppercase tracking-[0.15em]">{l}</th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody>
+                    {summaryData.dataset.series.map((s, i) => (
+                      <tr key={i}>
+                        <td className="border-b border-focus-primary/15 px-3 py-2 font-bold">{s.name}</td>
+                        {s.values.map((v, vi) => (
+                          <td key={vi} className="border-b border-focus-primary/15 px-3 py-2 tabular-nums">{v}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+            )}
 
-          <div className="md:grid md:grid-cols-2 md:gap-4 md:items-start space-y-4 md:space-y-0">
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-2">
-              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Key points</p>
-              {summaryData.keyPoints.map((kp, i) => (
-                <div key={i} className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300">
-                  <span className="w-1.5 h-1.5 rounded-full bg-focus-primary mt-1.5 shrink-0" />
-                  <span>{kp}</span>
-                </div>
-              ))}
-            </div>
-
-            {summaryData.glossary?.length > 0 && (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-2.5">
-                <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Glossary</p>
-                {summaryData.glossary.map((g, i) => (
-                  <div key={i}>
-                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100">{g.term}: </span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">{g.definition}</span>
+            <section className={ui.tile}>
+              <span className={ui.eyebrow}>Key points</span>
+              <div className="space-y-3">
+                {summaryData.keyPoints.map((kp, i) => (
+                  <div key={i} className="flex items-start gap-3 text-sm text-black leading-relaxed">
+                    <span className="w-1.5 h-1.5 rounded-full bg-focus-primary mt-2 shrink-0" />
+                    <span>{kp}</span>
                   </div>
                 ))}
               </div>
+            </section>
+
+            {summaryData.glossary?.length > 0 && (
+              <section className={ui.tile}>
+                <span className={ui.eyebrow}>Glossary</span>
+                <div className="space-y-3">
+                  {summaryData.glossary.map((g, i) => (
+                    <div key={i} className="text-sm text-black leading-relaxed">
+                      <span className="font-bold">{g.term}: </span>
+                      <span>{g.definition}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
             )}
           </div>
 
-          <div className="bg-focus-primary/5 dark:bg-focus-primary/10 border border-focus-primary/20 rounded-2xl p-4 flex items-center gap-2.5 print:hidden">
-            <BookOpenCheck className="w-4.5 h-4.5 text-focus-primary shrink-0" />
-            <p className="text-xs text-slate-600 dark:text-slate-300">Key points added to <span className="font-bold text-focus-primary">Review</span> for spaced repetition.</p>
+          <div className="rounded-2xl bg-focus-primary/5 p-5 flex items-center gap-3 print:hidden">
+            <BookOpenCheck className="w-5 h-5 text-focus-primary shrink-0" />
+            <p className="text-xs text-black">Key points added to <span className="font-bold">Review</span> for spaced repetition.</p>
           </div>
 
           <button
             onClick={() => summaryData && onCreateQuizFromSummary(summaryData)}
-            className="w-full flex items-center justify-between gap-3 bg-focus-primary/5 dark:bg-focus-primary/10 border border-focus-primary/20 rounded-2xl p-4 text-left print:hidden"
+            className="w-full flex items-center justify-between gap-3 rounded-2xl bg-focus-primary/5 p-5 text-left transition-colors duration-150 hover:bg-focus-primary/10 print:hidden"
           >
-            <span className="flex items-center gap-2.5 min-w-0">
-              <ClipboardCheck className="w-4 h-4 text-focus-primary shrink-0" />
+            <span className="flex items-center gap-3 min-w-0">
+              <ClipboardCheck className="w-5 h-5 text-focus-primary shrink-0" />
               <span>
-                <span className="block text-xs font-bold text-slate-700 dark:text-slate-200">Test your knowledge</span>
-                <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Quiz yourself on this summary and check your understanding.</span>
+                <span className="block text-sm font-bold text-black">Test your knowledge</span>
+                <span className="block text-xs text-black mt-0.5">Quiz yourself on this summary and check your understanding.</span>
               </span>
             </span>
-            <span className="text-[11px] font-bold text-focus-primary shrink-0">Make a quiz</span>
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-focus-primary shrink-0">Make a quiz</span>
           </button>
         </div>
       )}
