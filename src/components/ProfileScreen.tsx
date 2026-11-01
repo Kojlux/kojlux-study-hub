@@ -576,7 +576,7 @@ const NotificationStatus = memo(function NotificationStatus({ permission, onEnab
   );
 });
 
-const PreferencesPanel = memo(function PreferencesPanel({ permission, onEnable }: PreferencesPanelProps) {
+const PreferencesPanel = memo(function PreferencesPanel({ permission, onEnable, pushStatus }: PreferencesPanelProps) {
   return (
     <SettingsGroup label="Preferences">
       <div className={`${CARD_CLASS} divide-y divide-slate-100 dark:divide-slate-800`}>
