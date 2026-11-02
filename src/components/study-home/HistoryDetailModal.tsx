@@ -1,6 +1,8 @@
 import { CheckCircle2, Printer, X } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { HistoryItem, QuizData, SummaryData, VisualizationResponse } from '../../types';
+import { MathText } from '../blocks/Latex';
+import EducationalComponents from '../blocks/EducationalComponents';
 
 // ---------------------------------------------------------------------------
 // History detail modal (unchanged behavior — print/export + read-only views)
@@ -113,7 +115,7 @@ export function HistoryDetailModal({ item, onClose }: { item: HistoryItem; onClo
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             {item.type === 'quiz' ? 'Quiz' : item.type === 'summary' ? 'Summary' : 'Diagram'}
           </p>
-          <h2 className="text-xl font-black text-slate-900 dark:text-white mt-0.5">{item.title}</h2>
+          <MathText text={item.title} className="mt-0.5 block text-xl font-black text-slate-900 dark:text-white" />
         </div>
 
         {item.type === 'quiz' && <QuizDetail data={item.data as QuizData} />}
@@ -129,11 +131,12 @@ function QuizDetail({ data }: { data: QuizData }) {
     <div className="space-y-3">
       {data.questions.map((q, i) => (
         <div key={i} className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5">
-          <p className="text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5">{i + 1}. {q.question}</p>
+          <MathText text={`${i + 1}. ${q.question}`} className="mb-1.5 block text-xs font-bold text-slate-700 dark:text-slate-200" />
           <p className="text-[11px] text-focus-sage-dark dark:text-focus-sage font-semibold flex items-start gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" /> {q.correctAnswer}
+            <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" /> <MathText text={q.correctAnswer} />
           </p>
-          {q.explanation && <p className="text-[11px] text-slate-400 mt-1 italic">{q.explanation}</p>}
+          {q.visual && <div className="mt-2"><EducationalComponents components={[q.visual]} /></div>}
+          {q.explanation && <MathText text={q.explanation} className="mt-1 block text-[11px] italic text-slate-400" />}
         </div>
       ))}
     </div>
@@ -143,13 +146,13 @@ function QuizDetail({ data }: { data: QuizData }) {
 function SummaryDetail({ data }: { data: SummaryData }) {
   return (
     <div className="space-y-3">
-      <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">{data.overview}</p>
+      <MathText text={data.overview} className="block text-xs text-slate-600 dark:text-slate-300 leading-relaxed" />
       <div className="space-y-1.5">
         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Key points</p>
         {data.keyPoints.map((kp, i) => (
           <div key={i} className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300">
             <span className="w-1.5 h-1.5 rounded-full bg-focus-primary mt-1.5 shrink-0" />
-            <span>{kp}</span>
+            <MathText text={kp} />
           </div>
         ))}
       </div>
@@ -158,8 +161,8 @@ function SummaryDetail({ data }: { data: SummaryData }) {
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Glossary</p>
           {data.glossary.map((g, i) => (
             <div key={i} className="text-xs">
-              <span className="font-bold text-slate-800 dark:text-slate-100">{g.term}: </span>
-              <span className="text-slate-500 dark:text-slate-400">{g.definition}</span>
+              <MathText text={`${g.term}: `} className="font-bold text-slate-800 dark:text-slate-100" />
+              <MathText text={g.definition} className="text-slate-500 dark:text-slate-400" />
             </div>
           ))}
         </div>
@@ -176,8 +179,8 @@ function VisualizationDetail({ data }: { data: VisualizationResponse }) {
       </p>
       {data.steps.map((s, i) => (
         <div key={i} className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5">
-          <p className="text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">{i + 1}. {s.label}</p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400">{s.explanation}</p>
+          <MathText text={`${i + 1}. ${s.label}`} className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-200" />
+          <MathText text={s.explanation} className="block text-[11px] text-slate-500 dark:text-slate-400" />
         </div>
       ))}
     </div>

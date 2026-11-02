@@ -1,6 +1,7 @@
 import React from 'react';
 import { CalendarClock } from 'lucide-react';
 import { TimelineEvent } from '../../types';
+import { MathText } from './Latex';
 
 // Geography & History: a vertical graphic timeline for `timeline` events.
 export default function TimelineBlock({ timeline }: { timeline?: TimelineEvent[] }) {
@@ -15,9 +16,9 @@ export default function TimelineBlock({ timeline }: { timeline?: TimelineEvent[]
         {timeline.map((t, i) => (
           <div key={i} className="relative">
             <div className="absolute -left-4 top-1 w-2 h-2 rounded-full bg-focus-primary ring-4 ring-white dark:ring-slate-900" />
-            <p className="text-[11px] font-bold text-focus-primary">{t.date}</p>
-            <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{t.event}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{t.significance}</p>
+            <MathText text={t.date} className="block text-[11px] font-bold text-focus-primary" />
+            <MathText text={t.event} className="block text-xs font-bold text-slate-800 dark:text-slate-100" />
+            <MathText text={t.significance} className="block text-xs text-slate-500 dark:text-slate-400" />
           </div>
         ))}
       </div>

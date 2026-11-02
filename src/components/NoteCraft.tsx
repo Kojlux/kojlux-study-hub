@@ -7,14 +7,21 @@ import { SummaryData, HistoryItem, RecallCard, StudyFile } from '../types';
 import {
   generateContentWithFallback,
   GEMINI_KEYS,
-  parseJsonResponse,
+  parseKojluxResponse,
   classifyStudyFile,
   STUDY_FILE_ACCEPT,
 } from '../lib/gemini';
+import {
+  getKojluxResponseSchema,
+  KOJLUX_COMPONENT_INSTRUCTIONS,
+  KOJLUX_MATH_NOTATION_INSTRUCTIONS,
+} from '../../shared/kojluxSchema';
 import { makeRecallCard } from '../lib/spacedRepetition';
 import { Subject, subjectPromptHint, buildStructuredFieldsClause } from '../lib/subjects';
 import TopicPicker, { SegmentedTrack, ui } from './TopicPicker';
 import SubjectContentBlocks from './blocks/SubjectContentBlocks';
+import EducationalComponents, { EducationalMetadata } from './blocks/EducationalComponents';
+import { MathText } from './blocks/Latex';
 import { renderStructuredContentToPdf } from '../lib/pdfStructuredContent';
 import { sanitizeForPdf } from '../lib/pdfTextSanitizer';
 
@@ -170,7 +177,10 @@ export default function NoteCraft({ gradeLevel, onSaveHistory, onAddRecallCards,
       const instructions = `You are helping a ${gradeLevel} student study. Summarize the study material (file and/or text below) at a "${detailLevel}" level of detail.
 ${materialClause}
 ${subjectClause}
-Respond ONLY with strict JSON, no markdown fences: {"title": string, "subject": "${subject}", "overview": string, "keyPoints": [string, ...], "glossary": [{"term": string, "definition": string}, ...]${
+${KOJLUX_COMPONENT_INSTRUCTIONS}
+${KOJLUX_MATH_NOTATION_INSTRUCTIONS}
+${new Date().toISOString()}. Set metadata.subject to "${subject}" and metadata.topic to a concise topic derived from the source material.
+Respond ONLY with strict JSON, no markdown fences: {"title": string, "subject": "${subject}", "overview": string, "keyPoints": [string, ...], "glossary": [{"term": string, "definition": string}, ...], "metadata": {"generatedAt": "ISO timestamp", "subject": string, "topic": string, "orchestratorReasoning": string}, "dynamicComponents": [educational component objects]${
         extraField ? `, ${extraField.schema}` : ''
       }${schemaFields}}
 ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
@@ -179,8 +189,16 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
       const response = await generateContentWithFallback(GEMINI_KEYS.summarizer, {
         model: 'gemini-3.6-flash',
         contents: [{ role: 'user', parts }],
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: getKojluxResponseSchema('notes'),
+        },
+      }, {
+        mode: 'notes',
+        subject,
+        topic: textInput.trim() || subject,
       });
-      const parsed = parseJsonResponse<SummaryData>(response.text);
+      const parsed = parseKojluxResponse<SummaryData>(response.text, 'notes');
       setSummaryData(parsed);
 
       onSaveHistory({
@@ -392,11 +410,13 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
           {/* Dynamic Forms: passage, formulas/solution steps, process flow,
               timeline, tables, and images — whichever are present. */}
           <SubjectContentBlocks data={summaryData} />
+          {summaryData.metadata && <EducationalMetadata metadata={summaryData.metadata} />}
+          <EducationalComponents components={summaryData.dynamicComponents ?? []} />
 
           <div className="space-y-3">
             <section className={ui.tile}>
               <span className={ui.eyebrow}>Overview</span>
-              <p className="text-sm text-slate-900 dark:text-slate-400 leading-relaxed">{summaryData.overview}</p>
+              <MathText text={summaryData.overview} className="block text-sm text-slate-900 dark:text-slate-400 leading-relaxed" />
             </section>
 
             {summaryData.diagramNodes && summaryData.diagramNodes.length > 0 && (
@@ -405,7 +425,7 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
                 <div className="flex flex-wrap gap-2">
                   {summaryData.diagramNodes.map((n, i) => (
                     <span key={i} className="inline-flex items-center h-8 px-3 rounded-lg bg-focus-primary/10 text-focus-primary text-[10px] font-bold uppercase tracking-[0.15em]">
-                      {n.label}
+                      <MathText text={n.label} />
                     </span>
                   ))}
                 </div>
@@ -421,8 +441,8 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
                 <div className="space-y-2">
                   {summaryData.regions.map((r, i) => (
                     <div key={i} className="text-sm text-slate-900 dark:text-slate-400">
-                      <span className="font-bold">{r.name}</span>
-                      {r.note ? <span> — {r.note}</span> : null}
+                      <MathText text={r.name} className="font-bold" />
+                      {r.note ? <span> — <MathText text={r.note} /></span> : null}
                     </div>
                   ))}
                 </div>
@@ -437,14 +457,14 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
                     <tr>
                       <th className="border-b border-focus-primary/15 px-3 py-2"> </th>
                       {summaryData.dataset.labels.map((l, i) => (
-                        <th key={i} className="border-b border-focus-primary/15 px-3 py-2 text-left text-[10px] font-bold uppercase tracking-[0.15em]">{l}</th>
+                        <th key={i} className="border-b border-focus-primary/15 px-3 py-2 text-left text-[10px] font-bold uppercase tracking-[0.15em]"><MathText text={l} /></th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {summaryData.dataset.series.map((s, i) => (
                       <tr key={i}>
-                        <td className="border-b border-focus-primary/15 px-3 py-2 font-bold">{s.name}</td>
+                        <td className="border-b border-focus-primary/15 px-3 py-2 font-bold"><MathText text={s.name} /></td>
                         {s.values.map((v, vi) => (
                           <td key={vi} className="border-b border-focus-primary/15 px-3 py-2 tabular-nums">{v}</td>
                         ))}
@@ -461,7 +481,7 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
                 {summaryData.keyPoints.map((kp, i) => (
                   <div key={i} className="flex items-start gap-3 text-sm text-slate-900 dark:text-slate-400 leading-relaxed">
                     <span className="w-1.5 h-1.5 rounded-full bg-focus-primary mt-2 shrink-0" />
-                    <span>{kp}</span>
+                    <MathText text={kp} />
                   </div>
                 ))}
               </div>
@@ -473,8 +493,8 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
                 <div className="space-y-3">
                   {summaryData.glossary.map((g, i) => (
                     <div key={i} className="text-sm text-slate-900 dark:text-slate-400 leading-relaxed">
-                      <span className="font-bold">{g.term}: </span>
-                      <span>{g.definition}</span>
+                      <MathText text={`${g.term}: `} className="font-bold" />
+                      <MathText text={g.definition} />
                     </div>
                   ))}
                 </div>

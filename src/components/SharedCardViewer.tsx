@@ -4,6 +4,7 @@ import { fetchSharedCard } from '../lib/sharedCards';
 import { makeRecallCard } from '../lib/spacedRepetition';
 import { RecallCard, SharedCardSnapshot } from '../types';
 import { useToast } from './Toast';
+import { MathText } from './blocks/Latex';
 
 interface Props {
   cardId: string;
@@ -120,7 +121,7 @@ export default function SharedCardViewer({ cardId, onAdd, onDismiss }: Props) {
                         className="max-h-28 w-auto mx-auto mb-3 rounded-lg object-contain border border-slate-100 dark:border-slate-800"
                       />
                     )}
-                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-relaxed">{state.prompt}</p>
+                    <MathText text={state.prompt} className="block text-sm font-bold text-slate-800 dark:text-slate-100 leading-relaxed" />
                   </div>
                   <div className="shrink-0 p-6 pt-3 border-t border-slate-100 dark:border-slate-800">
                     <button
@@ -139,10 +140,10 @@ export default function SharedCardViewer({ cardId, onAdd, onDismiss }: Props) {
                 >
                   <div className="flex-1 overflow-y-auto p-6">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Answer</p>
-                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-relaxed mb-3">{state.prompt}</p>
+                    <MathText text={state.prompt} className="mb-3 block text-sm font-bold text-slate-800 dark:text-slate-100 leading-relaxed" />
                     <div className="bg-focus-sage/10 border border-focus-sage/25 rounded-xl p-3">
                       <p className="text-[10px] font-bold text-focus-sage-dark uppercase tracking-wide mb-1">Target answer</p>
-                      <p className="text-xs text-slate-700 dark:text-slate-200">{state.answer}</p>
+                      <MathText text={state.answer} className="block text-xs text-slate-700 dark:text-slate-200" />
                     </div>
                   </div>
                   <div className="shrink-0 p-6 pt-3 border-t border-slate-100 dark:border-slate-800">

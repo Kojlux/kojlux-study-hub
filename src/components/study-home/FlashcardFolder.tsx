@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { MouseEvent, ReactElement } from 'react';
 import { ArrowRight, Layers } from 'lucide-react';
 import type { RecallCard } from '../../types';
+import { MathText } from '../blocks/Latex';
 
 interface FlashcardFolderProps {
   cards: readonly RecallCard[];
@@ -95,7 +96,7 @@ export default function FlashcardFolder({
 
                 <span className="kh-fc-stage" aria-live="off">
                   <span className="kh-fc-face" data-active="true">
-                    {current.prompt}
+                    <MathText text={current.prompt} />
                   </span>
                 </span>
 

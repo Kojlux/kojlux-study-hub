@@ -26,11 +26,131 @@ import * as admin from 'firebase-admin';
 import * as functionsV1 from 'firebase-functions/v1';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { defineSecret } from 'firebase-functions/params';
+import { GoogleGenAI } from '@google/genai';
+import {
+  getKojluxResponseSchema,
+  KOJLUX_COMPONENT_INSTRUCTIONS,
+  KOJLUX_MATH_NOTATION_INSTRUCTIONS,
+  KOJLUX_QUIZ_COMPONENT_INSTRUCTIONS,
+  type KojluxGenerationMode,
+  validateKojluxPayload,
+} from '../../shared/kojluxSchema.js';
 
 admin.initializeApp();
 const db = admin.firestore();
 const messaging = admin.messaging();
 const WEB_PUSH_TTL_SECONDS = '2419200';
+const ORCHESTRATION_KEY_PLACEHOLDERS = [
+  'PASTE_YOUR_NEW_ORCHESTRATION_KEY_1_HERE',
+  'PASTE_YOUR_NEW_ORCHESTRATION_KEY_2_HERE',
+  'PASTE_YOUR_NEW_ORCHESTRATION_KEY_3_HERE',
+] as const;
+const orchestrationSecrets = ORCHESTRATION_KEY_PLACEHOLDERS.map((_, index) =>
+  defineSecret(`ORCHESTRATION_KEY_${index + 1}`)
+);
+
+export const generateKojluxContent = onCall(
+  { secrets: orchestrationSecrets, timeoutSeconds: 120 },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Sign in to use orchestration fallback.');
+    }
+
+    const data = request.data as {
+      mode?: unknown;
+      subject?: unknown;
+      topic?: unknown;
+      contents?: unknown;
+    };
+    if (data.mode !== 'quiz' && data.mode !== 'notes') {
+      throw new HttpsError('invalid-argument', 'Generation mode must be quiz or notes.');
+    }
+    if (
+      typeof data.subject !== 'string' ||
+      data.subject.length > 80 ||
+      typeof data.topic !== 'string' ||
+      data.topic.length > 2000
+    ) {
+      throw new HttpsError('invalid-argument', 'Subject and topic are required.');
+    }
+    if (!Array.isArray(data.contents) || data.contents.length === 0) {
+      throw new HttpsError('invalid-argument', 'Generation content is missing.');
+    }
+    if (Buffer.byteLength(JSON.stringify(data.contents), 'utf8') > 900_000) {
+      throw new HttpsError('invalid-argument', 'The source material is too large for orchestration fallback. Try a smaller file or less text.');
+    }
+
+    const now = Date.now();
+    const rateLimitRef = db.collection('orchestrationRateLimits').doc(request.auth.uid);
+    await db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(rateLimitRef);
+      const limit = snapshot.data();
+      const windowStart = typeof limit?.windowStart === 'number' ? limit.windowStart : 0;
+      const calls = typeof limit?.calls === 'number' ? limit.calls : 0;
+      if (now - windowStart < 10 * 60_000 && calls >= 6) {
+        throw new HttpsError('resource-exhausted', 'Orchestration fallback limit reached. Try again in a few minutes.');
+      }
+      transaction.set(rateLimitRef, {
+        windowStart: now - windowStart >= 10 * 60_000 ? now : windowStart,
+        calls: now - windowStart >= 10 * 60_000 ? 1 : calls + 1,
+      });
+    });
+
+    const ORCHESTRATION_KEYS = orchestrationSecrets
+      .map((secret, index) => secret.value() || ORCHESTRATION_KEY_PLACEHOLDERS[index])
+      .filter((key, index) => key !== ORCHESTRATION_KEY_PLACEHOLDERS[index]);
+    if (ORCHESTRATION_KEYS.length === 0) {
+      throw new HttpsError('failed-precondition', 'Orchestration keys are not configured in Firebase Secrets.');
+    }
+
+    const contents = data.contents as Array<{ role?: string; parts?: Array<Record<string, unknown>> }>;
+    const currentTimestamp = new Date().toISOString();
+    const orchestrationInstruction = [
+      'Act as Kojlux Study Hub’s pedagogical orchestrator. Generate the complete final payload for this request using the supplied response schema.',
+      `Generation mode: ${data.mode}. Subject: ${data.subject}. Topic: ${data.topic}.`,
+      data.mode === 'quiz'
+        ? `${KOJLUX_QUIZ_COMPONENT_INSTRUCTIONS} ${KOJLUX_MATH_NOTATION_INSTRUCTIONS} Set metadata.generatedAt to ${currentTimestamp}.`
+        : `${KOJLUX_COMPONENT_INSTRUCTIONS} ${KOJLUX_MATH_NOTATION_INSTRUCTIONS} ${currentTimestamp}`,
+      'For quiz mode, preserve the requested questions and answer format. For notes mode, preserve the overview, keyPoints, and glossary fields.',
+      'For notes, select only the educational components that add clear conceptual value.',
+      'metadata.orchestratorReasoning is a brief user-facing rationale for component choices, not private step-by-step reasoning.',
+    ].join('\n');
+    const orchestratedContents = [
+      ...contents,
+      { role: 'user', parts: [{ text: orchestrationInstruction }] },
+    ];
+
+    let lastError: unknown;
+    for (const apiKey of ORCHESTRATION_KEYS) {
+      try {
+        const client = new GoogleGenAI({ apiKey });
+        const response = await client.models.generateContent({
+          model: 'gemini-3.6-flash',
+          contents: orchestratedContents,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: getKojluxResponseSchema(data.mode as KojluxGenerationMode),
+          },
+        });
+        if (!response.text) {
+          throw new Error('Gemini returned an empty orchestration response.');
+        }
+        const payload: unknown = JSON.parse(response.text);
+        validateKojluxPayload(payload, data.mode as KojluxGenerationMode);
+        return { text: JSON.stringify(payload) };
+      } catch (error) {
+        console.error('Orchestration key attempt failed; trying the next configured key.', error);
+        lastError = error;
+      }
+    }
+    console.error('All configured orchestration keys failed.');
+    throw new HttpsError('internal', 'Orchestration could not generate a valid response.', {
+      cause: lastError instanceof Error ? lastError.message : 'Unknown Gemini error',
+    });
+  }
+);
 
 function notificationUrl(tab: 'review' | 'profile', examId?: string): string {
   const params = new URLSearchParams({ notification: '1', tab });

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Sigma } from 'lucide-react';
 import { SolutionStep } from '../../types';
-import { BlockMath } from './Latex';
+import { BlockMath, MathText } from './Latex';
 
 // Math & Physics: renders `formulas` (clean LaTeX strings) and
 // `solution_steps` (an ordered worked solution/proof) via KaTeX. Used by
@@ -35,7 +35,7 @@ export default function MathBlock({
         <ol className="space-y-3 list-decimal list-outside pl-4">
           {solutionSteps!.map((s, i) => (
             <li key={i} className="text-xs text-slate-600 dark:text-slate-300">
-              <span>{s.step}</span>
+              <MathText text={s.step} />
               {s.latex && <BlockMath latex={s.latex} />}
             </li>
           ))}

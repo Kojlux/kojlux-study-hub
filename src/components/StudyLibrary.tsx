@@ -8,6 +8,7 @@ import Modal from './Modal';
 import ImageLightbox from './ImageLightbox';
 import { useToast } from './Toast';
 import ShareCollectionButton from './ShareCollectionButton';
+import { MathText } from './blocks/Latex';
 
 const UNCATEGORIZED = '__uncategorized__';
 
@@ -381,7 +382,7 @@ function SavedPanel({
               <p className="text-[10px] font-bold text-focus-primary uppercase tracking-wide mb-1">
                 {collectionName(c.collectionId)}
               </p>
-              <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 line-clamp-2">{c.prompt}</p>
+              <MathText text={c.prompt} className="line-clamp-2 text-xs font-semibold text-slate-700 dark:text-slate-200" />
             </div>
             <div className="flex gap-2">
               <button
@@ -547,12 +548,12 @@ function StudyCardModal({ card, onClose }: { card: RecallCard; onClose: () => vo
         )}
         <div>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Question</p>
-          <p className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-relaxed">{card.prompt}</p>
+          <MathText text={card.prompt} className="block text-sm font-bold text-slate-800 dark:text-slate-100 leading-relaxed" />
         </div>
         {revealed && (
           <div className="bg-focus-sage/10 border border-focus-sage/25 rounded-xl p-3">
             <p className="text-[10px] font-bold text-focus-sage-dark uppercase tracking-wide mb-1">Answer</p>
-            <p className="text-xs text-slate-700 dark:text-slate-200">{card.answer}</p>
+            <MathText text={card.answer} className="block text-xs text-slate-700 dark:text-slate-200" />
           </div>
         )}
         <button

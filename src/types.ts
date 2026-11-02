@@ -13,6 +13,7 @@ export interface QuizQuestion {
   options?: string[];
   correctAnswer: string;
   explanation?: string;
+  visual?: QuizQuestionVisual;
 }
 
 // Subject-Aware Content Engine: which of the picker's subjects this
@@ -118,7 +119,180 @@ export interface StructuredContent {
   imageQueries?: string[];
 }
 
-export interface QuizData extends StructuredContent {
+export type ExamDateString = string;
+export type ISOTimestamp = string;
+
+export interface KojluxOutputSchema {
+  metadata: {
+    generatedAt: ISOTimestamp;
+    estimatedExamDate?: ExamDateString;
+    subject: string;
+    topic: string;
+    orchestratorReasoning: string;
+  };
+  dynamicComponents: EducationalComponent[];
+}
+
+export type EducationalComponent =
+  | InteractiveSimulationBlock
+  | DiagnosticQuestionLoopBlock
+  | DragAndDropBlock
+  | MultiPartQuestionBlock
+  | AreaModelBlock
+  | CoordinateGeometryBlock
+  | FormulaBlock
+  | ProcessFlowBlock
+  | ChronologicalTimelineBlock
+  | ReadingPassageBlock
+  | ComparativeTableBlock
+  | ConceptHierarchyBlock
+  | CodingSandboxBlock
+  | LabExperimentBlock
+  | FlashcardDeckBlock;
+
+export type QuizQuestionVisual =
+  | AreaModelBlock
+  | CoordinateGeometryBlock
+  | FormulaBlock
+  | ProcessFlowBlock
+  | ChronologicalTimelineBlock
+  | ComparativeTableBlock;
+
+export interface InteractiveSimulationBlock {
+  type: 'INTERACTIVE_SIMULATION';
+  title: string;
+  conceptObjective: string;
+  sandboxVariables: Array<{
+    name: string;
+    defaultValue: string | number;
+    valueType: 'number' | 'boolean' | 'string';
+    minRange?: number;
+    maxRange?: number;
+    step?: number;
+  }>;
+  stateTransitions: Array<{
+    ifVariable: string;
+    condition: 'equals' | 'greater_than' | 'less_than';
+    targetValue: string | number;
+    resultingVisualStateDescription: string;
+  }>;
+  initialRenderMarkdown: string;
+}
+
+export interface DiagnosticQuestionLoopBlock {
+  type: 'DIAGNOSTIC_QUESTION_LOOP';
+  contextAnchorId: string;
+  probingPrompt: string;
+  questionType: 'MULTIPLE_CHOICE' | 'TEXT_INPUT' | 'BOOLEAN_TOGGLE';
+  options?: string[];
+  expectedAnswerPattern: string;
+  hints: string[];
+  targetedRemediationExplanation: string;
+}
+
+export interface AreaModelBlock {
+  type: 'AREA_MODEL';
+  explanation: string;
+  topLabels: string[];
+  leftLabels: string[];
+  gridCells: Array<{ row: number; col: number; value: string; derivation: string }>;
+}
+
+export interface CoordinateGeometryBlock {
+  type: 'COORDINATE_GEOMETRY';
+  equation: string;
+  graphType: 'LINEAR' | 'QUADRATIC' | 'TRIGONOMETRIC' | 'EXPONENTIAL' | 'POLYNOMIAL';
+  keyPoints: Array<{ x: number; y: number; label: string; mathematicalSignificance: string }>;
+  bounds: { xMin: number; xMax: number; yMin: number; yMax: number };
+}
+
+export interface FormulaBlock {
+  type: 'FORMULA_DISPLAY';
+  title: string;
+  rawLatex: string;
+  variables: Array<{ symbol: string; meaning: string; unit?: string }>;
+}
+
+export interface ProcessFlowBlock {
+  type: 'PROCESS_FLOW';
+  processName: string;
+  steps: Array<{ stepNumber: number; title: string; mechanism: string; trigger?: string }>;
+}
+
+export interface ChronologicalTimelineBlock {
+  type: 'HISTORICAL_TIMELINE';
+  eraOrPeriod: string;
+  events: Array<{ dateOrEra: string; title: string; significance: string }>;
+}
+
+export interface ReadingPassageBlock {
+  type: 'READING_PASSAGE';
+  passageText: string;
+  contextOrAuthor?: string;
+  literaryDevices: Array<{ device: string; exampleText: string; effect: string }>;
+}
+
+export interface CodingSandboxBlock {
+  type: 'CODING_SANDBOX';
+  language: string;
+  initialCode: string;
+  expectedOutput: string;
+  testCases: Array<{ input: string; output: string }>;
+}
+
+export interface ComparativeTableBlock {
+  type: 'COMPARATIVE_TABLE';
+  caption: string;
+  headers: string[];
+  rows: string[][];
+}
+
+export interface ConceptHierarchyBlock {
+  type: 'CONCEPT_HIERARCHY';
+  rootConcept: string;
+  subConcepts: Array<{ name: string; definition: string; parentName: string }>;
+}
+
+export interface LabExperimentBlock {
+  type: 'LAB_EXPERIMENT';
+  title: string;
+  materialsNeeded: string[];
+  safetyPrecautions: string[];
+  procedureSteps: string[];
+  expectedObservation: string;
+}
+
+export interface FlashcardDeckBlock {
+  type: 'FLASHCARD_DECK';
+  cards: Array<{ front: string; back: string; hint?: string }>;
+}
+
+export interface DragAndDropBlock {
+  type: 'DRAG_AND_DROP';
+  instruction: string;
+  draggableItems: string[];
+  dropZones: Array<{
+    id: string;
+    targetDescription: string;
+    correctItemValue: string;
+  }>;
+}
+
+export interface MultiPartQuestionBlock {
+  type: 'MULTI_PART_QUESTION';
+  sharedContextMarkdown: string;
+  parts: Array<{
+    partNumber: number;
+    questionText: string;
+    questionType: 'MULTIPLE_CHOICE' | 'SHORT_TEXT';
+    options?: string[];
+    correctAnswer: string;
+    remediationIfWrong: string;
+    unlocksPartNumber?: number;
+  }>;
+}
+
+export interface QuizData extends StructuredContent, KojluxOutputSchema {
   title: string;
   subject?: Subject;
   questions: QuizQuestion[];
@@ -151,7 +325,7 @@ export interface EvaluationResult {
   overallFeedback?: string;
 }
 
-export interface SummaryData extends StructuredContent {
+export interface SummaryData extends StructuredContent, KojluxOutputSchema {
   title: string;
   subject?: Subject;
   overview: string;

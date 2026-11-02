@@ -12,6 +12,7 @@ import SaveCardControl from './SaveCardControl';
 import ShareCardButton from './ShareCardButton';
 import StudyLibrary from './StudyLibrary';
 import ImageLightbox from './ImageLightbox';
+import { MathText } from './blocks/Latex';
 
 interface Props {
   cards: RecallCard[];
@@ -304,7 +305,7 @@ function ReviewQueueInner({
                   </span>
                 </button>
               )}
-              <p className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-relaxed">{current.prompt}</p>
+              <MathText text={current.prompt} className="block text-sm font-bold text-slate-800 dark:text-slate-100 leading-relaxed" />
               <textarea
                 value={explanation}
                 onChange={(e) => setExplanation(e.target.value)}
@@ -359,15 +360,15 @@ function ReviewQueueInner({
                   </span>
                 </button>
               )}
-              <p className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-relaxed mb-3">{current.prompt}</p>
+              <MathText text={current.prompt} className="mb-3 block text-sm font-bold text-slate-800 dark:text-slate-100 leading-relaxed" />
               <div className="bg-focus-sage/10 border border-focus-sage/25 rounded-xl p-3">
                 <p className="text-[10px] font-bold text-focus-sage-dark uppercase tracking-wide mb-1">Target answer</p>
-                <p className="text-xs text-slate-700 dark:text-slate-200">{current.answer}</p>
+                <MathText text={current.answer} className="block text-xs text-slate-700 dark:text-slate-200" />
               </div>
               {explanation.trim() && (
                 <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 mt-3">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">What you wrote</p>
-                  <p className="text-xs text-slate-600 dark:text-slate-300">{explanation}</p>
+                  <MathText text={explanation} className="block text-xs text-slate-600 dark:text-slate-300" />
                 </div>
               )}
             </div>

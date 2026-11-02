@@ -1,5 +1,6 @@
 import React from 'react';
 import { PassageType } from '../../types';
+import { MathText } from './Latex';
 
 const LABELS: Record<PassageType, string> = {
   reading_passage: 'Reading Passage',
@@ -21,7 +22,7 @@ export default function PassageCard({ passage, passageType }: { passage?: string
         {label}
       </p>
       <div className="max-h-64 overflow-y-auto px-4 pb-4">
-        <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">{passage}</p>
+        <MathText text={passage} className="block text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line" />
       </div>
     </div>
   );

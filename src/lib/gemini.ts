@@ -1,5 +1,12 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, type GenerateContentResponse } from '@google/genai';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { app } from '../firebase';
 import { StudyFileKind } from '../types';
+import {
+  getKojluxResponseSchema,
+  type KojluxGenerationMode,
+  validateKojluxPayload,
+} from '../../shared/kojluxSchema';
 
 // Tries the primary key first; on failure (rate limit, transient error, etc.)
 // automatically retries with the rotation/fallback key. Never put a literal
@@ -7,8 +14,9 @@ import { StudyFileKind } from '../types';
 // keeps secrets out of the bundled source that ships to the browser.
 export async function generateContentWithFallback(
   apiKeys: (string | undefined)[],
-  requestConfig: any
-) {
+  requestConfig: any,
+  orchestratorFallback?: { mode: KojluxGenerationMode; subject: string; topic: string }
+): Promise<GenerateContentResponse | { text?: string }> {
   let lastError: unknown = null;
   for (const apiKey of apiKeys) {
     if (!apiKey) continue;
@@ -18,6 +26,22 @@ export async function generateContentWithFallback(
     } catch (err) {
       console.error('Gemini request failed on this key, trying next key if available:', err);
       lastError = err;
+    }
+  }
+  if (orchestratorFallback) {
+    try {
+      const callOrchestrator = httpsCallable<
+        { mode: KojluxGenerationMode; subject: string; topic: string; contents: unknown },
+        { text: string }
+      >(getFunctions(app), 'generateKojluxContent');
+      const result = await callOrchestrator({
+        ...orchestratorFallback,
+        contents: requestConfig.contents,
+      });
+      return result.data;
+    } catch (err) {
+      console.error('Kojlux orchestration fallback failed after feature key rotation was exhausted:', err);
+      throw err;
     }
   }
   throw lastError ?? new Error('No valid Gemini API key configured.');
@@ -32,8 +56,18 @@ const VISUALIZER_ROTATION_KEYS = [
 ];
 
 export const GEMINI_KEYS = {
-  quiz: [import.meta.env.VITE_QUIZ_GENERATOR_KEY, import.meta.env.VITE_QUIZ_GENERATOR_KEY_ROTATION, ...VISUALIZER_ROTATION_KEYS],
-  summarizer: [import.meta.env.VITE_SUMMARIZER_KEY, import.meta.env.VITE_SUMMARIZER_KEY_ROTATION, ...VISUALIZER_ROTATION_KEYS],
+  quiz: [
+    import.meta.env.VITE_QUIZ_GENERATOR_KEY,
+    import.meta.env.VITE_QUIZ_GENERATOR_KEY_ROTATION,
+    import.meta.env.VITE_QUIZ_GENERATOR_KEY_ROTATION_2,
+    ...VISUALIZER_ROTATION_KEYS,
+  ],
+  summarizer: [
+    import.meta.env.VITE_SUMMARIZER_KEY,
+    import.meta.env.VITE_SUMMARIZER_KEY_ROTATION,
+    import.meta.env.VITE_SUMMARIZER_KEY_ROTATION_2,
+    ...VISUALIZER_ROTATION_KEYS,
+  ],
   visualizer: VISUALIZER_ROTATION_KEYS,
   // New: powers Recall Coach's self-explanation grading and Concept Linker's
   // dual-coding questions. Add VITE_RECALL_COACH_KEY (and, optionally, a
@@ -51,6 +85,12 @@ export function parseJsonResponse<T>(rawText: string | undefined): T {
   }
   const cleaned = rawText.replace(/```json\s*|\s*```/g, '').trim();
   return JSON.parse(cleaned) as T;
+}
+
+export function parseKojluxResponse<T>(rawText: string | undefined, mode: KojluxGenerationMode): T {
+  const parsed = parseJsonResponse<unknown>(rawText);
+  validateKojluxPayload(parsed, mode);
+  return parsed as T;
 }
 
 // ---------------------------------------------------------------------------

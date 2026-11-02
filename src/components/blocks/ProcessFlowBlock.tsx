@@ -1,6 +1,7 @@
 import React from 'react';
 import { Workflow, FlaskConical } from 'lucide-react';
 import { ProcessFlowStep, ExperimentVariables } from '../../types';
+import { MathText } from './Latex';
 
 // Science & Biology: renders `process_flow` (an ordered cycle/process),
 // `variables` (independent/dependent/controlled), and `chemical_equations`.
@@ -32,8 +33,8 @@ export default function ProcessFlowBlock({
                   {i + 1}
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{s.step}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">{s.description}</p>
+                  <MathText text={s.step} className="block text-xs font-bold text-slate-800 dark:text-slate-100" />
+                  <MathText text={s.description} className="block text-xs text-slate-500 dark:text-slate-400" />
                 </div>
               </div>
             ))}
@@ -45,16 +46,16 @@ export default function ProcessFlowBlock({
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-2.5">
             <p className="text-[10px] font-bold text-slate-400 uppercase">Independent</p>
-            <p className="text-slate-700 dark:text-slate-200 font-semibold">{variables.independent}</p>
+            <MathText text={variables.independent} className="block text-slate-700 dark:text-slate-200 font-semibold" />
           </div>
           <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-2.5">
             <p className="text-[10px] font-bold text-slate-400 uppercase">Dependent</p>
-            <p className="text-slate-700 dark:text-slate-200 font-semibold">{variables.dependent}</p>
+            <MathText text={variables.dependent} className="block text-slate-700 dark:text-slate-200 font-semibold" />
           </div>
           {variables.controlled && variables.controlled.length > 0 && (
             <div className="col-span-2 bg-slate-50 dark:bg-slate-800 rounded-xl p-2.5">
               <p className="text-[10px] font-bold text-slate-400 uppercase">Controlled</p>
-              <p className="text-slate-700 dark:text-slate-200">{variables.controlled.join(', ')}</p>
+              <MathText text={variables.controlled.join(', ')} className="block text-slate-700 dark:text-slate-200" />
             </div>
           )}
         </div>
@@ -67,12 +68,11 @@ export default function ProcessFlowBlock({
           </p>
           <div className="space-y-1">
             {chemicalEquations!.map((eq, i) => (
-              <p
+              <MathText
                 key={i}
-                className="text-xs font-mono text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 rounded-lg px-2.5 py-1.5 overflow-x-auto"
-              >
-                {eq}
-              </p>
+                text={eq}
+                className="block text-xs font-mono text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 rounded-lg px-2.5 py-1.5 overflow-x-auto"
+              />
             ))}
           </div>
         </div>

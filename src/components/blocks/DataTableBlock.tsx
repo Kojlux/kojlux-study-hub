@@ -1,6 +1,7 @@
 import React from 'react';
 import { Table2 } from 'lucide-react';
 import { DataTable } from '../../types';
+import { MathText } from './Latex';
 
 // Any subject, data-heavy content (and Geography's fact_sheet_table, which
 // reuses this same shape with a different title). Responsive: the table
@@ -22,7 +23,7 @@ export default function DataTableBlock({ table, title = 'Data' }: { table?: Data
                 key={i}
                 className="text-left text-slate-400 font-semibold pb-1.5 px-2.5 border-b border-slate-100 dark:border-slate-800 whitespace-nowrap"
               >
-                {h}
+                <MathText text={h} />
               </th>
             ))}
           </tr>
@@ -32,7 +33,7 @@ export default function DataTableBlock({ table, title = 'Data' }: { table?: Data
             <tr key={ri} className={ri % 2 === 1 ? 'bg-slate-50/60 dark:bg-slate-800/40' : ''}>
               {row.map((cell, ci) => (
                 <td key={ci} className="text-slate-600 dark:text-slate-300 px-2.5 py-1.5 whitespace-nowrap">
-                  {cell}
+                  <MathText text={String(cell)} />
                 </td>
               ))}
             </tr>

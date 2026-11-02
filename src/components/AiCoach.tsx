@@ -4,6 +4,7 @@ import { HistoryItem, RecallCard, QuizData, SummaryData, VisualizationResponse }
 import { generateContentWithFallback, GEMINI_KEYS, parseJsonResponse } from '../lib/gemini';
 import { makeRecallCard } from '../lib/spacedRepetition';
 import { loadDraft, saveDraft, clearDraft } from '../lib/draftStore';
+import { KOJLUX_MATH_NOTATION_INSTRUCTIONS } from '../../shared/kojluxSchema';
 
 interface Props {
   // Setting this to a non-null array of items kicks off a background run.
@@ -55,7 +56,7 @@ export default function AiCoach({ items, requestedCount, onComplete, onError, on
     try {
       const material = jobItems.map(describeHistoryItem).join('\n\n');
       const targetCount = jobRequestedCount ?? Math.min(20, Math.max(4, jobItems.length * 3));
-      const prompt = `A student selected ${jobItems.length} items from their study history to turn into one combined flashcard set. Write recall questions that cover the material across all of them — it's fine, and often better, for a question to connect two items. Write EXACTLY ${targetCount} question${targetCount === 1 ? '' : 's'} total — not more, not fewer. Respond ONLY with strict JSON: {"cards": [{"prompt": string, "answer": string, "sourceTitle": string}]}\n\n${material}`;
+      const prompt = `A student selected ${jobItems.length} items from their study history to turn into one combined flashcard set. Write recall questions that cover the material across all of them — it's fine, and often better, for a question to connect two items. Write EXACTLY ${targetCount} question${targetCount === 1 ? '' : 's'} total — not more, not fewer.\n${KOJLUX_MATH_NOTATION_INSTRUCTIONS}\nRespond ONLY with strict JSON: {"cards": [{"prompt": string, "answer": string, "sourceTitle": string}]}\n\n${material}`;
 
       const response = await generateContentWithFallback(GEMINI_KEYS.recallCoach, {
         model: 'gemini-3.6-flash',

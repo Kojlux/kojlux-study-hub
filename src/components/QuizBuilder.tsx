@@ -10,17 +10,74 @@ import { QuizData, QuizQuestion, EvaluationResult, HistoryItem, StudyFile } from
 import {
   generateContentWithFallback,
   GEMINI_KEYS,
+  parseKojluxResponse,
   parseJsonResponse,
   classifyStudyFile,
   STUDY_FILE_ACCEPT,
 } from '../lib/gemini';
+import {
+  getKojluxResponseSchema,
+  KOJLUX_MATH_NOTATION_INSTRUCTIONS,
+  KOJLUX_QUIZ_COMPONENT_INSTRUCTIONS,
+} from '../../shared/kojluxSchema';
 import { makeRecallCard } from '../lib/spacedRepetition';
 import { RecallCard } from '../types';
-import { Subject, subjectPromptHint, buildStructuredFieldsClause } from '../lib/subjects';
+import { Subject, subjectPromptHint } from '../lib/subjects';
 import TopicPicker, { SegmentedTrack, ui } from './TopicPicker';
-import SubjectContentBlocks from './blocks/SubjectContentBlocks';
+import EducationalComponents from './blocks/EducationalComponents';
+import { MathText } from './blocks/Latex';
 import { renderStructuredContentToPdf } from '../lib/pdfStructuredContent';
 import { sanitizeForPdf } from '../lib/pdfTextSanitizer';
+
+function formatQuestionVisual(question: QuizQuestion): string[] {
+  const visual = question.visual;
+  if (!visual) return [];
+  switch (visual.type) {
+    case 'FORMULA_DISPLAY':
+      return [
+        `Visual: ${visual.title}`,
+        visual.rawLatex,
+        ...visual.variables.map((variable) =>
+          `${variable.symbol}: ${variable.meaning}${variable.unit ? ` (${variable.unit})` : ''}`
+        ),
+      ];
+    case 'AREA_MODEL': {
+      const cells = new Map(visual.gridCells.map((cell) => [`${cell.row}:${cell.col}`, cell.value]));
+      return [
+        `Visual: Area model — ${visual.explanation}`,
+        `Columns: ${visual.topLabels.join(' | ')}`,
+        ...visual.leftLabels.map((label, row) =>
+          `${label} | ${visual.topLabels.map((_, col) => cells.get(`${row}:${col}`) ?? '').join(' | ')}`
+        ),
+      ];
+    }
+    case 'COORDINATE_GEOMETRY':
+      return [
+        `Visual: ${visual.graphType.toLowerCase()} graph of ${visual.equation}`,
+        ...visual.keyPoints.map((point) =>
+          `${point.label} (${point.x}, ${point.y}) — ${point.mathematicalSignificance}`
+        ),
+      ];
+    case 'PROCESS_FLOW':
+      return [
+        `Visual: ${visual.processName}`,
+        ...visual.steps.map((step) =>
+          `${step.stepNumber}. ${step.title}: ${step.mechanism}${step.trigger ? ` (trigger: ${step.trigger})` : ''}`
+        ),
+      ];
+    case 'HISTORICAL_TIMELINE':
+      return [
+        `Visual: ${visual.eraOrPeriod}`,
+        ...visual.events.map((event) => `${event.dateOrEra}: ${event.title} — ${event.significance}`),
+      ];
+    case 'COMPARATIVE_TABLE':
+      return [
+        `Visual: ${visual.caption}`,
+        visual.headers.join(' | '),
+        ...visual.rows.map((row) => row.join(' | ')),
+      ];
+  }
+}
 
 interface Props {
   gradeLevel: string;
@@ -223,26 +280,32 @@ export default function QuizBuilder({ gradeLevel, summarySource, onSummarySource
         : `Text material to base the quiz on: """${sourceText.trim()}"""`;
 
       const subjectClause = subjectPromptHint(subject);
-      // Dynamic Forms: centralized in lib/subjects.ts so Quiz Builder and
-      // NoteCraft always request the same shape for the same subject
-      // rather than maintaining separate schema logic per screen.
-      const { schemaFields, rules } = buildStructuredFieldsClause(subject);
 
       const instructions = `You are an expert ${gradeLevel} teacher. Create a ${difficulty} difficulty quiz with exactly ${count} ${quizType === 'multiple-choice' ? 'multiple-choice' : 'short-answer'} questions based on the study material provided (file and/or text below).
 ${materialClause}
 ${subjectClause}
+${KOJLUX_QUIZ_COMPONENT_INSTRUCTIONS}
+${KOJLUX_MATH_NOTATION_INSTRUCTIONS}
+Set metadata.subject to "${subject}" and metadata.topic to a concise topic derived from the request. Set metadata.generatedAt to this ISO timestamp: ${new Date().toISOString()}. Set metadata.orchestratorReasoning to a short rationale if a visual is included, otherwise an empty string.
 Respond ONLY with strict JSON, no markdown fences, in this exact shape:
 {"title": string, "subject": "${subject}", "questions": [{"type": "${quizType}", "question": string, ${
         quizType === 'multiple-choice' ? '"options": [string, string, string, string], ' : ''
-      }"correctAnswer": string, "explanation": string}]${schemaFields}}
-${rules}`;
+      }"correctAnswer": string, "explanation": string, "visual"?: one relevant supported visual block}], "metadata": {"generatedAt": "ISO timestamp", "subject": string, "topic": string, "orchestratorReasoning": string}, "dynamicComponents": []}`;
       parts.push({ text: instructions });
 
       const response = await generateContentWithFallback(GEMINI_KEYS.quiz, {
         model: 'gemini-3.6-flash',
         contents: [{ role: 'user', parts }],
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: getKojluxResponseSchema('quiz'),
+        },
+      }, {
+        mode: 'quiz',
+        subject,
+        topic: sourceText.trim() || subject,
       });
-      const parsed = parseJsonResponse<QuizData>(response.text);
+      const parsed = parseKojluxResponse<QuizData>(response.text, 'quiz');
       setQuizData(parsed);
       setQuizSourceImage(file?.kind === 'image' ? file.dataUrl : null);
     } catch (err) {
@@ -283,7 +346,7 @@ ${rules}`;
 
       let saEvaluations: any[] = [];
       if (shortAnswerQs.length > 0) {
-        const prompt = `Grade these short-answer responses for a ${gradeLevel} student. For each, judge if the student's answer captures the correct idea (allow paraphrasing, don't require exact wording). Respond ONLY with strict JSON: {"evaluations": [{"questionIndex": number, "isCorrect": boolean, "feedback": string}]}\n\n${shortAnswerQs
+        const prompt = `Grade these short-answer responses for a ${gradeLevel} student. For each, judge if the student's answer captures the correct idea (allow paraphrasing, don't require exact wording).\n${KOJLUX_MATH_NOTATION_INSTRUCTIONS}\nRespond ONLY with strict JSON: {"evaluations": [{"questionIndex": number, "isCorrect": boolean, "feedback": string}]}\n\n${shortAnswerQs
           .map(
             ({ q, i }) =>
               `Q${i}: "${q.question}" | Correct answer: "${q.correctAnswer}" | Student answer: "${userAnswers[i] || '(blank)'}"`
@@ -385,6 +448,7 @@ ${rules}`;
     y = renderStructuredContentToPdf(pdf, quizData, y, quizData.title);
 
     quizData.questions.forEach((q, i) => {
+      formatQuestionVisual(q).forEach((line) => writeWrapped(line, 20, 170));
       writeWrapped(`${i + 1}. ${q.question}`, 15, 180);
       y += 2;
       if (q.type === 'multiple-choice' && q.options) {
@@ -446,6 +510,7 @@ ${rules}`;
 
     quizData.questions.forEach((q, i) => {
       const ev = evaluation.evaluations.find((e) => e.questionIndex === i);
+      formatQuestionVisual(q).forEach((line) => writeWrapped(line, 20, 170));
       writeWrapped(`${i + 1}. ${q.question}`, 15, 180);
       y += 2;
 
@@ -478,9 +543,8 @@ ${rules}`;
         <div className="rounded-2xl bg-focus-primary text-white p-6 sm:p-8 shadow-lg shadow-focus-primary/25">
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white">Score</p>
           <p className="text-6xl font-black tracking-tighter mt-2 tabular-nums">{evaluation.score}/{evaluation.totalQuestions}</p>
-          <p className="text-sm text-white mt-4 leading-relaxed">{evaluation.overallFeedback}</p>
+          <MathText text={evaluation.overallFeedback ?? ''} className="mt-4 block text-sm text-white leading-relaxed" />
         </div>
-        <SubjectContentBlocks data={quizData} />
         <div className="space-y-3">
           {quizData.questions.map((q, i) => {
             const ev = evaluation.evaluations.find((e) => e.questionIndex === i);
@@ -493,11 +557,12 @@ ${rules}`;
                     <XCircle className="w-5 h-5 text-slate-900 dark:text-slate-400 shrink-0 mt-0.5" />
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-900 dark:text-slate-400">{q.question}</p>
-                    <p className="text-xs text-slate-900 dark:text-slate-400 mt-2">Your answer: {userAnswers[i] || '(blank)'}</p>
-                    {!ev?.isCorrect && <p className="text-xs text-slate-900 dark:text-slate-400 mt-1 font-bold">Correct: {q.correctAnswer}</p>}
+                    <MathText text={q.question} className="block text-sm font-bold text-slate-900 dark:text-slate-400" />
+                    {q.visual && <EducationalComponents components={[q.visual]} />}
+                    <p className="text-xs text-slate-900 dark:text-slate-400 mt-2">Your answer: <MathText text={userAnswers[i] || '(blank)'} /></p>
+                    {!ev?.isCorrect && <p className="text-xs text-slate-900 dark:text-slate-400 mt-1 font-bold">Correct: <MathText text={q.correctAnswer} /></p>}
                     {(ev?.feedback || q.explanation) && (
-                      <p className="text-xs text-slate-900 dark:text-slate-400 mt-2 italic leading-relaxed">{ev?.feedback || q.explanation}</p>
+                      <MathText text={ev?.feedback || q.explanation || ''} className="mt-2 block text-xs italic leading-relaxed text-slate-900 dark:text-slate-400" />
                     )}
                   </div>
                 </div>
@@ -533,7 +598,7 @@ ${rules}`;
     return (
       <div className={`${WRAP} space-y-6`}>
         <div className="flex items-start justify-between gap-4">
-          <h2 className={ui.h1}>{quizData.title}</h2>
+          <MathText text={quizData.title} className={ui.h1} />
           <button onClick={resetQuiz} className={`${ui.link} pt-2 shrink-0`}>
             <Trash className="w-3.5 h-3.5" /> Discard
           </button>
@@ -567,14 +632,10 @@ ${rules}`;
           </div>
         </div>
 
-        {/* Dynamic Forms: passage, formulas/solution steps, process flow,
-            timeline, tables, and images all shown once above the questions
-            rather than repeated per-question. */}
-        <SubjectContentBlocks data={quizData} />
-
         {/* Current question only */}
         <div className="rounded-2xl bg-focus-primary/5 p-5 sm:p-6 min-h-[220px] flex flex-col">
-          <p className="text-base font-bold text-slate-900 dark:text-slate-400 mb-5 leading-snug">{currentQ + 1}. {q.question}</p>
+          {q.visual && <EducationalComponents components={[q.visual]} />}
+          <MathText text={`${currentQ + 1}. ${q.question}`} className="mb-5 block text-base font-bold leading-snug text-slate-900 dark:text-slate-400" />
           {q.type === 'multiple-choice' && q.options ? (
             <div className="space-y-2">
               {q.options.map((opt, oi) => (
@@ -587,7 +648,7 @@ ${rules}`;
                       : 'bg-white dark:bg-slate-800 text-black dark:text-slate-100 font-medium shadow-[0_1px_3px_rgba(0,0,0,0.08)] hover:shadow-md'
                   }`}
                 >
-                  {opt}
+                  <MathText text={opt} />
                 </button>
               ))}
             </div>

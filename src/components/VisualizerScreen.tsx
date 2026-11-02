@@ -9,8 +9,10 @@ import {
 } from 'lucide-react';
 import { VisualizationResponse, HistoryItem } from '../types';
 import { Subject, subjectPromptHint, DIAGRAM_NODE_IDS } from '../lib/subjects';
+import { KOJLUX_MATH_NOTATION_INSTRUCTIONS } from '../../shared/kojluxSchema';
 import { SubjectChips } from './TopicPicker';
 import { renderDiagramNode } from './DiagramAssets';
+import { formatMathNotationAsUnicode, MathText } from './blocks/Latex';
 
 interface VisualizerProps {
   darkMode: boolean;
@@ -237,6 +239,7 @@ export default function VisualizerScreen({
       const systemInstruction = `You are Kojlux's AI concept visualizer and tutor, in a continuous chat with a "${gradeLevel}" level student.
 ${activeVizContext}
 ${subjectClause}
+${KOJLUX_MATH_NOTATION_INSTRUCTIONS}
 For every message the student sends, choose exactly one response type:
 - "visualization": the student is asking you to build, show, graph, solve, diagram, map, chart, or animate a NEW concept, equation, or system — including asking for something different than what's currently loaded.
 - "text": the student is asking a follow-up or clarifying question about the visualization CURRENTLY on screen (e.g. "why does that happen", "explain step 2 more simply", "give a real-world example"). Do not rebuild the visualization for these — just explain, in plain conversational language appropriate for their level.
@@ -523,7 +526,7 @@ Rules:
         </div>
         <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 rounded-xl text-center">
           <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-widest leading-none">Mathematical Plotter Function</span>
-          <span className="text-sm font-extrabold font-mono text-indigo-600 dark:text-indigo-400 mt-1 block">{equation || 'Function line plot'}</span>
+          <MathText text={equation || 'Function line plot'} className="text-sm font-extrabold text-indigo-600 dark:text-indigo-400 mt-1 block" />
         </div>
       </div>
     );
@@ -575,7 +578,7 @@ Rules:
                         textAnchor="middle"
                         className="text-[9.5px] font-extrabold select-none transition-all duration-1000 [text-shadow:_0_1px_1px_rgba(255,255,255,0.7)] dark:[text-shadow:_0_1px_2px_rgba(0,0,0,0.8)]"
                       >
-                        {shape.label}
+                        {formatMathNotationAsUnicode(shape.label)}
                       </text>
                     )}
                   </g>
@@ -602,7 +605,7 @@ Rules:
                         textAnchor="middle"
                         className="text-[8.5px] font-black select-none transition-all duration-1000 [text-shadow:_0_1px_2px_rgba(0,0,0,0.95),_0_0_1px_rgba(0,0,0,0.95)]"
                       >
-                        {shape.label}
+                        {formatMathNotationAsUnicode(shape.label)}
                       </text>
                     )}
                   </g>
@@ -647,7 +650,7 @@ Rules:
                         textAnchor="middle"
                         className="text-[7.5px] font-extrabold italic select-none"
                       >
-                        {shape.label}
+                        {formatMathNotationAsUnicode(shape.label)}
                       </text>
                     )}
                   </g>
@@ -663,7 +666,7 @@ Rules:
                     fill={shape.color}
                     className="text-[9.5px] font-bold font-mono transition-all duration-1000 select-none"
                   >
-                    {shape.text || shape.label}
+                    {formatMathNotationAsUnicode(shape.text || shape.label || '')}
                   </text>
                 );
               }
@@ -680,7 +683,7 @@ Rules:
                     y: shape.y ?? 0,
                     width: shape.width ?? 40,
                     height: shape.height ?? 40,
-                    label: shape.label,
+                    label: shape.label ? formatMathNotationAsUnicode(shape.label) : undefined,
                     color: shape.color,
                     darkMode,
                   },
@@ -869,16 +872,14 @@ Rules:
             <span className="text-[10px] tracking-widest font-bold text-indigo-500 uppercase block">Active Formula Matrix</span>
 
             <div className="py-2.5 px-4 bg-indigo-50/50 dark:bg-slate-900 border border-indigo-100/50 dark:border-slate-800 rounded-2xl inline-block shadow-xs">
-              <span className="text-xl md:text-2xl font-black font-mono tracking-wide text-slate-850 dark:text-slate-150 inline-block py-1">
-                {highlightData.expression}
-              </span>
+              <MathText text={highlightData.expression} className="text-xl md:text-2xl font-black tracking-wide text-slate-850 dark:text-slate-150 inline-block py-1" />
             </div>
 
             {highlightData.highlight && (
               <div className="flex gap-1 justify-center items-center">
                 <span className="text-[10px] text-slate-400">Operation focus:</span>
                 <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-400 font-mono text-[10px] font-extrabold animate-pulse">
-                  {highlightData.highlight}
+                  <MathText text={highlightData.highlight ?? ''} />
                 </span>
               </div>
             )}
@@ -889,7 +890,7 @@ Rules:
           <Lightbulb className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
           <div className="text-left">
             <span className="text-[9px] uppercase tracking-wider font-extrabold text-indigo-600 dark:text-indigo-400 block mb-0.5">Rule / Logic Rationale</span>
-            <p className="text-[10.5px] text-slate-600 dark:text-slate-350 leading-relaxed font-sans font-medium">{highlightData.note}</p>
+            <MathText text={highlightData.note ?? ''} className="block text-[10.5px] text-slate-600 dark:text-slate-350 leading-relaxed font-sans font-medium" />
           </div>
         </div>
       </div>
@@ -1031,7 +1032,7 @@ Rules:
                         ? 'bg-indigo-600 text-white rounded-tr-sm'
                         : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-tl-sm'
                     }`}>
-                      {msg.text}
+                      <MathText text={msg.text ?? ''} />
                     </div>
 
                     {msg.kind === 'visualization' && msg.vizResponse && (
@@ -1155,13 +1156,9 @@ Rules:
                     <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest leading-none">
                       Step {currentStep + 1} of {vizData.steps.length}
                     </span>
-                    <span className="text-[10.5px] font-extrabold text-slate-800 dark:text-white leading-none">
-                      {currentStepData.label}
-                    </span>
+                    <MathText text={currentStepData.label} className="text-[10.5px] font-extrabold text-slate-800 dark:text-white leading-none" />
                   </div>
-                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-sans font-medium text-left">
-                    {currentStepData.explanation}
-                  </p>
+                  <MathText text={currentStepData.explanation} className="block text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-sans font-medium text-left" />
                 </div>
               )}
 
