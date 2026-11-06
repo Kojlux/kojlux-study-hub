@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Upload, Camera, Sparkles, CheckCircle, XCircle, RefreshCw, Printer,
-  ChevronRight, Trash, FileText,
+  ChevronRight, FileText, Pause,
 } from 'lucide-react';
 import { loadDraft, saveDraft, clearDraft } from '../lib/draftStore';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
@@ -79,19 +79,97 @@ function formatQuestionVisual(question: QuizQuestion): string[] {
   }
 }
 
+function getMultipartAnswers(question: QuizQuestion, answer: string | undefined): Record<number, string> {
+  if (!question.parts?.length || !answer) return {};
+  try {
+    const parsed: unknown = JSON.parse(answer);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const storedAnswers = parsed as Record<string, unknown>;
+    const answers: Record<number, string> = {};
+    for (const { partNumber } of question.parts) {
+      const value = storedAnswers[partNumber];
+      answers[partNumber] = typeof value === 'string' ? value : '';
+    }
+    return answers;
+  } catch {
+    return {};
+  }
+}
+
+function isQuestionAnswered(question: QuizQuestion, answer: string | undefined): boolean {
+  if (!question.parts?.length) return Boolean(answer?.trim());
+  const answers = getMultipartAnswers(question, answer);
+  return question.parts.every((part) => Boolean(answers[part.partNumber]?.trim()));
+}
+
+function formatStudentAnswer(question: QuizQuestion, answer: string | undefined): string {
+  if (!question.parts?.length) return answer || '(blank)';
+  const answers = getMultipartAnswers(question, answer);
+  return question.parts
+    .map((part) => `Part ${part.partNumber}: ${answers[part.partNumber] || '(blank)'}`)
+    .join(' | ');
+}
+
+function isMultipartAnswerCorrect(question: QuizQuestion, answer: string | undefined): boolean {
+  if (!question.parts?.length) {
+    return (answer || '').trim().toLowerCase() === question.correctAnswer.trim().toLowerCase();
+  }
+  const answers = getMultipartAnswers(question, answer);
+  return question.parts.every((part) =>
+    (answers[part.partNumber] || '').trim().toLowerCase() === part.correctAnswer.trim().toLowerCase()
+  );
+}
+
 interface Props {
   gradeLevel: string;
+  scopeId: string;
+  resumeDraftId: string | null;
   summarySource?: string | null;
   onSummarySourceConsumed?: () => void;
+  onResumeConsumed: () => void;
+  onFocusModeChange: (focused: boolean) => void;
+  onPauseQuiz: (id: string, title: string) => void;
+  onSubmitQuiz: (id: string) => void;
   onSaveHistory: (item: HistoryItem) => void;
   onAddRecallCards: (cards: RecallCard[]) => void;
   onError: (msg: string) => void;
 }
 
+interface QuizDraft {
+  file: StudyFile | null;
+  textInput: string;
+  inputMode: 'topic' | 'notes';
+  subject: Subject;
+  questionCount: number | '';
+  quizType: 'multiple-choice' | 'short-answer';
+  difficulty: 'easy' | 'medium' | 'hard';
+  quizData: QuizData | null;
+  quizSourceImage: string | null;
+  userAnswers: Record<number, string>;
+  evaluation: EvaluationResult | null;
+  currentQ: number;
+  workId?: string;
+  pausedAt?: string;
+  lastReminderAt?: string;
+}
+
 // Max-width only: the app shell already supplies side padding.
 const WRAP = 'mx-auto w-full max-w-2xl';
 
-export default function QuizBuilder({ gradeLevel, summarySource, onSummarySourceConsumed, onSaveHistory, onAddRecallCards, onError }: Props) {
+export default function QuizBuilder({
+  gradeLevel,
+  scopeId,
+  resumeDraftId,
+  summarySource,
+  onSummarySourceConsumed,
+  onResumeConsumed,
+  onFocusModeChange,
+  onPauseQuiz,
+  onSubmitQuiz,
+  onSaveHistory,
+  onAddRecallCards,
+  onError,
+}: Props) {
   const [file, setFile] = useState<StudyFile | null>(null);
   const [textInput, setTextInput] = useState('');
   // Explicit topic-vs-notes choice from the TopicPicker (see TopicPicker.tsx
@@ -115,6 +193,7 @@ export default function QuizBuilder({ gradeLevel, summarySource, onSummarySource
 
   const [loading, setLoading] = useState(false);
   const [quizData, setQuizData] = useState<QuizData | null>(null);
+  const [workId, setWorkId] = useState<string | null>(null);
   // Snapshot of the source file's image (when it was an image) taken at
   // generation time. The upload form is hidden once a quiz exists, so `file`
   // itself can't change out from under a quiz in normal use — but every
@@ -124,8 +203,11 @@ export default function QuizBuilder({ gradeLevel, summarySource, onSummarySource
   // later. PDFs/videos aren't image data, so they never populate this.
   const [quizSourceImage, setQuizSourceImage] = useState<string | null>(null);
   const [userAnswers, setUserAnswers] = useState<Record<number, string>>({});
+  const [checkedParts, setCheckedParts] = useState<Record<string, boolean>>({});
+  const [visiblePartHints, setVisiblePartHints] = useState<Record<string, boolean>>({});
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [isPausing, setIsPausing] = useState(false);
   const [currentQ, setCurrentQ] = useState(0);
 
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
@@ -138,59 +220,75 @@ export default function QuizBuilder({ gradeLevel, summarySource, onSummarySource
   // no warning. This mirrors it into IndexedDB (see lib/draftStore.ts) as it
   // changes, and restores it on mount, so a refresh mid-quiz resumes exactly
   // where the student left off instead of discarding their work.
-  const DRAFT_KEY = 'quiz_builder';
+  const DRAFT_KEY = `quiz_builder_${scopeId}`;
+  const pausedDraftKey = (id: string) => `quiz_paused_${scopeId}_${id}`;
   const draftHydrated = useRef(false);
 
   useEffect(() => {
+    if (draftHydrated.current && !resumeDraftId) return;
     let cancelled = false;
-    loadDraft<{
-      file: StudyFile | null;
-      textInput: string;
-      inputMode: 'topic' | 'notes';
-      subject: Subject;
-      questionCount: number | '';
-      quizType: 'multiple-choice' | 'short-answer';
-      difficulty: 'easy' | 'medium' | 'hard';
-      quizData: QuizData | null;
-      quizSourceImage: string | null;
-      userAnswers: Record<number, string>;
-      evaluation: EvaluationResult | null;
-      currentQ: number;
-    }>(DRAFT_KEY).then((draft) => {
-      if (cancelled || !draft || !draft.quizData) return; // nothing worth resuming
+    const load = resumeDraftId
+      ? loadDraft<QuizDraft>(pausedDraftKey(resumeDraftId)).then((draft) =>
+          draft ?? loadDraft<QuizDraft>(DRAFT_KEY)
+        )
+      : loadDraft<QuizDraft>(DRAFT_KEY);
+    load.then(async (draft) => {
+      if (cancelled || !draft || !draft.quizData) {
+        if (resumeDraftId) {
+          onError('That paused quiz could not be found. It may have been deleted.');
+          onFocusModeChange(false);
+          onResumeConsumed();
+        }
+        return;
+      }
       setFile(draft.file);
       setTextInput(draft.textInput);
       setInputMode(draft.inputMode);
       setSubject(draft.subject);
-      setQuestionCount(draft.questionCount);
+      setQuestionCount(
+        typeof draft.questionCount === 'number'
+          ? Math.min(15, Math.max(3, Math.round(draft.questionCount)))
+          : ''
+      );
       setQuizType(draft.quizType);
       setDifficulty(draft.difficulty);
       setQuizData(draft.quizData);
+      setWorkId(draft.workId ?? (resumeDraftId || `${Date.now()}`));
       setQuizSourceImage(draft.quizSourceImage);
       setUserAnswers(draft.userAnswers);
+      setCheckedParts({});
+      setVisiblePartHints({});
       setEvaluation(draft.evaluation);
       setCurrentQ(draft.currentQ);
+      if (resumeDraftId) {
+        await clearDraft(pausedDraftKey(resumeDraftId));
+        onFocusModeChange(true);
+        onResumeConsumed();
+      } else if (!draft.evaluation) {
+        onFocusModeChange(true);
+      }
     }).finally(() => {
+      if (cancelled) return;
       draftHydrated.current = true;
     });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [scopeId, resumeDraftId]);
 
   useEffect(() => {
     if (!draftHydrated.current) return; // don't stomp the draft with blank initial state before hydration runs
-    if (!quizData) {
+    if (!quizData || evaluation) {
       clearDraft(DRAFT_KEY);
       return;
     }
     saveDraft(DRAFT_KEY, {
       file, textInput, inputMode, subject, questionCount, quizType, difficulty,
-      quizData, quizSourceImage, userAnswers, evaluation, currentQ,
+      quizData, quizSourceImage, userAnswers, evaluation, currentQ, workId,
     });
     // Only re-save when something about the actual session changes — typing
     // in unrelated future fields shouldn't thrash IndexedDB.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quizData, quizSourceImage, userAnswers, evaluation, currentQ]);
+  }, [DRAFT_KEY, quizData, quizSourceImage, userAnswers, evaluation, currentQ, workId]);
 
   // Warns on refresh/close while a quiz is in progress and not yet
   // submitted — see lib/useUnsavedChangesWarning.ts for what this can and
@@ -229,6 +327,8 @@ export default function QuizBuilder({ gradeLevel, summarySource, onSummarySource
     setQuizData(null);
     setQuizSourceImage(null);
     setUserAnswers({});
+    setCheckedParts({});
+    setVisiblePartHints({});
     setEvaluation(null);
     setCurrentQ(0);
     clearDraft(DRAFT_KEY);
@@ -253,6 +353,13 @@ export default function QuizBuilder({ gradeLevel, summarySource, onSummarySource
       onError("Choose at least 1 question — 0 won't generate a quiz.");
       return;
     }
+    if (count > 15) {
+      onError('Choose no more than 15 questions.');
+      return;
+    }
+    const nextWorkId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setWorkId(nextWorkId);
+    onFocusModeChange(true);
     setLoading(true);
     resetQuiz();
     try {
@@ -288,9 +395,11 @@ ${KOJLUX_QUIZ_COMPONENT_INSTRUCTIONS}
 ${KOJLUX_MATH_NOTATION_INSTRUCTIONS}
 Set metadata.subject to "${subject}" and metadata.topic to a concise topic derived from the request. Set metadata.generatedAt to this ISO timestamp: ${new Date().toISOString()}. Set metadata.orchestratorReasoning to a short rationale if a visual is included, otherwise an empty string.
 Respond ONLY with strict JSON, no markdown fences, in this exact shape:
-{"title": string, "subject": "${subject}", "questions": [{"type": "${quizType}", "question": string, ${
+{"title": string, "subject": "${subject}", "questions": [{"type": "${quizType}", "question": string (for multipart questions, use shared context only, not another question), ${
         quizType === 'multiple-choice' ? '"options": [string, string, string, string], ' : ''
-      }"correctAnswer": string, "explanation": string, "visual"?: one relevant supported visual block}], "metadata": {"generatedAt": "ISO timestamp", "subject": string, "topic": string, "orchestratorReasoning": string}, "dynamicComponents": []}`;
+      }"correctAnswer": string, "explanation": string, "parts"?: [{"partNumber": number, "questionText": string, "type": "${quizType}", ${
+        quizType === 'multiple-choice' ? '"options": [string, string, string, string], ' : ''
+      }"correctAnswer": string, "explanation": string, "hints"?: [string], "remediationIfWrong"?: string}], "visual"?: one relevant supported visual block}], "metadata": {"generatedAt": "ISO timestamp", "subject": string, "topic": string, "orchestratorReasoning": string}, "dynamicComponents": []}`;
       parts.push({ text: instructions });
 
       const response = await generateContentWithFallback(GEMINI_KEYS.quiz, {
@@ -306,13 +415,59 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
         topic: sourceText.trim() || subject,
       });
       const parsed = parseKojluxResponse<QuizData>(response.text, 'quiz');
+      if (parsed.questions.length !== count) {
+        throw new Error(`The quiz contained ${parsed.questions.length} questions instead of the requested ${count}.`);
+      }
+      const visualCount = parsed.questions.filter((question) => question.visual).length;
+      const requiredVisualCount = Math.floor(count / 5) * 2;
+      if (count < 5 && visualCount > 0) {
+        throw new Error('Quizzes with fewer than five questions must not include visuals.');
+      }
+      if (visualCount < requiredVisualCount) {
+        throw new Error(`The quiz needs at least ${requiredVisualCount} visuals, but only ${visualCount} were generated.`);
+      }
       setQuizData(parsed);
       setQuizSourceImage(file?.kind === 'image' ? file.dataUrl : null);
     } catch (err) {
       console.error(err);
+      onFocusModeChange(false);
       onError('Could not generate a quiz from that material. Try a clearer file or more text.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const pauseQuiz = async () => {
+    if (!quizData || !workId || isPausing || isEvaluating) return;
+    setIsPausing(true);
+    const pausedAt = new Date().toISOString();
+    try {
+      const key = pausedDraftKey(workId);
+      await saveDraft(key, {
+        file,
+        textInput,
+        inputMode,
+        subject,
+        questionCount,
+        quizType,
+        difficulty,
+        quizData,
+        quizSourceImage,
+        userAnswers,
+        evaluation: null,
+        currentQ,
+        workId,
+        pausedAt,
+        lastReminderAt: pausedAt,
+      });
+      if (!(await loadDraft(key))) {
+        onError('Your quiz could not be saved. Please keep this workspace open and try again.');
+        return;
+      }
+      await clearDraft(DRAFT_KEY);
+      onPauseQuiz(workId, quizData.title);
+    } finally {
+      setIsPausing(false);
     }
   };
 
@@ -334,7 +489,7 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
         q.type === 'multiple-choice'
           ? {
               questionIndex: i,
-              isCorrect: (userAnswers[i] || '').trim().toLowerCase() === q.correctAnswer.trim().toLowerCase(),
+              isCorrect: isMultipartAnswerCorrect(q, userAnswers[i]),
               feedback: q.explanation || '',
             }
           : null
@@ -348,8 +503,15 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
       if (shortAnswerQs.length > 0) {
         const prompt = `Grade these short-answer responses for a ${gradeLevel} student. For each, judge if the student's answer captures the correct idea (allow paraphrasing, don't require exact wording).\n${KOJLUX_MATH_NOTATION_INSTRUCTIONS}\nRespond ONLY with strict JSON: {"evaluations": [{"questionIndex": number, "isCorrect": boolean, "feedback": string}]}\n\n${shortAnswerQs
           .map(
-            ({ q, i }) =>
-              `Q${i}: "${q.question}" | Correct answer: "${q.correctAnswer}" | Student answer: "${userAnswers[i] || '(blank)'}"`
+            ({ q, i }) => {
+              const questionText = q.parts?.length
+                ? `${q.question}\n${q.parts.map((part) => `Part ${part.partNumber}: ${part.questionText}`).join('\n')}`
+                : q.question;
+              const correctAnswer = q.parts?.length
+                ? q.parts.map((part) => `Part ${part.partNumber}: ${part.correctAnswer}`).join('; ')
+                : q.correctAnswer;
+              return `Q${i}: "${questionText}" | Correct answer: "${correctAnswer}" | Student answer: "${formatStudentAnswer(q, userAnswers[i])}"`;
+            }
           )
           .join('\n')}`;
         const response = await generateContentWithFallback(GEMINI_KEYS.quiz, {
@@ -377,6 +539,9 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
             : 'Nice work. The ones you missed have been queued in Review so you see them again before you forget.',
       };
       setEvaluation(result);
+      onFocusModeChange(false);
+      if (workId) onSubmitQuiz(workId);
+      await clearDraft(DRAFT_KEY);
 
       onSaveHistory({
         id: `${Date.now()}`,
@@ -393,8 +558,12 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
         makeRecallCard({
           sourceType: 'quiz',
           sourceTitle: quizData.title,
-          prompt: q.question,
-          answer: q.correctAnswer,
+          prompt: q.parts?.length
+            ? `${q.question} ${q.parts.map((part) => `Part ${part.partNumber}: ${part.questionText}`).join(' ')}`
+            : q.question,
+          answer: q.parts?.length
+            ? q.parts.map((part) => `Part ${part.partNumber}: ${part.correctAnswer}`).join('; ')
+            : q.correctAnswer,
           image: quizSourceImage ?? undefined,
         })
       );
@@ -406,6 +575,19 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
       setIsEvaluating(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-[100svh] flex flex-col items-center justify-center bg-focus-bg text-slate-900 dark:text-slate-100 px-6 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center mb-6">
+          <RefreshCw className="w-7 h-7 text-focus-primary animate-spin" />
+        </div>
+        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-focus-primary">Building your study session</p>
+        <h1 className="mt-3 text-2xl sm:text-3xl font-black tracking-tight">Creating your quiz</h1>
+        <p className="mt-3 max-w-sm text-sm leading-relaxed text-slate-600 dark:text-slate-400">Your focused workspace will be ready in a moment.</p>
+      </div>
+    );
+  }
 
   const exportPdf = () => {
     if (!quizData) return;
@@ -451,7 +633,16 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
       formatQuestionVisual(q).forEach((line) => writeWrapped(line, 20, 170));
       writeWrapped(`${i + 1}. ${q.question}`, 15, 180);
       y += 2;
-      if (q.type === 'multiple-choice' && q.options) {
+      if (q.parts?.length) {
+        q.parts.forEach((part) => {
+          writeWrapped(`Part ${part.partNumber}: ${part.questionText}`, 20, 170);
+          if (part.type === 'multiple-choice' && part.options) {
+            part.options.forEach((option, index) => writeWrapped(`${String.fromCharCode(65 + index)}. ${option}`, 25, 165));
+          } else {
+            writeWrapped('Answer: _______________________________', 25, 165);
+          }
+        });
+      } else if (q.type === 'multiple-choice' && q.options) {
         q.options.forEach((opt, oi) => {
           writeWrapped(`${String.fromCharCode(65 + oi)}. ${opt}`, 20, 170);
         });
@@ -514,13 +705,20 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
       writeWrapped(`${i + 1}. ${q.question}`, 15, 180);
       y += 2;
 
-      if (q.type === 'multiple-choice' && q.options) {
+      if (q.parts?.length) {
+        q.parts.forEach((part) => {
+          writeWrapped(`Part ${part.partNumber}: ${part.questionText}`, 20, 170);
+          if (part.type === 'multiple-choice' && part.options) {
+            part.options.forEach((option, index) => writeWrapped(`${String.fromCharCode(65 + index)}. ${option}`, 25, 165));
+          }
+        });
+      } else if (q.type === 'multiple-choice' && q.options) {
         q.options.forEach((opt, oi) => {
           writeWrapped(`${String.fromCharCode(65 + oi)}. ${opt}`, 20, 170);
         });
       }
 
-      writeWrapped(`Your answer: ${userAnswers[i] || '(blank)'}`, 20, 170);
+      writeWrapped(`Your answer: ${formatStudentAnswer(q, userAnswers[i])}`, 20, 170);
       writeWrapped(`Result: ${ev?.isCorrect ? 'Correct' : 'Incorrect'}`, 20, 170);
 
       if (!ev?.isCorrect) {
@@ -559,8 +757,20 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
                   <div className="flex-1 min-w-0">
                     <MathText text={q.question} className="block text-sm font-bold text-slate-900 dark:text-slate-400" />
                     {q.visual && <EducationalComponents components={[q.visual]} />}
-                    <p className="text-xs text-slate-900 dark:text-slate-400 mt-2">Your answer: <MathText text={userAnswers[i] || '(blank)'} /></p>
-                    {!ev?.isCorrect && <p className="text-xs text-slate-900 dark:text-slate-400 mt-1 font-bold">Correct: <MathText text={q.correctAnswer} /></p>}
+                    {q.parts?.map((part) => (
+                      <p key={part.partNumber} className="mt-2 text-xs text-slate-900 dark:text-slate-400">
+                        <span className="font-bold">Part {part.partNumber}: </span>
+                        <MathText text={getMultipartAnswers(q, userAnswers[i])[part.partNumber] || '(blank)'} />
+                      </p>
+                    ))}
+                    {!q.parts?.length && <p className="text-xs text-slate-900 dark:text-slate-400 mt-2">Your answer: <MathText text={formatStudentAnswer(q, userAnswers[i])} /></p>}
+                    {!ev?.isCorrect && (
+                      q.parts?.length ? q.parts.map((part) => (
+                        <p key={part.partNumber} className="mt-1 text-xs font-bold text-slate-900 dark:text-slate-400">
+                          Correct part {part.partNumber}: <MathText text={part.correctAnswer} />
+                        </p>
+                      )) : <p className="text-xs text-slate-900 dark:text-slate-400 mt-1 font-bold">Correct: <MathText text={q.correctAnswer} /></p>
+                    )}
                     {(ev?.feedback || q.explanation) && (
                       <MathText text={ev?.feedback || q.explanation || ''} className="mt-2 block text-xs italic leading-relaxed text-slate-900 dark:text-slate-400" />
                     )}
@@ -591,16 +801,22 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
   if (quizData) {
     const total = quizData.questions.length;
     const q = quizData.questions[currentQ];
-    const allAnswered = quizData.questions.every((_, i) => (userAnswers[i] || '').trim().length > 0);
+    const allAnswered = quizData.questions.every((question, i) => isQuestionAnswered(question, userAnswers[i]));
     const isLast = currentQ === total - 1;
-    const currentAnswered = (userAnswers[currentQ] || '').trim().length > 0;
+    const currentAnswered = isQuestionAnswered(q, userAnswers[currentQ]);
 
     return (
       <div className={`${WRAP} space-y-6`}>
         <div className="flex items-start justify-between gap-4">
           <MathText text={quizData.title} className={ui.h1} />
-          <button onClick={resetQuiz} className={`${ui.link} pt-2 shrink-0`}>
-            <Trash className="w-3.5 h-3.5" /> Discard
+          <button
+            onClick={() => void pauseQuiz()}
+            disabled={isEvaluating || isPausing}
+            aria-label="Pause and exit quiz"
+            title="Pause and exit"
+            className="fixed top-4 right-4 z-20 w-12 h-12 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg flex items-center justify-center text-slate-700 dark:text-slate-100 disabled:opacity-50"
+          >
+            <Pause className="w-5 h-5" />
           </button>
         </div>
 
@@ -610,9 +826,7 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
             <span className="text-[10px] font-bold tracking-[0.2em] text-slate-900 dark:text-slate-400 uppercase tabular-nums">
               Question {currentQ + 1} of {total}
             </span>
-            <button onClick={exportPdf} className={ui.link}>
-              <Printer className="w-3.5 h-3.5" /> Print blank copy
-            </button>
+            <span className="text-[10px] font-medium text-slate-400">Your progress is saved automatically</span>
           </div>
           <div className="flex gap-1">
             {quizData.questions.map((_, i) => (
@@ -623,7 +837,7 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
                 className={`h-1.5 flex-1 rounded-full transition-colors duration-150 ${
                   i === currentQ
                     ? 'bg-focus-primary'
-                    : (userAnswers[i] || '').trim().length > 0
+                    : isQuestionAnswered(quizData.questions[i], userAnswers[i])
                     ? 'bg-focus-primary/60'
                     : 'bg-focus-primary/15'
                 }`}
@@ -636,7 +850,102 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
         <div className="rounded-2xl bg-focus-primary/5 p-5 sm:p-6 min-h-[220px] flex flex-col">
           {q.visual && <EducationalComponents components={[q.visual]} />}
           <MathText text={`${currentQ + 1}. ${q.question}`} className="mb-5 block text-base font-bold leading-snug text-slate-900 dark:text-slate-400" />
-          {q.type === 'multiple-choice' && q.options ? (
+          {q.parts?.length ? (
+            <div className="space-y-5">
+              {q.parts.map((part) => {
+                const partAnswers = getMultipartAnswers(q, userAnswers[currentQ]);
+                const answer = partAnswers[part.partNumber] ?? '';
+                const partKey = `${currentQ}:${part.partNumber}`;
+                const checkedCorrectly = checkedParts[partKey];
+                return (
+                  <fieldset key={part.partNumber} className="rounded-xl border border-focus-primary/15 bg-white/70 p-4 dark:bg-slate-900/70">
+                    <legend className="px-1 text-sm font-bold text-slate-900 dark:text-slate-100">
+                      Part {part.partNumber}
+                    </legend>
+                    <MathText text={part.questionText} className="mb-3 block text-sm font-medium text-slate-800 dark:text-slate-200" />
+                    {part.type === 'multiple-choice' && part.options ? (
+                      <div className="space-y-2">
+                        {part.options.map((option, optionIndex) => (
+                          <button
+                            key={optionIndex}
+                            type="button"
+                            onClick={() => {
+                              setUserAnswers((previous) => ({
+                                ...previous,
+                                [currentQ]: JSON.stringify({
+                                  ...getMultipartAnswers(q, previous[currentQ]),
+                                  [part.partNumber]: option,
+                                }),
+                              }));
+                              setCheckedParts((previous) => {
+                                const next = { ...previous };
+                                delete next[partKey];
+                                return next;
+                              });
+                            }}
+                            className={`w-full rounded-xl px-4 py-3 text-left text-sm ${
+                              answer === option
+                                ? 'bg-focus-primary font-bold text-white'
+                                : 'bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-100'
+                            }`}
+                          >
+                            <MathText text={option} />
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <textarea
+                        value={answer}
+                        onChange={(event) => setUserAnswers((previous) => ({
+                          ...previous,
+                          [currentQ]: JSON.stringify({
+                            ...getMultipartAnswers(q, previous[currentQ]),
+                            [part.partNumber]: event.target.value,
+                          }),
+                        }))}
+                        placeholder="Type your answer in your own words."
+                        className={`${ui.fieldSolid} w-full`}
+                        rows={3}
+                      />
+                    )}
+                    {part.hints && part.hints.length > 0 && (
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          disabled={!answer.trim()}
+                          onClick={() => setCheckedParts((previous) => ({
+                            ...previous,
+                            [partKey]: answer.trim().toLowerCase() === part.correctAnswer.trim().toLowerCase(),
+                          }))}
+                          className="rounded-lg bg-focus-primary px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                        >
+                          Check answer
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setVisiblePartHints((previous) => ({
+                            ...previous,
+                            [partKey]: !previous[partKey],
+                          }))}
+                          className="text-xs font-semibold text-focus-primary"
+                        >
+                          {visiblePartHints[partKey] ? 'Hide hint' : 'Show hint'}
+                        </button>
+                        {checkedCorrectly !== undefined && (
+                          <p className={`w-full text-sm ${checkedCorrectly ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}`}>
+                            {checkedCorrectly ? 'That’s right.' : part.remediationIfWrong}
+                          </p>
+                        )}
+                        {visiblePartHints[partKey] && (
+                          <MathText text={part.hints.join(' ')} className="w-full text-sm text-slate-600 dark:text-slate-300" />
+                        )}
+                      </div>
+                    )}
+                  </fieldset>
+                );
+              })}
+            </div>
+          ) : q.type === 'multiple-choice' && q.options ? (
             <div className="space-y-2">
               {q.options.map((opt, oi) => (
                 <button
@@ -774,8 +1083,8 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
               <input
                 type="range"
                 min={3}
-                max={10}
-                value={questionCount === '' ? 3 : Math.min(10, Math.max(3, questionCount))}
+                max={15}
+                value={questionCount === '' ? 5 : Math.min(15, Math.max(3, questionCount))}
                 onChange={(e) => setQuestionCount(Number(e.target.value))}
                 aria-label="Question count slider"
                 className={ui.slider}
@@ -783,16 +1092,16 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
               <input
                 type="number"
                 inputMode="numeric"
-                min={0}
-                max={50}
+                min={3}
+                max={15}
                 value={questionCount}
-                onChange={(e) => {
-                  const raw = e.target.value;
+                onChange={(event) => {
+                  const raw = event.target.value;
                   if (raw === '') { setQuestionCount(''); return; }
                   const parsed = Number(raw);
-                  if (!Number.isNaN(parsed)) setQuestionCount(Math.round(parsed));
+                  if (!Number.isNaN(parsed)) setQuestionCount(Math.min(15, Math.max(3, Math.round(parsed))));
                 }}
-                onBlur={() => setQuestionCount((c) => Math.min(50, Math.max(0, c === '' ? 0 : c)))}
+                onBlur={() => setQuestionCount((c) => Math.min(15, Math.max(3, c === '' ? 3 : c)))}
                 aria-label="Question count"
                 className="w-14 h-10 shrink-0 text-center text-sm font-bold tabular-nums rounded-xl bg-focus-primary/10 text-focus-primary outline-none transition-all duration-150 focus:ring-2 focus:ring-focus-primary/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />

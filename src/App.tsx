@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { onAuthStateChanged, signOut, updateProfile, type User } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection as fsCollection, increment } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { AlertCircle, X, ArrowLeft, Camera, Bell } from 'lucide-react';
+import { AlertCircle, X, ArrowLeft, Camera, Bell, UserRound, Mail, Palette } from 'lucide-react';
 
 import { AgeBand, HistoryItem, RecallCard, ExamEvent, Collection, NotificationItem, SummaryData } from './types';
 import { loadLocal, saveLocal, scopedKey } from './lib/storage';
@@ -24,8 +24,10 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
   markNotificationsByTagRead,
+  clearNotification,
+  clearNotificationsByTag,
 } from './lib/notificationCenter';
-import { loadDraft } from './lib/draftStore';
+import { clearDraft, listDraftKeys, loadDraft, saveDraft } from './lib/draftStore';
 import { GRADE_LEVEL_OPTIONS } from './constants';
 import { PushRegistrationStatus, registerNotificationServiceWorker, registerPushForUser } from './lib/push';
 
@@ -46,6 +48,7 @@ import { cardFromSharedSnapshot } from './lib/sharedImport';
 import { getPendingImport, clearPendingImport } from './lib/pendingImport';
 import { makeCollection } from './lib/collections';
 import { clearNotificationLink, parseNotificationLink } from './lib/notificationLinks';
+import { useSidebarCollapse } from './components/study-home/hooks';
 
 const SCREEN_TITLES: Record<NavTab, string> = {
   home: 'Kojlux Study Hub',
@@ -88,12 +91,33 @@ function AppContent() {
   const [gradeLevel, setGradeLevel] = useState<string>(GRADE_LEVEL_OPTIONS[2]);
   const [ageBand, setAgeBand] = useState<AgeBand | null>(() => loadLocal<AgeBand | null>('kojlux_age_band', null));
   const [displayName, setDisplayName] = useState<string>(() => loadLocal('kojlux_display_name', ''));
+  const [onboardingStep, setOnboardingStep] = useState<'privacy' | 'age' | 'access' | 'news' | 'complete'>(() => {
+    try {
+      if (localStorage.getItem('kojlux_onboarding_complete') === 'true') return 'complete';
+      const accepted = localStorage.getItem('kojlux_privacy_accepted') === 'true';
+      const savedAgeBand = loadLocal<AgeBand | null>('kojlux_age_band', null);
+      if (accepted && savedAgeBand) return 'complete';
+      if (accepted) return 'age';
+      return 'privacy';
+    } catch {
+      return 'privacy';
+    }
+  });
   const deletionAuthRequested = new URLSearchParams(window.location.search).get('requireAuth') === 'account-deletion';
+  const [showAuthScreen, setShowAuthScreen] = useState(deletionAuthRequested);
   const [streak, setStreak] = useState<number>(0);
   const [activityDays, setActivityDays] = useState<string[]>([]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser && !firebaseUser.emailVerified) {
+        setUser(null);
+        setAuthLoading(false);
+        if (!showAuthScreen) {
+          void signOut(auth).catch((err) => console.error('Failed to sign out unverified account', err));
+        }
+        return;
+      }
       setUser(firebaseUser);
       setAuthLoading(false);
       if (firebaseUser) {
@@ -120,7 +144,7 @@ function AppContent() {
       }
     });
     return () => unsubscribe();
-  }, [deletionAuthRequested]);
+  }, [deletionAuthRequested, showAuthScreen]);
 
   // ---- Guest access ----
   // Sign-in used to be forced at startup. Now the gate offers Skip or Sign
@@ -132,15 +156,19 @@ function AppContent() {
     loadLocal('kojlux_guest_mode', false) ||
     Boolean(initialDeepLinkCardId || initialDeepLinkCollectionId || notificationLink)
   );
-  const [showAuthScreen, setShowAuthScreen] = useState(deletionAuthRequested);
+  const [focusSession, setFocusSession] = useState<'quiz' | 'notecraft' | null>(
+    notificationLink?.resumeQuizId ? 'quiz' : null
+  );
+  const [resumeQuizId, setResumeQuizId] = useState<string | null>(notificationLink?.resumeQuizId ?? null);
   useEffect(() => saveLocal('kojlux_guest_mode', guestMode), [guestMode]);
   // If a guest actually signs in later, they're no longer a guest.
   useEffect(() => {
     if (user) {
       setGuestMode(false);
       setShowAuthScreen(false);
+      if (onboardingStep === 'access') setOnboardingStep('news');
     }
-  }, [user]);
+  }, [user, onboardingStep]);
 
   const [guestBannerDismissed, setGuestBannerDismissed] = useState(false);
 
@@ -167,9 +195,8 @@ function AppContent() {
 
   // ---- Notification Center ----
   // Review-ready and exam reminders are also fired as browser notifications;
-  // quiz-resume is in-app only. All are recorded here so they're visible any
-  // time the student opens the app, even without browser notification access.
-  // See lib/notificationCenter.ts.
+  // paused quizzes have in-app reminders and background pushes for signed-in
+  // users. All remain recorded here for visibility inside the app.
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -368,6 +395,7 @@ function AppContent() {
 
   // ---- Navigation ----
   const [activeTab, setActiveTab] = useState<NavTab>(() => notificationLink?.tab ?? 'home');
+  const sidebarCollapse = useSidebarCollapse();
   const handleNotificationTargetHandled = useCallback(() => setNotificationExamId(null), []);
   const [reviewCollectionRequest, setReviewCollectionRequest] = useState<string | null>(null);
   const [quizSourceSummary, setQuizSourceSummary] = useState<SummaryData | null>(null);
@@ -446,7 +474,9 @@ function AppContent() {
     const unsubHistory = onSnapshot(
       fsCollection(db, 'users', user.uid, 'historyItems'),
       (snap) => {
-        const items = snap.docs.map((d) => d.data() as HistoryItem);
+        const items = snap.docs
+          .map((d) => d.data() as HistoryItem)
+          .filter((item) => item.type === 'quiz' || item.type === 'summary');
         items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         setHistory(items.slice(0, 50));
       },
@@ -532,37 +562,79 @@ function AppContent() {
     setNotifications(loadNotifications(scopeId));
   }, [scopeId]);
 
-  // ---- Mid-quiz refresh recovery ----
-  // QuizBuilder already persists an in-progress quiz to IndexedDB as the
-  // student answers (see lib/draftStore.ts + the draft effects in
-  // QuizBuilder.tsx), so a refresh doesn't lose their work. What it can't do
-  // on its own is tell the student that draft exists — a refresh always
-  // drops back to the Home tab, not the Quiz tab where QuizBuilder would
-  // silently rehydrate it. This checks for that draft once scope is known
-  // and, if one exists, drops a "resume your quiz" notification into the
-  // Notification Center pointing back at the Quiz tab.
+  // Paused quizzes are stored separately so a new quiz can be generated
+  // without replacing earlier work. Reminder checks run while the app is
+  // open and again whenever the student returns.
   useEffect(() => {
     if (!scopeId) return;
     let cancelled = false;
-    loadDraft<{ quizData: unknown }>('quiz_builder')
-      .then((draft) => {
-        if (cancelled || !draft || !draft.quizData) return;
-        const storedNotifications = loadNotifications(scopeId);
-        if (storedNotifications.some((notification) => notification.dedupeTag === 'quiz-resume')) {
-          setNotifications(storedNotifications);
-          return;
+    const checkPausedQuizzes = async () => {
+      try {
+        const activeDraft = await loadDraft<{
+          quizData?: { title?: string };
+          workId?: string;
+          lastReminderAt?: string;
+          pausedAt?: string;
+        }>(`quiz_builder_${scopeId}`);
+        const pausedKeys = await listDraftKeys(`quiz_paused_${scopeId}_`);
+        const drafts = await Promise.all(pausedKeys.map(async (key) => ({
+          key,
+          draft: await loadDraft<{
+            quizData?: { title?: string };
+            workId?: string;
+            pausedAt?: string;
+            lastReminderAt?: string;
+          }>(key),
+        })));
+        if (cancelled) return;
+
+        const initialNotifications = loadNotifications(scopeId);
+        let nextNotifications = initialNotifications;
+        const candidates = [
+          ...(activeDraft?.quizData ? [{
+            key: `quiz_builder_${scopeId}`,
+            draft: activeDraft,
+            id: activeDraft.workId ?? `legacy-${scopeId}`,
+            pausedAt: new Date(Number(activeDraft.workId?.split('-')[0]) || Date.now()).toISOString(),
+          }] : []),
+          ...drafts.flatMap(({ key, draft }) => draft?.quizData ? [{
+            key,
+            draft,
+            id: draft.workId ?? key.slice(`quiz_paused_${scopeId}_`.length),
+            pausedAt: draft.pausedAt ?? new Date(Number(draft.workId?.split('-')[0]) || Date.now()).toISOString(),
+          }] : []),
+        ];
+
+        for (const { key, draft, id, pausedAt } of candidates) {
+          const tag = `quiz-resume:${id}`;
+          const existing = nextNotifications.find((notification) => notification.dedupeTag === tag);
+          const lastReminderAt = draft.lastReminderAt ?? existing?.createdAt ?? pausedAt;
+          const reminderDue = Date.now() - Date.parse(lastReminderAt) >= 24 * 60 * 60 * 1000;
+          if (!existing || reminderDue) {
+            nextNotifications = upsertNotification(scopeId, tag, {
+              type: 'quiz_resume',
+              title: reminderDue ? `Your quiz is waiting: ${draft.quizData?.title ?? 'Paused quiz'}` : `Resume: ${draft.quizData?.title ?? 'Paused quiz'}`,
+              body: reminderDue
+                ? 'Your quiz is still saved. Resume it whenever you are ready to finish.'
+                : 'Your answers are saved. Tap to continue where you left off.',
+              targetTab: 'quiz',
+              targetId: id,
+            });
+            await saveDraft(key, { ...draft, workId: id, pausedAt, lastReminderAt: new Date().toISOString() });
+          }
         }
-        setNotifications(addNotification(scopeId, {
-          type: 'quiz_resume',
-          title: 'Resume your quiz',
-          body: "Looks like you left a quiz in progress — tap to pick up right where you left off.",
-          targetTab: 'quiz',
-          dedupeTag: 'quiz-resume',
-        }));
-      })
-      .catch((err) => console.error('Failed to check for an in-progress quiz draft', err));
+        if (!cancelled && JSON.stringify(nextNotifications) !== JSON.stringify(initialNotifications)) {
+          setNotifications(nextNotifications);
+        }
+      } catch (err) {
+        console.error('Failed to check paused quiz reminders', err);
+      }
+    };
+    void checkPausedQuizzes();
+    const interval = window.setInterval(() => void checkPausedQuizzes(), 60_000);
     return () => {
       cancelled = true;
+      window.clearInterval(interval);
     };
   }, [scopeId]);
 
@@ -884,8 +956,62 @@ function AppContent() {
       </div>
     );
   }
+  if (onboardingStep !== 'complete' && !deletionAuthRequested) {
+    return (
+      <WelcomeGate
+        step={onboardingStep}
+        ageBand={ageBand}
+        onAcceptPrivacy={() => {
+          saveLocal('kojlux_privacy_accepted', true);
+          setOnboardingStep('age');
+        }}
+        onAgeBandChange={setAgeBand}
+        onBack={() => setOnboardingStep((step) => step === 'age' ? 'privacy' : step === 'access' ? 'age' : 'access')}
+        onNext={() => {
+          if (onboardingStep === 'age') {
+            if (!ageBand) return;
+            completeAgeBand(ageBand);
+            setOnboardingStep('access');
+          } else if (onboardingStep === 'access' && user) {
+            setOnboardingStep('news');
+          } else if (onboardingStep === 'news') {
+            saveLocal('kojlux_onboarding_complete', true);
+            setOnboardingStep('complete');
+          }
+        }}
+        onSkip={() => {
+          if (ageBand) completeAgeBand(ageBand);
+          setGuestMode(true);
+          setOnboardingStep('news');
+        }}
+        onSignIn={() => {
+          if (ageBand) completeAgeBand(ageBand);
+          setShowAuthScreen(true);
+        }}
+        isSignedIn={!!user}
+      />
+    );
+  }
   if (!user && !guestMode) {
-    return <WelcomeGate onSkip={(selectedAgeBand) => { completeAgeBand(selectedAgeBand); setGuestMode(true); }} onSignIn={(selectedAgeBand) => { completeAgeBand(selectedAgeBand); setShowAuthScreen(true); }} />;
+    return (
+      <WelcomeGate
+        step="access"
+        ageBand={ageBand}
+        onAcceptPrivacy={() => undefined}
+        onAgeBandChange={setAgeBand}
+        onBack={() => undefined}
+        onNext={() => undefined}
+        onSkip={() => {
+          if (ageBand) completeAgeBand(ageBand);
+          setGuestMode(true);
+        }}
+        onSignIn={() => {
+          if (ageBand) completeAgeBand(ageBand);
+          setShowAuthScreen(true);
+        }}
+        isSignedIn={!!user}
+      />
+    );
   }
   if (!ageBand) {
     return <AgeBandGate onComplete={completeAgeBand} />;
@@ -946,21 +1072,38 @@ function AppContent() {
       onRequestAuth={() => setShowAuthScreen(true)}
     >
     <>
-      <BottomNav
-        active={activeTab}
-        blockedTabs={isUnder13 ? ['community'] : []}
-        overlayOpen={showNotifications}
-        onChange={(tab) => {
-          setShowNotifications(false);
-          setActiveTab(tab);
-        }}
-      />
+      {!focusSession && (
+        <BottomNav
+          active={activeTab}
+          collapsed={sidebarCollapse.collapsed}
+          onToggleCollapse={sidebarCollapse.toggle}
+          blockedTabs={isUnder13 ? ['community'] : []}
+          overlayOpen={showNotifications}
+          onChange={(tab) => {
+            setShowNotifications(false);
+            setActiveTab(tab);
+          }}
+        />
+      )}
 
       {/* Notifications open from the bell icon as a page beside the side nav, so the nav
           and its divider line stay on screen. Picking any tab closes it. */}
-      {showNotifications ? (
+      {!focusSession && showNotifications ? (
         <NotificationCenter
           notifications={notifications}
+          onDeletePausedQuiz={(item) => {
+            if (!scopeId) return;
+            let nextNotifications = clearNotification(scopeId, item.id);
+            if (item.targetId) {
+              void clearDraft(`quiz_paused_${scopeId}_${item.targetId}`);
+              deleteCloudItem('quizResumeReminders', item.targetId);
+              void loadDraft<{ workId?: string }>(`quiz_builder_${scopeId}`).then((activeDraft) => {
+                if (activeDraft?.workId === item.targetId) void clearDraft(`quiz_builder_${scopeId}`);
+              });
+              nextNotifications = clearNotificationsByTag(scopeId, `quiz-resume:${item.targetId}`);
+            }
+            setNotifications(nextNotifications);
+          }}
           onClose={() => setShowNotifications(false)}
           onMarkAllRead={() => {
             if (scopeId) {
@@ -972,6 +1115,12 @@ function AppContent() {
             void dismissBrowserNotification(item);
             if (scopeId) setNotifications(markNotificationRead(scopeId, item.id));
             setShowNotifications(false);
+            if (item.type === 'quiz_resume' && item.targetId) {
+              setResumeQuizId(item.targetId);
+              setFocusSession('quiz');
+              setActiveTab('quiz');
+              return;
+            }
             if (item.type === 'exam_reminder' && item.targetId) {
               setNotificationExamId(item.targetId);
             }
@@ -986,6 +1135,7 @@ function AppContent() {
         <StudyHome
           username={username}
           streak={streak}
+          sidebarCollapse={sidebarCollapse}
           activityDays={activityDays}
           history={history}
           dueCards={recallCards.filter(isDue)}
@@ -1003,28 +1153,63 @@ function AppContent() {
           {appNotices}
         </StudyHome>
       ) : (
-        <div className="min-h-screen bg-focus-bg dark:bg-[#0B0F19] md:pl-20 lg:pl-60">
-          <div className="w-full max-w-md md:max-w-3xl lg:max-w-5xl xl:max-w-6xl mx-auto min-h-screen flex flex-col">
+        <div className={`${focusSession ? 'fixed inset-0 z-[100] min-h-[100svh] overflow-y-auto bg-focus-bg text-slate-900 dark:text-slate-100' : `min-h-screen bg-focus-bg dark:bg-[#0B0F19] md:pl-20 ${sidebarCollapse.collapsed ? 'lg:pl-20' : 'lg:pl-60'}`}`}>
+          <div className={`${focusSession ? 'w-full min-h-[100svh]' : 'w-full max-w-md md:max-w-3xl lg:max-w-5xl xl:max-w-6xl mx-auto min-h-screen flex flex-col'}`}>
             {/* The Dashboard (profile) screen draws its own title, so the shared
                 top bar is skipped there to avoid showing "Dashboard" twice. */}
-            {activeTab !== 'profile' && (
+            {!focusSession && activeTab !== 'profile' && (
               <header className="sticky top-0 z-30 bg-focus-bg/90 dark:bg-slate-950/90 backdrop-blur-md px-5 pt-6 pb-3 flex items-center justify-between gap-3">
                 <h1 className="text-sm font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
                   {SCREEN_TITLES[activeTab]}
                 </h1>
               </header>
             )}
-            {appNotices}
-            <main className={`flex-1 px-5 pb-28 md:pb-10 ${activeTab === 'profile' ? 'pt-6' : ''}`}>
+            {!focusSession && appNotices}
+            <main className={focusSession ? 'min-h-[100svh]' : `flex-1 px-5 pb-28 md:pb-10 ${activeTab === 'profile' ? 'pt-6' : ''}`}>
 
           {activeTab === 'quiz' && (
             <QuizBuilderOrSummarizer
               gradeLevel={gradeLevel}
+              scopeId={scopeId ?? 'guest'}
               history={history}
+              resumeQuizId={resumeQuizId}
+              focusMode={focusSession}
+              onResumeConsumed={() => setResumeQuizId(null)}
+              onFocusModeChange={setFocusSession}
+              onPauseQuiz={(id, title) => {
+                if (scopeId) {
+                  setNotifications(addNotification(scopeId, {
+                    type: 'quiz_resume',
+                    title: `Paused: ${title}`,
+                    body: 'Your answers are saved. Tap to continue where you left off.',
+                    targetTab: 'quiz',
+                    targetId: id,
+                    dedupeTag: `quiz-resume:${id}`,
+                  }));
+                  if (user) {
+                    upsertCloudItem('quizResumeReminders', id, {
+                      workId: id,
+                      title,
+                      nextReminderAt: Date.now() + 24 * 60 * 60 * 1000,
+                    });
+                  }
+                }
+                setFocusSession(null);
+                setActiveTab('home');
+              }}
+              onSubmitQuiz={(id) => {
+                if (scopeId) {
+                  setNotifications(clearNotificationsByTag(scopeId, `quiz-resume:${id}`));
+                  void clearDraft(`quiz_paused_${scopeId}_${id}`);
+                  deleteCloudItem('quizResumeReminders', id);
+                }
+                setFocusSession(null);
+              }}
               sourceSummary={quizSourceSummary}
               onSourceConsumed={() => setQuizSourceSummary(null)}
               onCreateQuizFromSummary={(summary) => {
                 setQuizSourceSummary(summary);
+                setFocusSession(null);
                 setActiveTab('quiz');
               }}
               onSaveHistory={addHistory}
@@ -1122,11 +1307,18 @@ function AppContent() {
 // five-tab layout, but user testing on educational apps consistently shows
 // two closely related "create study material" flows are easier to find
 // bundled with a sub-toggle than as separate top-level destinations that
-// compete with Review/Visualize for thumb reach.
+// compete with Review for thumb reach.
 function QuizBuilderOrSummarizer(props: {
   gradeLevel: string;
+  scopeId: string;
   history: HistoryItem[];
   sourceSummary: SummaryData | null;
+  resumeQuizId: string | null;
+  focusMode: 'quiz' | 'notecraft' | null;
+  onResumeConsumed: () => void;
+  onFocusModeChange: (mode: 'quiz' | 'notecraft' | null) => void;
+  onPauseQuiz: (id: string, title: string) => void;
+  onSubmitQuiz: (id: string) => void;
   onSourceConsumed: () => void;
   onCreateQuizFromSummary: (summary: SummaryData) => void;
   onSaveHistory: (item: HistoryItem) => void;
@@ -1140,7 +1332,7 @@ function QuizBuilderOrSummarizer(props: {
   return (
     <div className="space-y-5">
       <div className="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
-        {(['quiz', 'notecraft'] as const).map((t) => (
+        {props.focusMode === null && (['quiz', 'notecraft'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setSubTab(t)}
@@ -1157,6 +1349,12 @@ function QuizBuilderOrSummarizer(props: {
       {subTab === 'quiz' ? (
         <QuizBuilder
           gradeLevel={props.gradeLevel}
+          scopeId={props.scopeId}
+          resumeDraftId={props.resumeQuizId}
+          onResumeConsumed={props.onResumeConsumed}
+          onFocusModeChange={(focused) => props.onFocusModeChange(focused ? 'quiz' : null)}
+          onPauseQuiz={props.onPauseQuiz}
+          onSubmitQuiz={props.onSubmitQuiz}
           summarySource={props.sourceSummary ? formatSummaryForQuiz(props.sourceSummary) : null}
           onSummarySourceConsumed={props.onSourceConsumed}
           onSaveHistory={props.onSaveHistory}
@@ -1166,6 +1364,9 @@ function QuizBuilderOrSummarizer(props: {
       ) : (
         <NoteCraft
           gradeLevel={props.gradeLevel}
+          scopeId={props.scopeId}
+          isFocusMode={props.focusMode === 'notecraft'}
+          onFocusModeChange={(focused) => props.onFocusModeChange(focused ? 'notecraft' : null)}
           onSaveHistory={props.onSaveHistory}
           onAddRecallCards={props.onAddRecallCards}
           onError={props.onError}
@@ -1176,32 +1377,54 @@ function QuizBuilderOrSummarizer(props: {
   );
 }
 
-// Shown at startup instead of a forced Sign In / Register screen. Sign-in is
-// still available (and still required to sync across devices / back things
-// up to Firestore), but it's no longer mandatory just to open the app —
-// "Skip for now" drops straight into a fully-functional local/guest session,
-// same as the rest of the app already treats a null `user`.
-function WelcomeGate({ onSkip, onSignIn }: { onSkip: (ageBand: AgeBand) => void; onSignIn: (ageBand: AgeBand) => void }) {
-  const [consent, setConsent] = useState<'pending' | 'accepted' | 'declined'>(() => {
+type OnboardingStep = 'privacy' | 'age' | 'access' | 'news' | 'complete';
+
+function WelcomeGate({
+  step,
+  ageBand,
+  isSignedIn,
+  onAcceptPrivacy,
+  onAgeBandChange,
+  onBack,
+  onNext,
+  onSkip,
+  onSignIn,
+}: {
+  step: OnboardingStep;
+  ageBand: AgeBand | null;
+  isSignedIn: boolean;
+  onAcceptPrivacy: () => void;
+  onAgeBandChange: (ageBand: AgeBand) => void;
+  onBack: () => void;
+  onNext: () => void;
+  onSkip: () => void;
+  onSignIn: () => void;
+}) {
+  const [privacyAccepted, setPrivacyAccepted] = useState(() => {
     try {
-      return localStorage.getItem('kojlux_privacy_accepted') === 'true' ? 'accepted' : 'pending';
+      return localStorage.getItem('kojlux_privacy_accepted') === 'true';
     } catch {
-      return 'pending';
+      return false;
     }
   });
-  const [ageBand, setAgeBand] = useState<AgeBand | null>(() => loadLocal<AgeBand | null>('kojlux_age_band', null));
+  const [privacyDeclined, setPrivacyDeclined] = useState(false);
+  const stepIndex = ({ privacy: 1, age: 2, access: 3, news: 4, complete: 4 } as const)[step];
+  const stepTitle = {
+    privacy: 'Your privacy comes first',
+    age: 'Choose your age group',
+    access: 'Choose how to continue',
+    news: 'A few things to know',
+    complete: 'Welcome',
+  }[step];
 
   const acceptPrivacy = () => {
-    try {
-      localStorage.setItem('kojlux_privacy_accepted', 'true');
-    } catch {
-      // Consent still applies for this session if browser storage is unavailable.
-    }
-    setConsent('accepted');
+    setPrivacyAccepted(true);
+    setPrivacyDeclined(false);
+    onAcceptPrivacy();
   };
 
   return (
-    <div className="min-h-screen bg-focus-bg dark:bg-slate-950 flex items-center justify-center p-5">
+    <div className="min-h-[100svh] bg-focus-bg dark:bg-slate-950 flex items-center justify-center p-5">
       <div className="max-w-sm w-full space-y-5">
         <div className="text-center space-y-2">
           <div className="w-16 h-16 mx-auto rounded-2xl overflow-hidden shadow-lg shadow-focus-primary/25">
@@ -1218,92 +1441,134 @@ function WelcomeGate({ onSkip, onSignIn }: { onSkip: (ageBand: AgeBand) => void;
           </p>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-3">
-          <p className="text-xs font-bold text-slate-700 dark:text-slate-200">Before you enter</p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-            Please review the{' '}
-            <a
-              href={`${import.meta.env.BASE_URL}privacy.html`}
-              target="_blank"
-              rel="noreferrer"
-              className="font-bold text-focus-primary underline underline-offset-2"
-            >
-              Privacy Policy
-            </a>{' '}
-            before using Kojlux Study Hub.
-          </p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={acceptPrivacy}
-              className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition ${
-                consent === 'accepted'
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-focus-primary text-white hover:bg-focus-primary-dark'
-              }`}
-            >
-              {consent === 'accepted' ? 'Accepted' : 'Accept'}
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-focus-primary">Step {stepIndex} of 4</span>
+          {step !== 'privacy' && step !== 'news' && (
+            <button onClick={onBack} className="text-xs font-bold text-slate-400 hover:text-focus-primary">
+              Back
             </button>
-            <button
-              type="button"
-              onClick={() => setConsent('declined')}
-              className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 text-xs font-bold transition"
-            >
-              Decline
-            </button>
-          </div>
-          {consent === 'declined' && (
-            <p className="text-[11px] text-rose-600 dark:text-rose-400 leading-relaxed">
-              You must accept the Privacy Policy to enter the app. You can accept it whenever you are ready.
-            </p>
           )}
         </div>
-
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 space-y-2.5">
-          <label className="block text-xs font-bold text-slate-700 dark:text-slate-200" htmlFor="age-band">Who will use this app?</label>
-          <select id="age-band" value={ageBand ?? ''} onChange={(event) => setAgeBand(event.target.value as AgeBand)} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-700 dark:text-slate-200">
-            <option value="" disabled>Select an age group</option>
-            <option value="under13">Under 13</option>
-            <option value="13to17">13–17</option>
-            <option value="18plus">18 or older</option>
-          </select>
-          {ageBand === 'under13' && <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">Materials and external links are disabled for extra protection.</p>}
+        <div className="h-1 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+          <div className="h-full rounded-full bg-focus-primary transition-all" style={{ width: `${stepIndex * 25}%` }} />
         </div>
 
-        <div className="space-y-2.5">
-          <button
-            onClick={() => ageBand && onSignIn(ageBand)}
-            disabled={consent !== 'accepted' || !ageBand}
-            className="w-full py-3.5 bg-focus-primary hover:bg-focus-primary-dark text-white rounded-2xl text-sm font-bold transition disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Sign In / Register
-          </button>
-          <button
-            onClick={() => ageBand && onSkip(ageBand)}
-            disabled={consent !== 'accepted' || !ageBand}
-            className="w-full py-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl text-sm font-bold transition disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Skip for now
-          </button>
-        </div>
+        <section className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+          <h2 className="text-base font-black text-slate-900 dark:text-white">{stepTitle}</h2>
 
-        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900 rounded-2xl p-3.5 flex gap-2.5">
-          <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-          <p className="text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
-            Skipping sign-in keeps everything on this device only. Refreshing the page or clearing your browser's
-            cache/site data can permanently delete recents and review cards that were never synced to an account.
-          </p>
-        </div>
+          {step === 'privacy' && (
+            <div className="mt-3 space-y-4">
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Review how Kojlux handles your information before continuing.
+              </p>
+              <a
+                href={`${import.meta.env.BASE_URL}privacy.html`}
+                target="_blank"
+                rel="noreferrer"
+                className="block rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3 text-xs font-bold text-focus-primary"
+              >
+                Read the Privacy Policy
+              </a>
+              <button
+                type="button"
+                onClick={acceptPrivacy}
+                className={`w-full py-3 rounded-xl text-sm font-bold transition ${
+                  privacyAccepted ? 'bg-emerald-600 text-white' : 'bg-focus-primary text-white hover:bg-focus-primary-dark'
+                }`}
+              >
+                {privacyAccepted ? 'Policy accepted' : 'I accept the Privacy Policy'}
+              </button>
+              {privacyDeclined && (
+                <p className="text-[11px] text-rose-600 dark:text-rose-400">
+                  You need to accept the Privacy Policy before continuing.
+                </p>
+              )}
+              <button
+                onClick={() => privacyAccepted ? onNext() : setPrivacyDeclined(true)}
+                className="w-full py-3 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-bold"
+              >
+                Next
+              </button>
+            </div>
+          )}
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-3.5 flex gap-2.5">
-          <Camera className="w-4 h-4 text-focus-primary shrink-0 mt-0.5" />
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-            <span className="font-bold text-slate-700 dark:text-slate-200">Camera access</span> is only requested when
-            you choose to photograph notes or a textbook page for a quiz or summary — you can always type or paste
-            text instead. We may also ask for notification permission later so we can let you know when a review is
-            ready.
-          </p>
-        </div>
+          {step === 'age' && (
+            <div className="mt-3 space-y-4">
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                This helps us apply stronger protections for younger students.
+              </p>
+              <select
+                value={ageBand ?? ''}
+                onChange={(event) => onAgeBandChange(event.target.value as AgeBand)}
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-sm text-slate-700 dark:text-slate-200"
+              >
+                <option value="" disabled>Select an age group</option>
+                <option value="under13">Under 13</option>
+                <option value="13to17">13–17</option>
+                <option value="18plus">18 or older</option>
+              </select>
+              {ageBand === 'under13' && (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">Materials and external links are disabled for extra protection.</p>
+              )}
+              <button
+                onClick={onNext}
+                disabled={!ageBand}
+                className="w-full py-3 rounded-xl bg-focus-primary text-white text-sm font-bold disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          )}
+
+          {step === 'access' && (
+            <div className="mt-3 space-y-3">
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                {isSignedIn ? 'You are signed in and ready to continue.' : 'Sign in or create an account to sync your work, or continue as a guest.'}
+              </p>
+              {isSignedIn ? (
+                <button onClick={onNext} className="w-full py-3.5 rounded-xl bg-focus-primary text-white text-sm font-bold">
+                  Continue
+                </button>
+              ) : (
+                <>
+                  <button onClick={onSignIn} className="w-full py-3.5 rounded-xl bg-focus-primary text-white text-sm font-bold">
+                    Sign In / Register
+                  </button>
+                  <button
+                    onClick={onSkip}
+                    className="w-full py-3.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-sm font-bold"
+                  >
+                    Skip for now
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {step === 'news' && (
+            <div className="mt-4 space-y-3">
+              <NewsItem icon={Camera} title="Camera access" text="The camera is requested only when you choose to take a photo. Uploading or typing are alternatives." />
+              <NewsItem icon={UserRound} title="Guest access" text="Guests can use the app, but their work stays on this device and can be lost if browser data is cleared." />
+              <NewsItem icon={Mail} title="Report a problem" text="Contact the Kojlux Study Hub team at officialkojux@gmail.com." />
+              <NewsItem icon={Palette} title="Choose a theme" text="Personalize the app from Themes in Settings." />
+              <button onClick={onNext} className="mt-2 w-full py-3.5 rounded-xl bg-focus-primary text-white text-sm font-bold">
+                Start studying
+              </button>
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function NewsItem({ icon: Icon, title, text }: { icon: typeof Camera; title: string; text: string }) {
+  return (
+    <div className="flex items-start gap-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 p-3">
+      <Icon className="w-4 h-4 text-focus-primary shrink-0 mt-0.5" />
+      <div>
+        <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{title}</p>
+        <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">{text}</p>
       </div>
     </div>
   );

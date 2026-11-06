@@ -47,10 +47,9 @@ export async function generateContentWithFallback(
   throw lastError ?? new Error('No valid Gemini API key configured.');
 }
 
-// Feature pools keep each feature's own keys first, then rotate through the
-// Visualizer keys as shared fallbacks. The environment-variable names stay
-// unchanged so the existing configuration continues to work.
-const VISUALIZER_ROTATION_KEYS = [
+// Feature pools keep each feature's own keys first, then use the shared
+// legacy keys as fallbacks. Environment-variable names stay unchanged.
+const SHARED_KEY_ROTATION_FALLBACKS = [
   import.meta.env.VITE_VISUALIZER_KEY,
   import.meta.env.VITE_VISUALIZER_KEY_ROTATION,
 ];
@@ -60,15 +59,14 @@ export const GEMINI_KEYS = {
     import.meta.env.VITE_QUIZ_GENERATOR_KEY,
     import.meta.env.VITE_QUIZ_GENERATOR_KEY_ROTATION,
     import.meta.env.VITE_QUIZ_GENERATOR_KEY_ROTATION_2,
-    ...VISUALIZER_ROTATION_KEYS,
+    ...SHARED_KEY_ROTATION_FALLBACKS,
   ],
   summarizer: [
     import.meta.env.VITE_SUMMARIZER_KEY,
     import.meta.env.VITE_SUMMARIZER_KEY_ROTATION,
     import.meta.env.VITE_SUMMARIZER_KEY_ROTATION_2,
-    ...VISUALIZER_ROTATION_KEYS,
+    ...SHARED_KEY_ROTATION_FALLBACKS,
   ],
-  visualizer: VISUALIZER_ROTATION_KEYS,
   // New: powers Recall Coach's self-explanation grading and Concept Linker's
   // dual-coding questions. Add VITE_RECALL_COACH_KEY (and, optionally, a
   // _ROTATION fallback) to your _env file with the key you provided.
@@ -98,7 +96,7 @@ export function parseKojluxResponse<T>(rawText: string | undefined, mode: Kojlux
 // ---------------------------------------------------------------------------
 // Quiz Builder and Notes Summarizer accept more than photos now. gemini-3.6-
 // flash reads images, PDFs, and video all the same way — as an inlineData
-// part on the quiz/summarizer/visualizer call itself — so there's no
+// part on the quiz or summarizer call itself — so there's no
 // separate analysis pass for any file kind, and no second AI job involved in
 // getting a file's content in front of the model. Recall Coach (below) is
 // reserved for its own job: grading self-explanations, the Concept Linker,

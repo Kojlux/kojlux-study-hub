@@ -25,7 +25,7 @@ export function useFullscreen(ref: React.RefObject<HTMLElement>) {
     ref.current?.requestFullscreen?.().catch(() => {
       // Fullscreen requires a direct user gesture and isn't supported/allowed
       // in every mobile browser context (e.g. some in-app webviews) — fail
-      // silently rather than blocking the actual quiz/note/visualization.
+      // silently rather than blocking the actual quiz or note.
     });
   }, [ref]);
 

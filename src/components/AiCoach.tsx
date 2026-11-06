@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Sparkles, CheckCircle2, X } from 'lucide-react';
-import { HistoryItem, RecallCard, QuizData, SummaryData, VisualizationResponse } from '../types';
+import { HistoryItem, RecallCard, QuizData, SummaryData } from '../types';
 import { generateContentWithFallback, GEMINI_KEYS, parseJsonResponse } from '../lib/gemini';
 import { makeRecallCard } from '../lib/spacedRepetition';
 import { loadDraft, saveDraft, clearDraft } from '../lib/draftStore';
@@ -28,18 +28,12 @@ function describeHistoryItem(item: HistoryItem, index: number): string {
       .map((qq) => `Q: ${qq.question}\nA: ${qq.correctAnswer}`)
       .join('\n')}`;
   }
-  if (item.type === 'summary') {
-    const s = item.data as SummaryData;
-    return `[Item ${index + 1} — Summary: "${s.title}"]\nOverview: ${s.overview}\nKey points: ${s.keyPoints.join('; ')}`;
-  }
-  const v = item.data as VisualizationResponse;
-  return `[Item ${index + 1} — Visualization: "${v.title}"]\n${v.steps
-    .map((st) => `${st.label}: ${st.explanation}`)
-    .join('; ')}`;
+  const s = item.data as SummaryData;
+  return `[Item ${index + 1} — Summary: "${s.title}"]\nOverview: ${s.overview}\nKey points: ${s.keyPoints.join('; ')}`;
 }
 
-// Runs entirely in the background: takes several past quizzes/summaries/
-// visualizations selected together from Review's Recents list, asks the
+// Runs entirely in the background: takes several past quizzes/summaries
+// selected together from Review's Recents list, asks the
 // Recall Coach key for one combined batch of cross-item recall questions
 // (deliberately allowed to connect two items in a single question), and
 // reports the resulting cards back once ready. This is what lets bulk

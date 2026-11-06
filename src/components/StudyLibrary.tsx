@@ -58,7 +58,7 @@ export default function StudyLibrary({
         <button
           type="button"
           onClick={() => setTab('recents')}
-          title="Recent quizzes, summaries, and visualizations"
+          title="Recent quizzes and summaries"
           className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition ${
             tab === 'recents' ? 'bg-white dark:bg-slate-700 text-focus-primary shadow-sm' : 'text-slate-500 dark:text-slate-400'
           }`}
@@ -81,7 +81,7 @@ export default function StudyLibrary({
         recents.length > 0 ? (
           <RecentsPanel recents={recents} onBulkGenerate={onBulkGenerate} onError={onError} busy={busy} />
         ) : (
-          <EmptyPanel text="Recent quizzes, summaries, and visualizations will show up here." />
+          <EmptyPanel text="Recent quizzes and summaries will show up here." />
         )
       ) : savedCards.length > 0 ? (
         <SavedPanel

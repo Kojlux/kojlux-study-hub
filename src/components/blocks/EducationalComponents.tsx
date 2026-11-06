@@ -12,7 +12,6 @@ import {
   FlashcardDeckBlock,
   FormulaBlock,
   InteractiveSimulationBlock,
-  KojluxOutputSchema,
   LabExperimentBlock,
   MultiPartQuestionBlock,
   ProcessFlowBlock,
@@ -22,19 +21,6 @@ import { BlockMath, MathText } from './Latex';
 
 const cardClass = 'rounded-2xl border border-slate-200/80 bg-white p-4 dark:border-slate-800 dark:bg-slate-900';
 const eyebrowClass = 'mb-2 text-[10px] font-bold uppercase tracking-widest text-focus-primary';
-
-export function EducationalMetadata({ metadata }: { metadata: KojluxOutputSchema['metadata'] }) {
-  return (
-    <section className={`${cardClass} text-xs`}>
-      <p className={eyebrowClass}>Learning design</p>
-      <p><strong><MathText text={metadata.subject} /></strong>{metadata.topic ? <> · <MathText text={metadata.topic} /></> : ''}</p>
-      <MathText text={metadata.orchestratorReasoning} className="mt-1 block text-slate-600 dark:text-slate-300" />
-      <time className="mt-2 block text-[10px] text-slate-500" dateTime={metadata.generatedAt}>
-        Generated {new Date(metadata.generatedAt).toLocaleString()}
-      </time>
-    </section>
-  );
-}
 
 export default function EducationalComponents({ components }: { components: EducationalComponent[] }) {
   if (!components.length) return null;

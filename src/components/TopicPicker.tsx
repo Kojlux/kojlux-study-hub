@@ -111,9 +111,8 @@ export function SegmentedTrack<T extends string>({
 // ---------------------------------------------------------------------------
 // SubjectChips — the subject track. Same stamped look as SegmentedTrack, but
 // subjects have different label widths and can overflow narrow screens, so
-// the row scrolls horizontally and keeps the selection in view. Used
-// standalone in the Visualizer (a chat, where a "topic vs. notes" toggle
-// doesn't apply) and embedded in TopicPicker below.
+// the row scrolls horizontally and keeps the selection in view. Used in
+// TopicPicker for both Quiz Builder and NoteCraft.
 // ---------------------------------------------------------------------------
 export function SubjectChips({
   subject,

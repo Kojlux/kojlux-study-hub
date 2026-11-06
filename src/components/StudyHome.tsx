@@ -8,7 +8,6 @@ import Sidebar from './study-home/Sidebar';
 import StudyDesk from './study-home/StudyDesk';
 import StudyToolsGrid from './study-home/StudyToolsGrid';
 import { NAV_ITEMS, STUDY_TOOLS } from './study-home/data';
-import { useSidebarCollapse } from './study-home/hooks';
 import type { NavigateHandler, SidebarCollapse, WorkspaceNavId } from './study-home/types';
 import './study-home/StudyHome.css';
 
@@ -202,6 +201,7 @@ export interface StudyHomeProps {
   notificationCount?: number;
   onOpenNotifications?: () => void;
   onOpenCollection?: (collection: Collection) => void;
+  sidebarCollapse: SidebarCollapse;
   children?: ReactNode;
 }
 
@@ -216,9 +216,10 @@ export default function StudyHome({
   notificationCount = 0,
   onOpenNotifications,
   onOpenCollection,
+  sidebarCollapse,
   children,
 }: StudyHomeProps): ReactElement {
-  const { collapsed, toggle }: SidebarCollapse = useSidebarCollapse();
+  const { collapsed, toggle } = sidebarCollapse;
   const [selected, setSelected] = useState<HistoryItem | null>(null);
   const [celebration, setCelebration] = useState<number | null>(null);
 

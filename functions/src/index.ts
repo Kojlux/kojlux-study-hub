@@ -2,9 +2,9 @@
 //
 // This is the piece that actually runs while the student's browser is
 // closed: Cloud Scheduler wakes this function up on a timer, it looks
-// through every user's due dates (synced to Firestore by App.tsx — see the
-// "Server-side mirror" effects there), and for anything newly due it sends
-// an FCM push to that user's saved device token(s) (see lib/push.ts).
+// through every user's due dates and paused-quiz reminder records (synced to
+// Firestore by App.tsx), then sends FCM pushes to saved device tokens (see
+// lib/push.ts).
 //
 // SETUP (one-time):
 //   1. `firebase init functions` in your project root if you haven't already
@@ -152,9 +152,10 @@ export const generateKojluxContent = onCall(
   }
 );
 
-function notificationUrl(tab: 'review' | 'profile', examId?: string): string {
+function notificationUrl(tab: 'review' | 'profile' | 'quiz', targetId?: string): string {
   const params = new URLSearchParams({ notification: '1', tab });
-  if (examId) params.set('examId', examId);
+  if (targetId && tab === 'profile') params.set('examId', targetId);
+  if (targetId && tab === 'quiz') params.set('resumeQuizId', targetId);
   return `?${params.toString()}`;
 }
 
@@ -165,6 +166,24 @@ export const cleanupDeletedUserData = functionsV1
     const uid = user.uid;
     const userRef = db.collection('users').doc(uid);
     const communityLinks = await db.collection('communityLinks').where('submittedBy', '==', uid).get();
+    const mailRef = db.collection('mail_queue').doc(`account-deletion-${uid}`);
+
+    await db.runTransaction(async (transaction) => {
+      const existing = await transaction.get(mailRef);
+      if (existing.exists) return;
+
+      transaction.create(mailRef, {
+        to: 'officialkojux@gmail.com',
+        message: {
+          subject: 'Kojlux Study Hub account deleted',
+          text: [
+            `Registered email: ${user.email ?? 'Unavailable'}`,
+            `User ID: ${uid}`,
+            `Deleted at: ${new Date().toISOString()}`,
+          ].join('\n'),
+        },
+      });
+    });
 
     for (let offset = 0; offset < communityLinks.docs.length; offset += 500) {
       const batch = db.batch();
@@ -196,7 +215,7 @@ export const queueDeletionRequestEmail = onDocumentCreated(
       if (existing.exists) return;
 
       transaction.create(mailRef, {
-        to: 'officialkojlux@gmail.com',
+        to: 'officialkojux@gmail.com',
         message: {
           subject: 'Kojlux Study Hub account deletion request',
           text: [
@@ -250,6 +269,8 @@ async function processUser(userDoc: admin.firestore.QueryDocumentSnapshot) {
     console.warn('Skipping reminders: user has no registered FCM token', { uid: userDoc.id });
     return;
   }
+
+  await processQuizResumeReminders(userDoc, tokens);
 
   const dueDates: DueDate[] = data.recallCardDueDates || [];
   const examReminders: ExamReminder[] = data.examReminders || [];
@@ -334,6 +355,55 @@ async function processUser(userDoc: admin.firestore.QueryDocumentSnapshot) {
     },
     { merge: true }
   );
+}
+
+async function processQuizResumeReminders(
+  userDoc: admin.firestore.QueryDocumentSnapshot,
+  tokens: string[]
+): Promise<void> {
+  const now = Date.now();
+  const reminders = await userDoc.ref
+    .collection('quizResumeReminders')
+    .where('nextReminderAt', '<=', now)
+    .get();
+
+  for (const reminder of reminders.docs) {
+    const data = reminder.data();
+    if (typeof data.title !== 'string' || typeof data.workId !== 'string') {
+      console.error('Skipping invalid quiz-resume reminder record', {
+        uid: userDoc.id,
+        reminderId: reminder.id,
+      });
+      continue;
+    }
+
+    try {
+      const response = await sendPush(tokens, {
+        title: `Your quiz is waiting: ${data.title}`,
+        body: 'Your quiz is still saved. Resume it whenever you are ready to finish.',
+        tag: `kojlux-quiz-resume-${data.workId}`,
+        url: notificationUrl('quiz', data.workId),
+      });
+      if (response.successCount > 0) {
+        await reminder.ref.update({
+          lastSentAt: now,
+          nextReminderAt: now + 24 * 60 * 60 * 1000,
+        });
+      }
+      console.info('quiz-resume push', {
+        uid: userDoc.id,
+        workId: data.workId,
+        success: response.successCount,
+        failure: response.failureCount,
+      });
+    } catch (err) {
+      console.error('Failed to send quiz-resume push', {
+        uid: userDoc.id,
+        reminderId: reminder.id,
+        err,
+      });
+    }
+  }
 }
 
 export const checkDueReminders = onSchedule('every 15 minutes', async () => {

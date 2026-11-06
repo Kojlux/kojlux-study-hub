@@ -1,5 +1,5 @@
 import type { MouseEvent, ReactElement } from 'react';
-import { Activity, AlignLeft, ChevronRight, FileText, HelpCircle } from 'lucide-react';
+import { AlignLeft, ChevronRight, FileText, HelpCircle } from 'lucide-react';
 import type { HistoryItem } from '../../types';
 import type { ActivityMeta } from './types';
 import { formatRelativeTime } from './utils';
@@ -15,11 +15,10 @@ interface ActivityRowProps {
   onSelect: (item: HistoryItem) => void;
 }
 
-/** Quiz -> question mark, summary -> page lines, anything else -> diagram. */
+/** Quiz -> question mark; summary -> page lines. */
 function activityMeta(type: HistoryItem['type']): ActivityMeta {
   if (type === 'quiz') return { label: 'Quiz', icon: HelpCircle, tone: 'indigo' };
-  if (type === 'summary') return { label: 'Summary', icon: AlignLeft, tone: 'amber' };
-  return { label: 'Diagram', icon: Activity, tone: 'sky' };
+  return { label: 'Summary', icon: AlignLeft, tone: 'amber' };
 }
 
 function ActivityRow({ item, onSelect }: ActivityRowProps): ReactElement {

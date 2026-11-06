@@ -1,7 +1,7 @@
 // lib/draftStore.ts
 //
 // Session-draft persistence for in-progress generative work (quizzes, notes,
-// visualizations, AI Coach batches). This is DELIBERATELY separate from the
+// AI Coach batches). This is DELIBERATELY separate from the
 // Firestore sync in App.tsx: drafts are single-device, throwaway-once-saved
 // state, so there's no need to round-trip them through the network or
 // security rules. They just need to survive a refresh.
@@ -14,7 +14,7 @@
 //
 // Install once: npm install idb-keyval
 
-import { get, set, del } from 'idb-keyval';
+import { get, set, del, keys } from 'idb-keyval';
 
 const PREFIX = 'kojlux_draft_';
 
@@ -43,5 +43,17 @@ export async function clearDraft(key: string): Promise<void> {
     await del(PREFIX + key);
   } catch (err) {
     console.error(`Failed to clear draft "${key}"`, err);
+  }
+}
+
+export async function listDraftKeys(prefix: string): Promise<string[]> {
+  try {
+    const storedKeys = await keys();
+    return storedKeys
+      .filter((key): key is string => typeof key === 'string' && key.startsWith(PREFIX + prefix))
+      .map((key) => key.slice(PREFIX.length));
+  } catch (err) {
+    console.error(`Failed to list drafts with prefix "${prefix}"`, err);
+    return [];
   }
 }

@@ -1,6 +1,6 @@
 import { CheckCircle2, Printer, X } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { HistoryItem, QuizData, SummaryData, VisualizationResponse } from '../../types';
+import { HistoryItem, QuizData, SummaryData } from '../../types';
 import { MathText } from '../blocks/Latex';
 import EducationalComponents from '../blocks/EducationalComponents';
 
@@ -113,14 +113,13 @@ export function HistoryDetailModal({ item, onClose }: { item: HistoryItem; onClo
 
         <div className="mb-5">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-            {item.type === 'quiz' ? 'Quiz' : item.type === 'summary' ? 'Summary' : 'Diagram'}
+            {item.type === 'quiz' ? 'Quiz' : 'Summary'}
           </p>
           <MathText text={item.title} className="mt-0.5 block text-xl font-black text-slate-900 dark:text-white" />
         </div>
 
         {item.type === 'quiz' && <QuizDetail data={item.data as QuizData} />}
         {item.type === 'summary' && <SummaryDetail data={item.data as SummaryData} />}
-        {item.type === 'visualization' && <VisualizationDetail data={item.data as VisualizationResponse} />}
       </div>
     </div>
   );
@@ -167,22 +166,6 @@ function SummaryDetail({ data }: { data: SummaryData }) {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-function VisualizationDetail({ data }: { data: VisualizationResponse }) {
-  return (
-    <div className="space-y-3">
-      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">
-        {data.type}{data.subject ? ` · ${data.subject}` : ''}
-      </p>
-      {data.steps.map((s, i) => (
-        <div key={i} className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5">
-          <MathText text={`${i + 1}. ${s.label}`} className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-200" />
-          <MathText text={s.explanation} className="block text-[11px] text-slate-500 dark:text-slate-400" />
-        </div>
-      ))}
     </div>
   );
 }

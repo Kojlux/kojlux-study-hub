@@ -11,6 +11,16 @@ export interface QuizQuestion {
   type: 'multiple-choice' | 'short-answer';
   question: string;
   options?: string[];
+  parts?: Array<{
+    partNumber: number;
+    questionText: string;
+    type: 'multiple-choice' | 'short-answer';
+    options?: string[];
+    hints?: string[];
+    remediationIfWrong?: string;
+    correctAnswer: string;
+    explanation?: string;
+  }>;
   correctAnswer: string;
   explanation?: string;
   visual?: QuizQuestionVisual;
@@ -24,9 +34,8 @@ export type Subject = 'general' | 'english' | 'science' | 'geography' | 'math';
 
 export type AgeBand = 'under13' | '13to17' | '18plus';
 
-// Geography: a real-world place with an approximate coordinate, meant for
-// local map rendering (see components/MapWidget in VisualizerScreen) —
-// never a rendered map image, just the lightweight coordinate data.
+// Geography: a real-world place with an approximate coordinate, represented
+// as lightweight location data rather than a rendered map image.
 export interface MapRegion {
   id: string;
   name: string;
@@ -299,10 +308,8 @@ export interface QuizData extends StructuredContent, KojluxOutputSchema {
 }
 
 // A study-material file the user attached to a quiz/summary request, staged
-// client-side before it's sent to Gemini. `kind` determines whether the main
-// quiz/summarizer/visualizer model can read it directly (image, pdf) or
-// needs a first pass through Recall Coach first (video) — see
-// isDirectlyReadable / describeFileWithRecallCoach in lib/gemini.ts.
+// client-side before it's sent to Gemini. `kind` determines whether the model
+// can read it directly or needs transcription first.
 export type StudyFileKind = 'image' | 'pdf' | 'video';
 
 export interface StudyFile {
@@ -331,12 +338,8 @@ export interface SummaryData extends StructuredContent, KojluxOutputSchema {
   overview: string;
   keyPoints: string[];
   glossary: GlossaryItem[];
-  // Science & Biology: named, diagram-able parts of the system/process
-  // being summarized (e.g. plant anatomy) — ids drawn from the same fixed
-  // vocabulary the Visualizer's diagram nodes use (see lib/subjects.ts),
-  // so the same local asset library can render them for an interactive
-  // labeling task.
-  diagramNodes?: { nodeId: string; label: string }[];
+  // Science & Biology: short labels for nameable parts of a system/process.
+  diagramNodes?: { label: string }[];
   // Geography: real places relevant to the material, for map display.
   regions?: MapRegion[];
   // Math & Data Science: a small numeric dataset relevant to the material.
@@ -389,14 +392,13 @@ export interface Collection {
   createdAt: string; // ISO date
 }
 
-// One entry in "My Study Space" history — a completed quiz, summary, or
-// visualization the student can reopen later.
+// One entry in "My Study Space" history — a completed quiz or summary.
 export interface HistoryItem {
   id: string;
-  type: 'quiz' | 'summary' | 'visualization';
+  type: 'quiz' | 'summary';
   title: string;
   createdAt: string; // ISO date
-  data: QuizData | SummaryData | VisualizationResponse;
+  data: QuizData | SummaryData;
   sourcePrompt?: string;
 }
 
@@ -422,68 +424,6 @@ export interface ExamEvent {
   // Set once the 1-day-before study reminder has actually fired, so the
   // periodic check in App.tsx never sends it twice for the same exam.
   reminderSent?: boolean;
-}
-
-// Visualization contract expected by VisualizerScreen.tsx
-export interface VisualizationPoint {
-  x: number;
-  y: number;
-  label?: string;
-}
-
-export interface MathHighlight {
-  expression: string;
-  highlight?: string;
-  note?: string;
-}
-
-// A single shape/element within an animation or diagram step. `type: "node"`
-// is the Subject-Aware / realistic-graphics case: rather than the AI
-// describing a plain circle/rect, it points at a pre-built local asset by
-// id (see lib/subjects.ts DIAGRAM_NODE_IDS and components/DiagramAssets.tsx)
-// using the SAME lightweight coordinate fields (x/y/width/height/label/
-// color) every other shape already uses — no raw SVG or markup ever comes
-// from the model, only this small JSON pointer.
-export interface VisualizationShape {
-  type: 'circle' | 'rect' | 'line' | 'arrow' | 'text' | 'node';
-  cx?: number; cy?: number; r?: number;
-  x?: number; y?: number; width?: number; height?: number;
-  x1?: number; y1?: number; x2?: number; y2?: number;
-  color?: string; label?: string; text?: string; strokeWidth?: number;
-  // Required when type is "node" — one of DIAGRAM_NODE_IDS.
-  nodeId?: string;
-}
-
-export interface VisualizationStep {
-  label: string;
-  explanation: string;
-  visualElements?: { shapes?: VisualizationShape[]; mathHighlight?: MathHighlight };
-  svg?: string;
-}
-
-export interface VisualizationGraphConfig {
-  xMin: number;
-  xMax: number;
-  yMin: number;
-  yMax: number;
-  points: VisualizationPoint[];
-  equation?: string;
-}
-
-export interface VisualizationResponse {
-  title: string;
-  // 'diagram' = realistic node-based diagram (Subject-Aware Science/Bio);
-  // 'map' = geography regions/coordinates; 'dataset' = a math/data chart.
-  // The original 'animation' type still works exactly as before (plain
-  // shapes) — 'diagram' is the same rendering path with `node` shapes.
-  type: 'graph' | 'math' | 'animation' | 'diagram' | 'map' | 'dataset';
-  subject?: string;
-  steps: VisualizationStep[];
-  graphConfig?: VisualizationGraphConfig;
-  // Populated when type is "map".
-  regions?: MapRegion[];
-  // Populated when type is "dataset".
-  dataset?: NumericDataset;
 }
 
 // ---------------------------------------------------------------------------

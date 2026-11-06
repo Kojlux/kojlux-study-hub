@@ -18,6 +18,26 @@ const enumString = (values: string[]): Schema => ({
 });
 const union = (schemas: Schema[]): Schema => ({ anyOf: schemas });
 
+const MAX_ANSWERABLE_QUESTION_WORDS = 25;
+const MAX_NOTES_SCHEMA_ADDONS = 3;
+const MAX_QUIZ_QUESTIONS = 15;
+const VISUALS_REQUIRED_PER_FIVE_QUESTIONS = 2;
+const MAX_TABLE_CELL_WORDS = 8;
+const MAX_TABLE_HEADER_WORDS = 5;
+const MAX_TABLE_CAPTION_WORDS = 10;
+const answerableQuestionText: Schema = {
+  type: Type.STRING,
+  description: 'The answerable question only; use 25 words or fewer.',
+};
+const compactTableHeader: Schema = {
+  type: Type.STRING,
+  description: 'A concise chart or table header of 5 words or fewer.',
+};
+const compactTableCell: Schema = {
+  type: Type.STRING,
+  description: 'Concise text of 8 words or fewer for one chart or table cell.',
+};
+
 const simulationSchema = object({
   type: enumString(['INTERACTIVE_SIMULATION']),
   title: str,
@@ -42,7 +62,7 @@ const simulationSchema = object({
 const diagnosticSchema = object({
   type: enumString(['DIAGNOSTIC_QUESTION_LOOP']),
   contextAnchorId: str,
-  probingPrompt: str,
+  probingPrompt: answerableQuestionText,
   questionType: enumString(['MULTIPLE_CHOICE', 'TEXT_INPUT', 'BOOLEAN_TOGGLE']),
   options: strings,
   expectedAnswerPattern: str,
@@ -66,7 +86,7 @@ const multiPartQuestionSchema = object({
   sharedContextMarkdown: str,
   parts: array(object({
     partNumber: integer,
-    questionText: str,
+    questionText: answerableQuestionText,
     questionType: enumString(['MULTIPLE_CHOICE', 'SHORT_TEXT']),
     options: strings,
     correctAnswer: str,
@@ -114,9 +134,12 @@ const timelineSchema = object({
 
 const comparativeTableSchema = object({
   type: enumString(['COMPARATIVE_TABLE']),
-  caption: str,
-  headers: strings,
-  rows: array(strings),
+  caption: {
+    type: Type.STRING,
+    description: 'A concise caption of 10 words or fewer.',
+  },
+  headers: array(compactTableHeader),
+  rows: array(array(compactTableCell)),
 }, ['type', 'caption', 'headers', 'rows']);
 
 const componentSchemas: Schema[] = [
@@ -174,7 +197,10 @@ const metadataSchema = object({
   orchestratorReasoning: str,
 }, ['generatedAt', 'subject', 'topic', 'orchestratorReasoning']);
 
-const tableSchema = object({ headers: strings, rows: array(array(union([str, num]))) }, ['headers', 'rows']);
+const tableSchema = object({
+  headers: array(compactTableHeader),
+  rows: array(array(union([compactTableCell, num]))),
+}, ['headers', 'rows']);
 const legacyStructuredProperties: Record<string, Schema> = {
   passage: str,
   passageType: enumString(['reading_passage', 'context_story', 'poem']),
@@ -191,8 +217,18 @@ const legacyStructuredProperties: Record<string, Schema> = {
 
 const quizQuestionSchema = object({
   type: enumString(['multiple-choice', 'short-answer']),
-  question: str,
+  question: answerableQuestionText,
   options: strings,
+  parts: array(object({
+    partNumber: integer,
+    questionText: answerableQuestionText,
+    type: enumString(['multiple-choice', 'short-answer']),
+    options: strings,
+    hints: strings,
+    remediationIfWrong: str,
+    correctAnswer: str,
+    explanation: str,
+  }, ['partNumber', 'questionText', 'type', 'correctAnswer'])),
   correctAnswer: str,
   explanation: str,
   visual: union([
@@ -219,17 +255,17 @@ const notesProperties: Record<string, Schema> = {
   overview: str,
   keyPoints: strings,
   glossary: array(object({ term: str, definition: str }, ['term', 'definition'])),
-  diagramNodes: array(object({ nodeId: str, label: str }, ['nodeId', 'label'])),
+  diagramNodes: array(object({ label: str }, ['label'])),
   regions: array(object({
     id: str, name: str, lat: num, lng: num, note: str,
   }, ['id', 'name', 'lat', 'lng'])),
   dataset: object({
     chartType: enumString(['bar', 'line', 'scatter']),
-    labels: strings,
-    series: array(object({ name: str, values: array(num) }, ['name', 'values'])),
+    labels: array(compactTableHeader),
+    series: array(object({ name: compactTableHeader, values: array(num) }, ['name', 'values'])),
   }, ['chartType', 'labels', 'series']),
   metadata: metadataSchema,
-  dynamicComponents: array(union(componentSchemas)),
+  dynamicComponents: array(union(componentSchemas.filter((schema) => schema !== diagnosticSchema))),
   ...legacyStructuredProperties,
 };
 
@@ -276,6 +312,53 @@ function isStringArray(value: unknown): value is string[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function wordCount(value: string): number {
+  return value.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function isWithinWordLimit(value: unknown, limit: number): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && wordCount(value) <= limit;
+}
+
+function hasContent(value: unknown): boolean {
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (isRecord(value)) return Object.keys(value).length > 0;
+  return value !== undefined && value !== null;
+}
+
+function isCompactDataTable(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const headers = value.headers;
+  const rows = value.rows;
+  if (!isStringArray(headers) || !Array.isArray(rows)) {
+    return false;
+  }
+  return headers.every((header) => wordCount(header) <= MAX_TABLE_HEADER_WORDS) &&
+    rows.every((row) =>
+      Array.isArray(row) &&
+      row.length === headers.length &&
+      row.every((cell) =>
+        typeof cell === 'number' ||
+        (typeof cell === 'string' && wordCount(cell) <= MAX_TABLE_CELL_WORDS)
+      )
+    );
+}
+
+function isCompactDataset(value: unknown): boolean {
+  return isRecord(value) &&
+    isStringArray(value.labels) &&
+    value.labels.every((label) => wordCount(label) <= MAX_TABLE_HEADER_WORDS) &&
+    Array.isArray(value.series) &&
+    value.series.every((series) =>
+      isRecord(series) &&
+      typeof series.name === 'string' &&
+      wordCount(series.name) <= MAX_TABLE_HEADER_WORDS
+    );
 }
 
 function isQuizQuestionVisual(value: unknown): boolean {
@@ -339,7 +422,13 @@ function isQuizQuestionVisual(value: unknown): boolean {
         return false;
       }
       const headers = value.headers;
-      return value.rows.every((row) => isStringArray(row) && row.length === headers.length);
+      return wordCount(value.caption) <= MAX_TABLE_CAPTION_WORDS &&
+        headers.every((header) => wordCount(header) <= MAX_TABLE_HEADER_WORDS) &&
+        value.rows.every((row) =>
+          isStringArray(row) &&
+          row.length === headers.length &&
+          row.every((cell) => wordCount(cell) <= MAX_TABLE_CELL_WORDS)
+        );
     }
     default:
       return false;
@@ -393,23 +482,127 @@ export function validateKojluxPayload(value: unknown, mode: KojluxGenerationMode
     if (!Array.isArray(payload.questions)) {
       throw new Error('Quiz questions must be an array.');
     }
+    if (payload.questions.length < 1 || payload.questions.length > MAX_QUIZ_QUESTIONS) {
+      throw new Error(`Quiz responses must contain between 1 and ${MAX_QUIZ_QUESTIONS} questions.`);
+    }
     let visualCount = 0;
     for (const question of payload.questions) {
       if (!isRecord(question)) {
         throw new Error('Each quiz question must be an object.');
       }
+      if (Array.isArray(question.parts)) {
+        if (
+          question.parts.length < 2 ||
+          question.parts.some((part, index) =>
+            !isRecord(part) || part.partNumber !== index + 1
+          ) ||
+          question.parts.some((part) =>
+            !isRecord(part) ||
+            !isWithinWordLimit(part.questionText, MAX_ANSWERABLE_QUESTION_WORDS) ||
+            !['multiple-choice', 'short-answer'].includes(String(part.type)) ||
+            part.type !== question.type ||
+            typeof part.correctAnswer !== 'string' ||
+            (part.type === 'multiple-choice' &&
+              (!Array.isArray(part.options) ||
+                !part.options.every((option) => typeof option === 'string') ||
+                !part.options.includes(part.correctAnswer))) ||
+            ((part.hints !== undefined || part.remediationIfWrong !== undefined) &&
+              (part.type !== 'multiple-choice' ||
+                !Array.isArray(part.hints) ||
+                !part.hints.length ||
+                !part.hints.every((hint) => typeof hint === 'string') ||
+                typeof part.remediationIfWrong !== 'string'))
+          )
+        ) {
+          throw new Error('Multipart quiz questions need at least two valid answerable parts.');
+        }
+        const totalPartWords = question.parts.reduce((total, part) =>
+          total + (isRecord(part) && typeof part.questionText === 'string' ? wordCount(part.questionText) : 0), 0);
+        if (totalPartWords > MAX_ANSWERABLE_QUESTION_WORDS) {
+          throw new Error('All answerable parts of one quiz question must total 25 words or fewer.');
+        }
+      } else if (!isWithinWordLimit(question.question, MAX_ANSWERABLE_QUESTION_WORDS)) {
+        throw new Error('Each answerable quiz question must be 25 words or fewer.');
+      }
       if (question.visual !== undefined) {
         visualCount += 1;
         if (!isQuizQuestionVisual(question.visual)) {
-          throw new Error('Quiz question visuals must use a supported, valid visual type.');
+          throw new Error('Quiz question visuals must use a supported, valid type with concise table text.');
         }
       }
     }
-    if (visualCount > 1) {
-      throw new Error('Quiz responses may include a visual on at most one question.');
+    if (payload.questions.length < 5 && visualCount > 0) {
+      throw new Error('Quizzes with fewer than five questions must not include visuals.');
+    }
+    const requiredVisualCount = Math.floor(payload.questions.length / 5) * VISUALS_REQUIRED_PER_FIVE_QUESTIONS;
+    if (visualCount < requiredVisualCount) {
+      throw new Error(`Quiz responses must include at least ${requiredVisualCount} visuals for ${payload.questions.length} questions.`);
+    }
+  } else {
+    if ((payload.dynamicComponents as Array<Record<string, unknown>>).some(
+      (component) => component.type === 'DIAGNOSTIC_QUESTION_LOOP'
+    )) {
+      throw new Error('Notecraft must teach the material and must not include quiz-style diagnostic questions.');
+    }
+    const optionalFieldKeys = [
+      'diagramNodes',
+      'regions',
+      'dataset',
+      'formulas',
+      'solutionSteps',
+      'processFlow',
+      'variables',
+      'chemicalEquations',
+      'timeline',
+      'factSheetTable',
+      'table',
+      'imageQueries',
+      'passage',
+    ];
+    const optionalFieldCount = optionalFieldKeys.filter((key) => hasContent(payload[key])).length +
+      (!hasContent(payload.passage) && hasContent(payload.passageType) ? 1 : 0);
+    if (optionalFieldCount + payload.dynamicComponents.length > MAX_NOTES_SCHEMA_ADDONS) {
+      throw new Error('Notecraft responses may include at most three optional schema-based study aids.');
+    }
+    if (
+      (payload.table !== undefined && !isCompactDataTable(payload.table)) ||
+      (payload.factSheetTable !== undefined && !isCompactDataTable(payload.factSheetTable))
+    ) {
+      throw new Error('Table headers must be 5 words or fewer and text cells 8 words or fewer, with matching row lengths.');
+    }
+    if (payload.dataset !== undefined && !isCompactDataset(payload.dataset)) {
+      throw new Error('Chart labels and series names must be 5 words or fewer.');
     }
   }
   for (const component of payload.dynamicComponents as Array<Record<string, unknown>>) {
+    if (component.type === 'MULTI_PART_QUESTION') {
+      if (
+        !Array.isArray(component.parts) ||
+        component.parts.length < 2 ||
+        component.parts.some((part) =>
+          !isRecord(part) || !isWithinWordLimit(part.questionText, MAX_ANSWERABLE_QUESTION_WORDS)
+        )
+      ) {
+        throw new Error('MULTI_PART_QUESTION parts must include answerable question text.');
+      }
+      const questionWords = (component.parts as Array<Record<string, unknown>>)
+        .reduce((total, part) => total + wordCount(part.questionText as string), 0);
+      if (questionWords > MAX_ANSWERABLE_QUESTION_WORDS) {
+        throw new Error('All answerable parts of one multipart question must total 25 words or fewer.');
+      }
+    }
+    if (
+      component.type === 'DIAGNOSTIC_QUESTION_LOOP' &&
+      !isWithinWordLimit(component.probingPrompt, MAX_ANSWERABLE_QUESTION_WORDS)
+    ) {
+      throw new Error('Each answerable question prompt must be 25 words or fewer.');
+    }
+    if (
+      component.type === 'COMPARATIVE_TABLE' &&
+      !isQuizQuestionVisual(component)
+    ) {
+      throw new Error('Comparative table text must use concise captions, headers, and cells.');
+    }
     if (component.type === 'DRAG_AND_DROP') {
       if (
         typeof component.instruction !== 'string' ||
@@ -441,7 +634,7 @@ export function validateKojluxPayload(value: unknown, mode: KojluxGenerationMode
         if (!part || typeof part !== 'object') return false;
         const item = part as Record<string, unknown>;
         return item.partNumber === index + 1 &&
-          typeof item.questionText === 'string' &&
+          isWithinWordLimit(item.questionText, MAX_ANSWERABLE_QUESTION_WORDS) &&
           (item.questionType === 'MULTIPLE_CHOICE' || item.questionType === 'SHORT_TEXT') &&
           (item.questionType !== 'MULTIPLE_CHOICE' ||
             (Array.isArray(item.options) && item.options.every((option) => typeof option === 'string'))) &&
@@ -452,6 +645,7 @@ export function validateKojluxPayload(value: unknown, mode: KojluxGenerationMode
       });
       if (
         typeof component.sharedContextMarkdown !== 'string' ||
+        (parts as Array<Record<string, unknown>>).length < 2 ||
         !validParts ||
         (parts as Array<Record<string, unknown>>).some((part) =>
           typeof part.unlocksPartNumber === 'number' &&
@@ -478,8 +672,8 @@ export function getKojluxResponseSchema(mode: KojluxGenerationMode): Schema {
     : object(notesProperties, ['title', 'overview', 'keyPoints', 'glossary', 'metadata', 'dynamicComponents']);
 }
 
-export const KOJLUX_COMPONENT_INSTRUCTIONS = `Include dynamicComponents selected only for clear conceptual usefulness, not to fill a quota. Use the smallest set of components that improves understanding. Use DRAG_AND_DROP to test vocabulary, classifications, or matching properties. Use MULTI_PART_QUESTION for math, science, or logic problems when a learner must solve a foundational step before calculating the final answer; number parts sequentially and use unlocksPartNumber when an answer gates the next part. Complex concepts that genuinely benefit from changing variables may use an INTERACTIVE_SIMULATION; pair it with a DIAGNOSTIC_QUESTION_LOOP whenever the learner should be probed about the simulation's state or reasoning. Do not invent unsafe real-world procedures, runnable executable sandboxes, or unnecessary components. Set metadata.orchestratorReasoning to a brief user-facing rationale for the component choices, not private step-by-step reasoning. Set metadata.generatedAt to this ISO timestamp:`;
+export const KOJLUX_COMPONENT_INSTRUCTIONS = `For Notecraft, teach the material with a clear overview, key points, and glossary; keep them concise and add detail only for hard or thorough requests. Notecraft is a teaching experience, not a quiz: never include DIAGNOSTIC_QUESTION_LOOP or any standalone "Check your understanding" question. Include at most three optional schema-based study aids in total across dynamicComponents and other optional structured fields; the overview, keyPoints, and glossary do not count. Choose the most useful aids for the material, and do not default to DRAG_AND_DROP. Use DRAG_AND_DROP for vocabulary, classifications, or matching only when it is the best fit. Use MULTI_PART_QUESTION for math, science, or logic problems when a learner must solve a foundational step before the final answer; number parts sequentially and use unlocksPartNumber when an answer gates the next part. Every answerable question must be at most 25 words; for a multipart question, all part question texts combined must be at most 25 words. Shared context and instructions do not count. Keep chart/table captions to 10 words or fewer, headers to 5 words or fewer, and each text cell to 8 words or fewer. Complex concepts that genuinely benefit from changing variables may use an INTERACTIVE_SIMULATION. Do not invent unsafe real-world procedures, runnable executable sandboxes, or unnecessary components. Set metadata.orchestratorReasoning to a brief user-facing rationale for the component choices, not private step-by-step reasoning. Set metadata.generatedAt to this ISO timestamp:`;
 
-export const KOJLUX_QUIZ_COMPONENT_INSTRUCTIONS = `Keep quizzes focused on exactly the requested number of questions. Do not add standalone dynamicComponents or bonus activities; dynamicComponents must be an empty array. Normally questions are text-only. At most one question in the entire quiz may include an optional "visual" directly on that question. Include it only when the question genuinely depends on a compact visual (such as a relevant formula, area model, graph, process, timeline, or comparison table); the question must clearly refer to it. Do not force a visual, repeat the same visual across questions, clutter it with unrelated explanation, or reveal the answer in the visual. Choose its type for the concept and vary which question receives it when appropriate. Keep every other question straightforward.`;
+export const KOJLUX_QUIZ_COMPONENT_INSTRUCTIONS = `Create exactly the requested number of questions, never more than 15. Every answerable question prompt must be at most 25 words; count only the answerable question text, not shared context, source content, visual content, instructions, answer options, answers, or explanations. When sequential reasoning benefits from it, occasionally use a multipart question with at least two parts; keep all part question texts combined to 25 words or fewer and do not make every question multipart. For an occasional multiple-choice part (not every question), include both hints (a clue that does not reveal the answer) and remediationIfWrong (a brief targeted explanation); the learner can check that part and request its hint. Do not add standalone dynamicComponents or bonus activities; dynamicComponents must be an empty array. For fewer than five questions, do not include visuals. For every complete group of five questions, include at least two relevant visuals attached directly to different questions; for example, 5 questions need 2 visuals, 10 need 4, and 15 need 6. Use supported visuals that genuinely help (such as a relevant formula, area model, graph, process, timeline, or comparison table); the question must clearly refer to it. Do not repeat the same visual, clutter it with unrelated explanation, or reveal the answer. Keep other questions straightforward. For charts or tables, keep captions to 10 words or fewer, headers to 5 words or fewer, and each text cell to 8 words or fewer.`;
 
 export const KOJLUX_MATH_NOTATION_INSTRUCTIONS = `Across every subject, whenever you write a mathematical expression, equation, exponent, fraction, chemical formula, or variable inline in prose, wrap it in LaTeX delimiters like \\(x^{2} + 3x = 0\\) so the app renders real mathematical typography. Use valid LaTeX for powers (x^{2}), subscripts (CO_{2}), fractions (\\frac{a}{b}), roots (\\sqrt{x}), multiplication (\\times), division (\\div), minus (\\,-\\,), inequalities (\\leq, \\geq, \\neq), and arrows (\\rightarrow). Never write plain-text exponent notation such as x^2, ASCII multiplication such as 3*x, or typed substitutes such as ->, <=, or >= in generated study content. Keep ordinary prose outside math delimiters. For rawLatex fields, provide valid LaTeX without surrounding delimiters.`;

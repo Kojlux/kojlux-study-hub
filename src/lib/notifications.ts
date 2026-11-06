@@ -74,6 +74,8 @@ export async function dismissBrowserNotification(item: NotificationItem): Promis
     ? 'kojlux-reviews-ready'
     : item.type === 'exam_reminder' && item.targetId
       ? `kojlux-exam-reminder-${item.targetId}`
+      : item.type === 'quiz_resume' && item.targetId
+        ? `kojlux-quiz-resume-${item.targetId}`
       : null;
   if (!tag) return;
 

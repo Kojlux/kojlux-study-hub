@@ -3,10 +3,8 @@ import { getAuth } from 'firebase/auth';
 import { initializeFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
-// Same project as before — Kojlux Study Hub. The old "Trending Classroom
-// Reels" video feed and its upload helpers (uploadBase64File,
-// createVideoPost) are still gone. Storage is back for a different,
-// narrower reason: the Materials page (lib/communityLinks.ts) lets a
+// Same project as before — Kojlux Study Hub. Storage is used by the
+// Materials page (lib/communityLinks.ts), which lets a
 // student upload a file directly (image/video/PDF/doc) instead of only
 // linking out to one, capped at 15MB and auto-deleted after ~75 days to
 // keep usage inside Firebase's free Storage tier. Note that as of Feb 2026

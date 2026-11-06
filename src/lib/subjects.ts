@@ -1,5 +1,5 @@
-// Shared "subject" concept for the Topic Picker (Quiz Builder, Notes
-// Summarizer, Visualizer) and the Subject-Aware Content Engine. Kept in one
+// Shared "subject" concept for the Topic Picker (Quiz Builder and NoteCraft)
+// and the Subject-Aware Content Engine. Kept in one
 // file so the chip list, icons, and per-subject prompt instructions can
 // never drift between the three screens the way three separately-typed
 // heuristics already had (see looksLikeTopicPhrase duplication).
@@ -21,9 +21,8 @@ export const SUBJECT_OPTIONS: SubjectOption[] = [
   { id: 'math', label: 'Math & Physics', hint: 'LaTeX formulas, worked solutions, datasets' },
 ];
 
-// Appended to the AI instructions in Quiz Builder / Notes Summarizer /
-// Visualizer so the SAME subject choice produces a consistently-shaped,
-// lightweight JSON payload across all three tools. Deliberately short — a
+// Appended to the AI instructions in Quiz Builder and NoteCraft so the same
+// subject choice produces a consistent, lightweight JSON payload. Deliberately short — a
 // few sentences, not a restated schema — since the per-tool code already
 // carries the full JSON shape; this just steers content, keeping token
 // usage down.
@@ -153,24 +152,3 @@ export function buildStructuredFieldsClause(subject: Subject): { schemaFields: s
     rules: fields.map((f) => f.rule).join('\n'),
   };
 }
-
-// Fixed vocabulary of local, pre-built diagram node assets the Visualizer's
-// "diagram" mode can reference by id. The AI is instructed to choose from
-// this exact list (see VisualizerScreen.tsx) rather than invent new ids or
-// emit raw SVG/markup — this is what keeps output to a lightweight JSON
-// pointer instead of a generated image or inline graphic. Grouped loosely
-// by domain; see components/DiagramAssets.tsx for the actual rendering.
-export const DIAGRAM_NODE_IDS = [
-  // Plant biology
-  'plant-root', 'plant-stem', 'plant-leaf', 'plant-flower', 'plant-soil', 'plant-sun', 'plant-water',
-  // Cell biology
-  'cell-membrane', 'cell-nucleus', 'cell-mitochondria',
-  // Chemistry / physics
-  'atom-nucleus', 'atom-electron-orbit',
-  // Human body
-  'organ-heart', 'organ-lung', 'organ-brain',
-  // Generic fallback shapes (still routed through the asset library, not raw SVG)
-  'generic-circle', 'generic-box', 'generic-arrow', 'generic-label',
-] as const;
-
-export type DiagramNodeId = (typeof DIAGRAM_NODE_IDS)[number];

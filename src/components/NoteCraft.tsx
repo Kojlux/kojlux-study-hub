@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Upload, Camera, Sparkles, RefreshCw, BookOpenCheck, ClipboardCheck, Printer, FileText } from 'lucide-react';
+import { Upload, Camera, Sparkles, RefreshCw, BookOpenCheck, ClipboardCheck, Printer, FileText, CircleStop } from 'lucide-react';
 import { loadDraft, saveDraft, clearDraft } from '../lib/draftStore';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 import { jsPDF } from 'jspdf';
@@ -20,20 +20,32 @@ import { makeRecallCard } from '../lib/spacedRepetition';
 import { Subject, subjectPromptHint, buildStructuredFieldsClause } from '../lib/subjects';
 import TopicPicker, { SegmentedTrack, ui } from './TopicPicker';
 import SubjectContentBlocks from './blocks/SubjectContentBlocks';
-import EducationalComponents, { EducationalMetadata } from './blocks/EducationalComponents';
+import EducationalComponents from './blocks/EducationalComponents';
 import { MathText } from './blocks/Latex';
 import { renderStructuredContentToPdf } from '../lib/pdfStructuredContent';
 import { sanitizeForPdf } from '../lib/pdfTextSanitizer';
 
 interface Props {
   gradeLevel: string;
+  scopeId: string;
+  isFocusMode: boolean;
+  onFocusModeChange: (focused: boolean) => void;
   onSaveHistory: (item: HistoryItem) => void;
   onAddRecallCards: (cards: RecallCard[]) => void;
   onError: (msg: string) => void;
   onCreateQuizFromSummary: (summary: SummaryData) => void;
 }
 
-export default function NoteCraft({ gradeLevel, onSaveHistory, onAddRecallCards, onError, onCreateQuizFromSummary }: Props) {
+export default function NoteCraft({
+  gradeLevel,
+  scopeId,
+  isFocusMode,
+  onFocusModeChange,
+  onSaveHistory,
+  onAddRecallCards,
+  onError,
+  onCreateQuizFromSummary,
+}: Props) {
   const [file, setFile] = useState<StudyFile | null>(null);
   const [textInput, setTextInput] = useState('');
   // See TopicPicker.tsx for why this replaced the old length/punctuation
@@ -51,7 +63,7 @@ export default function NoteCraft({ gradeLevel, onSaveHistory, onAddRecallCards,
   // A generated summary used to live only in memory — a refresh mid-session
   // lost it all. This restores/mirrors it
   // via IndexedDB so a refresh resumes instead of wiping the screen.
-  const DRAFT_KEY = 'note_craft';
+  const DRAFT_KEY = `note_craft_${scopeId}`;
   const draftHydrated = useRef(false);
 
   useEffect(() => {
@@ -71,12 +83,13 @@ export default function NoteCraft({ gradeLevel, onSaveHistory, onAddRecallCards,
       setSubject(draft.subject);
       setDetailLevel(draft.detailLevel);
       setSummaryData(draft.summaryData);
+      onFocusModeChange(true);
     }).finally(() => {
       draftHydrated.current = true;
     });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [DRAFT_KEY]);
 
   useEffect(() => {
     if (!draftHydrated.current) return;
@@ -94,6 +107,7 @@ export default function NoteCraft({ gradeLevel, onSaveHistory, onAddRecallCards,
   // in-memory state — otherwise the old summary would silently come back
   // on the next refresh.
   const resetNotes = () => {
+    onFocusModeChange(false);
     setSummaryData(null);
     setFile(null);
     setTextInput('');
@@ -124,6 +138,7 @@ export default function NoteCraft({ gradeLevel, onSaveHistory, onAddRecallCards,
       onError('Add a photo, PDF, video, or describe a topic / paste notes first.');
       return;
     }
+    onFocusModeChange(true);
     setLoading(true);
     setSummaryData(null);
     try {
@@ -153,9 +168,8 @@ export default function NoteCraft({ gradeLevel, onSaveHistory, onAddRecallCards,
       const extraField: { schema: string; rule: string } | null =
         subject === 'science'
           ? {
-              schema: '"diagramNodes": [{"nodeId": string, "label": string}, ...]',
-              rule:
-                '"diagramNodes" lists 3-6 concrete, nameable parts of the system/process, with nodeId chosen ONLY from: plant-root, plant-stem, plant-leaf, plant-flower, plant-soil, plant-sun, plant-water, cell-membrane, cell-nucleus, cell-mitochondria, atom-nucleus, atom-electron-orbit, organ-heart, organ-lung, organ-brain, generic-circle, generic-box. Omit the field entirely if none genuinely fit.',
+              schema: '"diagramNodes": [{"label": string}, ...]',
+              rule: '"diagramNodes" lists 3-6 short labels for concrete, nameable parts of the system or process. Omit if none genuinely fit.',
             }
           : subject === 'geography'
           ? {
@@ -175,6 +189,7 @@ export default function NoteCraft({ gradeLevel, onSaveHistory, onAddRecallCards,
       const { schemaFields, rules } = buildStructuredFieldsClause(subject);
 
       const instructions = `You are helping a ${gradeLevel} student study. Summarize the study material (file and/or text below) at a "${detailLevel}" level of detail.
+Keep the overview and key points concise and clear; use only slightly more detail for hard or thorough requests.
 ${materialClause}
 ${subjectClause}
 ${KOJLUX_COMPONENT_INSTRUCTIONS}
@@ -231,11 +246,25 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
       onAddRecallCards(cards);
     } catch (err) {
       console.error(err);
+      onFocusModeChange(false);
       onError('Could not summarize that material. Try a clearer file or more text.');
     } finally {
       setLoading(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-[100svh] flex flex-col items-center justify-center bg-focus-bg text-slate-900 dark:text-slate-100 px-6 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center mb-6">
+          <RefreshCw className="w-7 h-7 text-focus-primary animate-spin" />
+        </div>
+        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-focus-primary">Building your study session</p>
+        <h1 className="mt-3 text-2xl sm:text-3xl font-black tracking-tight">Crafting your notes</h1>
+        <p className="mt-3 max-w-sm text-sm leading-relaxed text-slate-600 dark:text-slate-400">Your focused workspace will be ready in a moment.</p>
+      </div>
+    );
+  }
 
   // Builds an actual downloadable PDF of the summary — window.print() on this
   // screen used to print blank pages because the app shell is a fixed,
@@ -303,7 +332,7 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
   };
 
   return (
-    <div className="mx-auto w-full max-w-2xl">
+    <div className={`mx-auto w-full max-w-2xl ${isFocusMode ? 'min-h-[100svh] px-5 pt-10 pb-28' : ''}`}>
       {!summaryData && (
         <div className="space-y-6">
           <div className={ui.frame}>
@@ -397,6 +426,7 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
         <div className="space-y-6">
           <div className="flex items-start justify-between gap-4">
             <h2 className={ui.h1}>{summaryData.title}</h2>
+          {!isFocusMode && (
             <div className="flex items-center gap-5 shrink-0 pt-2 print:hidden">
               <button onClick={exportPdf} className={ui.link}>
                 <Printer className="w-3.5 h-3.5" /> PDF
@@ -405,12 +435,12 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
                 <RefreshCw className="w-3.5 h-3.5" /> New
               </button>
             </div>
+          )}
           </div>
 
           {/* Dynamic Forms: passage, formulas/solution steps, process flow,
               timeline, tables, and images — whichever are present. */}
           <SubjectContentBlocks data={summaryData} />
-          {summaryData.metadata && <EducationalMetadata metadata={summaryData.metadata} />}
           <EducationalComponents components={summaryData.dynamicComponents ?? []} />
 
           <div className="space-y-3">
@@ -430,7 +460,7 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
                   ))}
                 </div>
                 <p className="text-xs text-slate-900 dark:text-slate-400 leading-relaxed mt-4">
-                  Ask the Visualizer to diagram "{summaryData.title}" to see these labeled interactively.
+                  Use these labels to review the main parts of the system.
                 </p>
               </section>
             )}
@@ -502,10 +532,10 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
             )}
           </div>
 
-          <div className="rounded-2xl bg-focus-primary/5 p-5 flex items-center gap-3 print:hidden">
+          {!isFocusMode && <div className="rounded-2xl bg-focus-primary/5 p-5 flex items-center gap-3 print:hidden">
             <BookOpenCheck className="w-5 h-5 text-focus-primary shrink-0" />
             <p className="text-xs text-slate-900 dark:text-slate-400">Key points added to <span className="font-bold">Review</span> for spaced repetition.</p>
-          </div>
+          </div>}
 
           <button
             onClick={() => summaryData && onCreateQuizFromSummary(summaryData)}
@@ -514,13 +544,23 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
             <span className="flex items-center gap-3 min-w-0">
               <ClipboardCheck className="w-5 h-5 text-focus-primary shrink-0" />
               <span>
-                <span className="block text-sm font-bold text-slate-900 dark:text-slate-400">Test your knowledge</span>
-                <span className="block text-xs text-slate-900 dark:text-slate-400 mt-0.5">Quiz yourself on this summary and check your understanding.</span>
+                <span className="block text-sm font-bold text-slate-900 dark:text-slate-400">Create a quiz from these notes</span>
+                <span className="block text-xs text-slate-900 dark:text-slate-400 mt-0.5">
+                  {isFocusMode ? 'End this session and generate a quiz from your summary.' : 'Generate a quiz using this summary.'}
+                </span>
               </span>
             </span>
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-focus-primary shrink-0">Make a quiz</span>
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-focus-primary shrink-0">Create quiz</span>
           </button>
         </div>
+      )}
+      {isFocusMode && summaryData && (
+        <button
+          onClick={resetNotes}
+          className="fixed bottom-5 right-5 z-30 inline-flex items-center gap-2 rounded-full bg-focus-primary px-5 py-3.5 text-sm font-bold text-white shadow-xl shadow-focus-primary/30"
+        >
+          <CircleStop className="w-4 h-4" /> End
+        </button>
       )}
     </div>
   );

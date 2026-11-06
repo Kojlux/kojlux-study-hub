@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import {
   createUserWithEmailAndPassword,
+  sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
+  signOut,
   updateProfile,
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
@@ -19,6 +21,7 @@ export default function AuthScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  const [verificationNotice, setVerificationNotice] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,17 +29,36 @@ export default function AuthScreen() {
     setBusy(true);
     try {
       if (mode === 'signin') {
-        await signInWithEmailAndPassword(auth, email.trim(), password);
+        const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+        if (!credential.user.emailVerified) {
+          try {
+            await sendEmailVerification(credential.user);
+          } finally {
+            await signOut(auth);
+          }
+          setVerificationNotice(`We sent a verification link to ${email.trim()}. Verify your inbox, then sign in again.`);
+          return;
+        }
       } else {
-        const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
-        await updateProfile(cred.user, { displayName: username.trim() || email.split('@')[0] });
-        await setDoc(doc(db, 'users', cred.user.uid), {
-          email: email.trim(),
-          username: username.trim() || email.split('@')[0],
-          gradeLevel,
-          createdAt: new Date().toISOString(),
-          streak: 0,
-        });
+        const emailAddress = email.trim();
+        const accountName = username.trim() || emailAddress.split('@')[0];
+        const cred = await createUserWithEmailAndPassword(auth, emailAddress, password);
+        try {
+          await updateProfile(cred.user, { displayName: accountName });
+          await setDoc(doc(db, 'users', cred.user.uid), {
+            email: emailAddress,
+            username: accountName,
+            gradeLevel,
+            createdAt: new Date().toISOString(),
+            streak: 0,
+          });
+          await sendEmailVerification(cred.user);
+        } catch (registrationError) {
+          await signOut(auth);
+          throw registrationError;
+        }
+        await signOut(auth);
+        setVerificationNotice(`We sent a verification link to ${emailAddress}. Verify your inbox, then sign in to finish creating your account.`);
       }
     } catch (err: any) {
       setError(humanizeAuthError(err?.code || err?.message || 'Something went wrong.'));
@@ -75,8 +97,11 @@ export default function AuthScreen() {
               className="w-full h-full object-cover"
             />
           </div>
-          <h1 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Kojlux Study Hub</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Focused study, built on how memory actually works.</p>
+          <h1 className="text-lg font-black text-slate-900 dark:text-white">Welcome to Kojlux Study Hub</h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed px-2">
+            Turn notes and textbook pages into quizzes, summaries, and spaced-repetition review. Sign in to sync
+            across devices, or jump straight in as a guest.
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3.5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-sm">
@@ -151,6 +176,12 @@ export default function AuthScreen() {
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {verificationNotice && (
+            <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-relaxed text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
+              {verificationNotice}
             </div>
           )}
 

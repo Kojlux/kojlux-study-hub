@@ -132,3 +132,7 @@ export function markAllNotificationsRead(scopeId: string): NotificationItem[] {
 export function clearNotification(scopeId: string, id: string): NotificationItem[] {
   return saveNotifications(scopeId, loadNotifications(scopeId).filter((n) => n.id !== id));
 }
+
+export function clearNotificationsByTag(scopeId: string, dedupeTag: string): NotificationItem[] {
+  return saveNotifications(scopeId, loadNotifications(scopeId).filter((n) => n.dedupeTag !== dedupeTag));
+}

@@ -1,17 +1,50 @@
-import React from 'react';
-import { ArrowLeft, Bell, BellOff, CheckCheck, Brain, CalendarClock, FileText } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  ArrowLeft, Bell, BellOff, CheckCheck, Brain, CalendarClock, Camera, FileText,
+  Mail, Palette, ShieldCheck, Trash2, UserRound,
+} from 'lucide-react';
 import { NotificationItem } from '../types';
 
 interface Props {
   notifications: NotificationItem[];
   onSelect: (item: NotificationItem) => void;
+  onDeletePausedQuiz: (item: NotificationItem) => void;
   onMarkAllRead: () => void;
   onClose: () => void;
 }
 
-// Rendered as a normal page beside the side nav (see App.tsx), so the nav and its
-// divider line stay visible. Header with a Back button, scrollable content below.
-export default function NotificationCenter({ notifications, onSelect, onMarkAllRead, onClose }: Props) {
+const NEWS = [
+  {
+    title: 'Camera access is your choice',
+    body: 'The camera is requested only when you choose Take photo for a quiz or summary. You can upload a file or type your material instead.',
+    icon: Camera,
+  },
+  {
+    title: 'You can use Kojlux as a guest',
+    body: 'Skip sign-in to study on this device. Guest data is stored locally, so clearing browser data or changing devices can remove it.',
+    icon: UserRound,
+  },
+  {
+    title: 'Need to report a problem?',
+    body: 'Email the Kojlux Study Hub team and include what happened and which screen you were using.',
+    icon: Mail,
+    href: 'mailto:officialkojux@gmail.com',
+  },
+  {
+    title: 'Make the app feel like yours',
+    body: 'Choose a theme in Settings to personalize your study space.',
+    icon: Palette,
+  },
+];
+
+export default function NotificationCenter({
+  notifications,
+  onSelect,
+  onDeletePausedQuiz,
+  onMarkAllRead,
+  onClose,
+}: Props) {
+  const [tab, setTab] = useState<'activity' | 'news'>('activity');
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
@@ -28,7 +61,7 @@ export default function NotificationCenter({ notifications, onSelect, onMarkAllR
           <h1 className="flex-1 text-sm font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
             Notifications
           </h1>
-          {unreadCount > 0 && (
+          {tab === 'activity' && unreadCount > 0 && (
             <button
               onClick={onMarkAllRead}
               className="shrink-0 flex items-center gap-1.5 text-[11px] font-bold text-focus-primary"
@@ -38,22 +71,52 @@ export default function NotificationCenter({ notifications, onSelect, onMarkAllR
           )}
         </header>
 
+        <div className="px-5 pb-4">
+          <div className="flex rounded-xl bg-slate-100 dark:bg-slate-900 p-1">
+            {(['activity', 'news'] as const).map((nextTab) => (
+              <button
+                key={nextTab}
+                onClick={() => setTab(nextTab)}
+                className={`flex-1 rounded-lg py-2.5 text-xs font-bold transition ${
+                  tab === nextTab
+                    ? 'bg-white dark:bg-slate-800 text-focus-primary shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400'
+                }`}
+              >
+                {nextTab === 'activity' ? 'Activity' : 'News'}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <main className="flex-1 px-5 pb-28 md:pb-10 space-y-2.5">
-          {notifications.length === 0 ? (
-            <div className="flex flex-col items-center justify-center text-center gap-2.5 py-20">
-              <div className="w-12 h-12 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center justify-center">
-                <BellOff className="w-5 h-5 text-slate-300 dark:text-slate-600" />
-              </div>
-              <p className="text-xs font-semibold text-slate-400 max-w-[220px]">
-                You're all caught up — nothing here yet.
-              </p>
-            </div>
+          {tab === 'news' ? (
+            NEWS.map(({ title, body, icon: Icon, href }) => (
+              <article
+                key={title}
+                className="flex items-start gap-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-4"
+              >
+                <div className="w-9 h-9 rounded-xl bg-focus-primary/10 flex items-center justify-center shrink-0">
+                  <Icon className="w-4 h-4 text-focus-primary" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100">{title}</h2>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{body}</p>
+                  {href && (
+                    <a href={href} className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-focus-primary">
+                      <Mail className="w-3.5 h-3.5" /> Email support
+                    </a>
+                  )}
+                </div>
+              </article>
+            ))
+          ) : notifications.length === 0 ? (
+            <EmptyNotifications />
           ) : (
             notifications.map((item) => (
-              <button
+              <article
                 key={item.id}
-                onClick={() => onSelect(item)}
-                className={`w-full flex items-start gap-3 text-left rounded-2xl p-3.5 border transition ${
+                className={`relative flex items-start gap-3 rounded-2xl border p-3.5 ${
                   item.read
                     ? 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800'
                     : 'bg-focus-primary/10 dark:bg-focus-primary/15 border-focus-primary/25'
@@ -66,9 +129,29 @@ export default function NotificationCenter({ notifications, onSelect, onMarkAllR
                   <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{item.title}</p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">{item.body}</p>
                   <p className="text-[10px] text-slate-400 mt-1">{new Date(item.createdAt).toLocaleString()}</p>
+                  {item.type === 'quiz_resume' && (
+                    <div className="flex items-center gap-4 mt-3">
+                      <button onClick={() => onSelect(item)} className="text-xs font-bold text-focus-primary">
+                        Resume quiz
+                      </button>
+                      <button
+                        onClick={() => onDeletePausedQuiz(item)}
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-rose-500"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Delete
+                      </button>
+                    </div>
+                  )}
                 </div>
                 {!item.read && <span className="w-2 h-2 rounded-full bg-focus-primary shrink-0 mt-1.5" />}
-              </button>
+                {item.type !== 'quiz_resume' && (
+                  <button
+                    onClick={() => onSelect(item)}
+                    aria-label={`Open ${item.title}`}
+                    className="absolute inset-0 w-full h-full opacity-0"
+                  />
+                )}
+              </article>
             ))
           )}
         </main>
@@ -77,9 +160,23 @@ export default function NotificationCenter({ notifications, onSelect, onMarkAllR
   );
 }
 
+function EmptyNotifications() {
+  return (
+    <div className="flex flex-col items-center justify-center text-center gap-2.5 py-20">
+      <div className="w-12 h-12 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center justify-center">
+        <BellOff className="w-5 h-5 text-slate-300 dark:text-slate-600" />
+      </div>
+      <p className="text-xs font-semibold text-slate-400 max-w-[220px]">
+        You're all caught up — nothing here yet.
+      </p>
+    </div>
+  );
+}
+
 function NotificationIcon({ type }: { type: NotificationItem['type'] }) {
   if (type === 'review_ready') return <Brain className="w-4 h-4 text-focus-primary" />;
   if (type === 'exam_reminder') return <CalendarClock className="w-4 h-4 text-focus-primary" />;
   if (type === 'quiz_resume') return <FileText className="w-4 h-4 text-focus-primary" />;
+  if (type === 'general') return <ShieldCheck className="w-4 h-4 text-focus-primary" />;
   return <Bell className="w-4 h-4 text-focus-primary" />;
 }
