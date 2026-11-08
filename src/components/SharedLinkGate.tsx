@@ -6,6 +6,7 @@ import { cardFromSharedSnapshot } from '../lib/sharedImport';
 import { makeCollection } from '../lib/collections';
 import { RecallCard, Collection, SharedCardSnapshot, SharedCollectionSnapshot } from '../types';
 import Modal from './Modal';
+import Skeleton from './Skeleton';
 
 interface Props {
   cardId?: string | null;
@@ -182,7 +183,12 @@ export default function SharedLinkGate({
           <div className="fixed top-4 inset-x-4 z-[250] max-w-md mx-auto">
             <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xl p-4 flex items-start gap-3">
               <div className="flex-1 min-w-0">
-                {loading && <p className="text-xs text-slate-400">Loading shared card…</p>}
+                {loading && (
+                  <div className="space-y-2 py-1" role="status" aria-label="Loading shared item">
+                    <Skeleton className="block h-3 w-2/3 rounded-md" />
+                    <Skeleton className="block h-3 w-full rounded-md" />
+                  </div>
+                )}
                 {notFound && <p className="text-xs text-slate-500">This share link is no longer available.</p>}
                 {(card || collection) && (
                   <>
@@ -220,9 +226,15 @@ export default function SharedLinkGate({
       <div className="pointer-events-none select-none blur-sm brightness-90 transition" aria-hidden="true">
         {children}
       </div>
-      <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-5">
+      <div className="fixed inset-0 z-[300] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-5">
         <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800 p-6 space-y-4">
-          {loading && <p className="text-xs text-slate-400 text-center">Loading shared card…</p>}
+          {loading && (
+            <div className="space-y-3" role="status" aria-label="Loading shared item">
+              <Skeleton className="block h-4 w-2/3 rounded-md" />
+              <Skeleton className="block h-3 w-full rounded-md" />
+              <Skeleton className="block h-3 w-5/6 rounded-md" />
+            </div>
+          )}
           {notFound && <p className="text-xs text-slate-500 text-center">This share link is no longer available.</p>}
           {(card || collection) && (
             <>

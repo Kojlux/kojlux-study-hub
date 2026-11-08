@@ -287,6 +287,11 @@ function SavedPanel({
   const [manageOpen, setManageOpen] = useState(false);
   const [studyCard, setStudyCard] = useState<RecallCard | null>(null);
   const [editCard, setEditCard] = useState<RecallCard | null>(null);
+  const [reviewPrompt, setReviewPrompt] = useState<{
+    cards: RecallCard[];
+    label: string;
+    editCardOnDecline?: RecallCard;
+  } | null>(null);
 
   const uncategorizedCount = savedCards.filter((c) => !c.collectionId).length;
 
@@ -364,7 +369,7 @@ function SavedPanel({
       {visibleCards.length > 0 && (
         <button
           type="button"
-          onClick={() => onPlayCollection(visibleCards, activeLabel)}
+          onClick={() => setReviewPrompt({ cards: visibleCards, label: activeLabel })}
           title={`Start a review session with all ${visibleCards.length} card${visibleCards.length === 1 ? '' : 's'} — jumps to the Review page`}
           className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-focus-primary text-white text-xs font-bold"
         >
@@ -387,7 +392,7 @@ function SavedPanel({
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => setEditCard(c)}
+                onClick={() => setReviewPrompt({ cards: [c], label: c.sourceTitle, editCardOnDecline: c })}
                 title="View and edit this flashcard"
                 aria-label="View and edit this flashcard"
                 className="w-full flex items-center justify-center py-2 rounded-lg bg-focus-primary/10 text-focus-primary text-[11px] font-bold"
@@ -409,6 +414,35 @@ function SavedPanel({
         />
       )}
       {studyCard && <StudyCardModal key={studyCard.id} card={studyCard} onClose={() => setStudyCard(null)} />}
+      {reviewPrompt && (
+        <Modal onClose={() => setReviewPrompt(null)} title="Enter Review mode?">
+          <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+            Review mode focuses on flashcards only. Would you like to study {reviewPrompt.cards.length === 1 ? 'this card' : `these ${reviewPrompt.cards.length} cards`} now?
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (reviewPrompt.editCardOnDecline) setEditCard(reviewPrompt.editCardOnDecline);
+                setReviewPrompt(null);
+              }}
+              className="flex-1 rounded-xl border border-slate-200 py-3 text-sm font-bold text-slate-600 dark:border-slate-700 dark:text-slate-300"
+            >
+              No
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onPlayCollection(reviewPrompt.cards, reviewPrompt.label);
+                setReviewPrompt(null);
+              }}
+              className="flex-1 rounded-xl bg-focus-primary py-3 text-sm font-bold text-white"
+            >
+              Yes, Review
+            </button>
+          </div>
+        </Modal>
+      )}
       {editCard && (
         <EditCardModal
           key={editCard.id}

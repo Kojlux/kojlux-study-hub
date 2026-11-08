@@ -35,6 +35,7 @@ import {
   KOJLUX_MATH_NOTATION_INSTRUCTIONS,
   KOJLUX_QUIZ_COMPONENT_INSTRUCTIONS,
   type KojluxGenerationMode,
+  normalizeKojluxPayload,
   validateKojluxPayload,
 } from '../../shared/kojluxSchema.js';
 
@@ -137,7 +138,7 @@ export const generateKojluxContent = onCall(
         if (!response.text) {
           throw new Error('Gemini returned an empty orchestration response.');
         }
-        const payload: unknown = JSON.parse(response.text);
+        const payload = normalizeKojluxPayload(JSON.parse(response.text), data.mode as KojluxGenerationMode);
         validateKojluxPayload(payload, data.mode as KojluxGenerationMode);
         return { text: JSON.stringify(payload) };
       } catch (error) {

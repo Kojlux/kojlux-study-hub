@@ -28,6 +28,7 @@ import EducationalComponents from './blocks/EducationalComponents';
 import { MathText } from './blocks/Latex';
 import { renderStructuredContentToPdf } from '../lib/pdfStructuredContent';
 import { sanitizeForPdf } from '../lib/pdfTextSanitizer';
+import Skeleton from './Skeleton';
 
 function formatQuestionVisual(question: QuizQuestion): string[] {
   const visual = question.visual;
@@ -125,6 +126,9 @@ interface Props {
   scopeId: string;
   resumeDraftId: string | null;
   summarySource?: string | null;
+  firstStudyGuideStep?: 'source' | 'generate' | null;
+  onGuideSourceReady?: (ready: boolean) => void;
+  onGuideComplete?: () => void;
   onSummarySourceConsumed?: () => void;
   onResumeConsumed: () => void;
   onFocusModeChange: (focused: boolean) => void;
@@ -161,6 +165,9 @@ export default function QuizBuilder({
   scopeId,
   resumeDraftId,
   summarySource,
+  firstStudyGuideStep,
+  onGuideSourceReady,
+  onGuideComplete,
   onSummarySourceConsumed,
   onResumeConsumed,
   onFocusModeChange,
@@ -213,6 +220,10 @@ export default function QuizBuilder({
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
+  useEffect(() => {
+    if (firstStudyGuideStep) onGuideSourceReady?.(Boolean(file) || Boolean(textInput.trim()));
+  }, [file, textInput, firstStudyGuideStep, onGuideSourceReady]);
+
   // ---- Session-draft persistence ----
   // A generated quiz (and the student's in-progress answers) used to live
   // only in the useState calls above — a refresh, tab crash, or mobile
@@ -229,7 +240,7 @@ export default function QuizBuilder({
     let cancelled = false;
     const load = resumeDraftId
       ? loadDraft<QuizDraft>(pausedDraftKey(resumeDraftId)).then((draft) =>
-          draft ?? loadDraft<QuizDraft>(DRAFT_KEY)
+          draft?.quizData ? draft : loadDraft<QuizDraft>(DRAFT_KEY)
         )
       : loadDraft<QuizDraft>(DRAFT_KEY);
     load.then(async (draft) => {
@@ -428,6 +439,7 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
       }
       setQuizData(parsed);
       setQuizSourceImage(file?.kind === 'image' ? file.dataUrl : null);
+      if (firstStudyGuideStep === 'generate') onGuideComplete?.();
     } catch (err) {
       console.error(err);
       onFocusModeChange(false);
@@ -578,13 +590,22 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
 
   if (loading) {
     return (
-      <div className="min-h-[100svh] flex flex-col items-center justify-center bg-focus-bg text-slate-900 dark:text-slate-100 px-6 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center mb-6">
-          <RefreshCw className="w-7 h-7 text-focus-primary animate-spin" />
+      <div className="min-h-[100svh] flex items-center justify-center bg-focus-bg px-5 py-10 dark:bg-slate-950" role="status" aria-label="Creating your quiz">
+        <div className="w-full max-w-2xl space-y-5">
+          <Skeleton className="h-4 w-28 rounded-md" />
+          <Skeleton className="block h-10 w-3/4 rounded-xl" />
+          <div className="space-y-4 rounded-3xl border border-slate-200/70 bg-white/70 p-5 dark:border-slate-800 dark:bg-slate-900/70">
+            <Skeleton className="h-5 w-2/3 rounded-md" />
+            <Skeleton className="block h-3 w-full rounded-md" />
+            <Skeleton className="block h-3 w-5/6 rounded-md" />
+            <div className="space-y-2 pt-3">
+              <Skeleton className="block h-12 w-full rounded-xl" />
+              <Skeleton className="block h-12 w-full rounded-xl" />
+              <Skeleton className="block h-12 w-11/12 rounded-xl" />
+            </div>
+          </div>
+          <Skeleton className="block h-12 w-full rounded-2xl" />
         </div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-focus-primary">Building your study session</p>
-        <h1 className="mt-3 text-2xl sm:text-3xl font-black tracking-tight">Creating your quiz</h1>
-        <p className="mt-3 max-w-sm text-sm leading-relaxed text-slate-600 dark:text-slate-400">Your focused workspace will be ready in a moment.</p>
       </div>
     );
   }
@@ -987,7 +1008,7 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
               disabled={!allAnswered || isEvaluating}
               className={`${ui.cta} flex-1`}
             >
-              {isEvaluating ? <RefreshCw className="w-4 h-4 animate-spin shrink-0" /> : <ChevronRight className="w-4 h-4 shrink-0" />}
+              {isEvaluating ? <Skeleton className="h-4 w-4 shrink-0 rounded-full" /> : <ChevronRight className="w-4 h-4 shrink-0" />}
               <span className="leading-none">{isEvaluating ? 'Grading…' : allAnswered ? 'Submit quiz' : 'Answer all questions to submit'}</span>
             </button>
           ) : (
@@ -1008,7 +1029,10 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
   return (
     <div className={`${WRAP} space-y-6`}>
       <div className={ui.frame}>
-        <section className={ui.section}>
+        <section
+          className={`${ui.section} ${firstStudyGuideStep === 'source' ? 'first-study-guide-target' : ''}`}
+          data-first-study-guide={firstStudyGuideStep === 'source' ? 'true' : undefined}
+        >
           <span className={ui.eyebrow}>Source</span>
           <div className={ui.dropzone}>
             {file ? (
@@ -1064,7 +1088,10 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
           </div>
         </section>
 
-        <section className={ui.section}>
+        <section
+          className={`${ui.section} ${firstStudyGuideStep === 'source' ? 'first-study-guide-target' : ''}`}
+          data-first-study-guide={firstStudyGuideStep === 'source' ? 'true' : undefined}
+        >
           <TopicPicker
             subject={subject}
             onSubjectChange={setSubject}
@@ -1125,15 +1152,24 @@ Respond ONLY with strict JSON, no markdown fences, in this exact shape:
                 options={['multiple-choice', 'short-answer'] as const}
                 value={quizType}
                 onChange={setQuizType}
-                renderOption={(t) => (t === 'multiple-choice' ? 'Multiple choice' : 'Short answer')}
+                renderOption={(t) => (
+                  <span className="text-center leading-tight [overflow-wrap:normal]">
+                    {t === 'multiple-choice' ? 'Multiple choice' : 'Short answer'}
+                  </span>
+                )}
               />
             </div>
           </div>
         </section>
       </div>
 
-      <button onClick={handleGenerateClick} disabled={loading} className={ui.ctaFull}>
-        {loading ? <RefreshCw className="w-4 h-4 animate-spin shrink-0" /> : <Sparkles className="w-4 h-4 shrink-0" />}
+      <button
+        onClick={handleGenerateClick}
+        disabled={loading}
+        className={`${ui.ctaFull} ${firstStudyGuideStep === 'generate' ? 'first-study-guide-target' : ''}`}
+        data-first-study-guide={firstStudyGuideStep === 'generate' ? 'true' : undefined}
+      >
+        {loading ? <Skeleton className="h-4 w-4 shrink-0 rounded-full" /> : <Sparkles className="w-4 h-4 shrink-0" />}
         <span className="leading-none">{loading ? 'Building your quiz…' : 'Generate quiz'}</span>
       </button>
     </div>

@@ -20,6 +20,21 @@ const union = (schemas: Schema[]): Schema => ({ anyOf: schemas });
 
 const MAX_ANSWERABLE_QUESTION_WORDS = 25;
 const MAX_NOTES_SCHEMA_ADDONS = 3;
+const NOTES_OPTIONAL_FIELD_KEYS = [
+  'diagramNodes',
+  'regions',
+  'dataset',
+  'formulas',
+  'solutionSteps',
+  'processFlow',
+  'variables',
+  'chemicalEquations',
+  'timeline',
+  'factSheetTable',
+  'table',
+  'imageQueries',
+  'passage',
+] as const;
 const MAX_QUIZ_QUESTIONS = 15;
 const VISUALS_REQUIRED_PER_FIVE_QUESTIONS = 2;
 const MAX_TABLE_CELL_WORDS = 8;
@@ -329,6 +344,138 @@ function hasContent(value: unknown): boolean {
   return value !== undefined && value !== null;
 }
 
+export function normalizeKojluxPayload(value: unknown, mode: KojluxGenerationMode): unknown {
+  if (!isRecord(value)) return value;
+  const payload = value;
+  if (mode === 'quiz') {
+    if (!Array.isArray(payload.questions)) return value;
+    let changed = false;
+    const questions = payload.questions.map((question) => {
+      if (!isRecord(question) || !Array.isArray(question.parts)) return question;
+      const parts = question.parts;
+      const validParts = parts.filter((part, index): part is Record<string, unknown> =>
+        isRecord(part) &&
+        part.partNumber === index + 1 &&
+        isWithinWordLimit(part.questionText, MAX_ANSWERABLE_QUESTION_WORDS) &&
+        part.type === question.type &&
+        ['multiple-choice', 'short-answer'].includes(String(part.type)) &&
+        typeof part.correctAnswer === 'string' &&
+        (part.type !== 'multiple-choice' ||
+          (isStringArray(part.options) && part.options.includes(part.correctAnswer))) &&
+        (
+          (part.hints === undefined && part.remediationIfWrong === undefined) ||
+          (part.type === 'multiple-choice' &&
+            isStringArray(part.hints) &&
+            part.hints.length > 0 &&
+            typeof part.remediationIfWrong === 'string')
+        )
+      );
+      const totalPartWords = parts.reduce((total, part) =>
+        total + (isRecord(part) && typeof part.questionText === 'string' ? wordCount(part.questionText) : 0), 0);
+      if (parts.length >= 2 && validParts.length === parts.length &&
+          totalPartWords <= MAX_ANSWERABLE_QUESTION_WORDS) {
+        return question;
+      }
+
+      changed = true;
+      const firstPart = validParts[0];
+      if (!firstPart) {
+        const standardQuestion = { ...question };
+        delete standardQuestion.parts;
+        return standardQuestion;
+      }
+      const {
+        questionText,
+        correctAnswer,
+        options,
+        hints,
+        remediationIfWrong,
+      } = firstPart;
+      const normalizedQuestion: Record<string, unknown> = {
+        ...question,
+        question: questionText,
+        correctAnswer,
+      };
+      delete normalizedQuestion.parts;
+      if (options !== undefined) normalizedQuestion.options = options;
+      if (hints !== undefined) normalizedQuestion.hints = hints;
+      if (remediationIfWrong !== undefined) normalizedQuestion.remediationIfWrong = remediationIfWrong;
+      return normalizedQuestion;
+    });
+    return changed ? { ...payload, questions } : value;
+  }
+
+  const components = payload.dynamicComponents;
+  const retainedSourceComponents = Array.isArray(components)
+    ? components.filter((component) =>
+      isRecord(component) &&
+      COMPONENT_TYPES.has(typeof component.type === 'string' ? component.type : '') &&
+      component.type !== 'DIAGNOSTIC_QUESTION_LOOP'
+    )
+    : components;
+
+  const optionalCount = NOTES_OPTIONAL_FIELD_KEYS.filter((key) => hasContent(payload[key])).length +
+    (!hasContent(payload.passage) && hasContent(payload.passageType) ? 1 : 0);
+  const componentCount = Array.isArray(retainedSourceComponents) ? retainedSourceComponents.length : 0;
+  const unsupportedComponentsRemoved = Array.isArray(components) &&
+    retainedSourceComponents.length !== components.length;
+  if (optionalCount + componentCount <= MAX_NOTES_SCHEMA_ADDONS) {
+    return unsupportedComponentsRemoved
+      ? { ...payload, dynamicComponents: retainedSourceComponents }
+      : value;
+  }
+
+  const subject =
+    (typeof payload.subject === 'string' && payload.subject) ||
+    (isRecord(payload.metadata) && typeof payload.metadata.subject === 'string' ? payload.metadata.subject : 'general');
+  const subjectPriority: Record<string, string[]> = {
+    science: ['diagramNodes', 'processFlow', 'dynamicComponents', 'variables', 'chemicalEquations', 'imageQueries', 'table'],
+    geography: ['regions', 'timeline', 'factSheetTable', 'dynamicComponents', 'imageQueries', 'table'],
+    math: ['formulas', 'solutionSteps', 'dataset', 'dynamicComponents', 'table', 'imageQueries'],
+    english: ['passage', 'dynamicComponents', 'imageQueries', 'table'],
+    general: ['dynamicComponents', 'table', 'imageQueries', 'passage'],
+  };
+  const priority = subjectPriority[subject] ?? subjectPriority.general;
+  const orderedKeys = [...priority, ...NOTES_OPTIONAL_FIELD_KEYS, 'dynamicComponents'];
+  const seen = new Set<string>();
+  const candidates: Array<{ key: string; index?: number }> = [];
+
+  for (const key of orderedKeys) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (key === 'dynamicComponents') {
+      if (Array.isArray(retainedSourceComponents)) {
+        retainedSourceComponents.forEach((_, index) => candidates.push({ key, index }));
+      }
+    } else if (key === 'passage') {
+      if (hasContent(payload.passage) || hasContent(payload.passageType)) candidates.push({ key });
+    } else if ((NOTES_OPTIONAL_FIELD_KEYS as readonly string[]).includes(key) && hasContent(payload[key])) {
+      candidates.push({ key });
+    }
+  }
+
+  const retained = candidates.slice(0, MAX_NOTES_SCHEMA_ADDONS);
+  const normalized: Record<string, unknown> = { ...payload };
+  const retainedComponents: unknown[] = [];
+  NOTES_OPTIONAL_FIELD_KEYS.forEach((key) => delete normalized[key]);
+  if (Object.prototype.hasOwnProperty.call(payload, 'passageType')) delete normalized.passageType;
+  if (Array.isArray(retainedSourceComponents)) normalized.dynamicComponents = retainedComponents;
+
+  for (const candidate of retained) {
+    if (candidate.key === 'dynamicComponents') {
+      if (Array.isArray(retainedSourceComponents) && candidate.index !== undefined) {
+        retainedComponents.push(retainedSourceComponents[candidate.index]);
+      }
+    } else if (candidate.key === 'passage') {
+      if (Object.prototype.hasOwnProperty.call(payload, 'passage')) normalized.passage = payload.passage;
+      if (Object.prototype.hasOwnProperty.call(payload, 'passageType')) normalized.passageType = payload.passageType;
+    } else {
+      normalized[candidate.key] = payload[candidate.key];
+    }
+  }
+  return normalized;
+}
+
 function isCompactDataTable(value: unknown): boolean {
   if (!isRecord(value)) {
     return false;
@@ -544,22 +691,7 @@ export function validateKojluxPayload(value: unknown, mode: KojluxGenerationMode
     )) {
       throw new Error('Notecraft must teach the material and must not include quiz-style diagnostic questions.');
     }
-    const optionalFieldKeys = [
-      'diagramNodes',
-      'regions',
-      'dataset',
-      'formulas',
-      'solutionSteps',
-      'processFlow',
-      'variables',
-      'chemicalEquations',
-      'timeline',
-      'factSheetTable',
-      'table',
-      'imageQueries',
-      'passage',
-    ];
-    const optionalFieldCount = optionalFieldKeys.filter((key) => hasContent(payload[key])).length +
+    const optionalFieldCount = NOTES_OPTIONAL_FIELD_KEYS.filter((key) => hasContent(payload[key])).length +
       (!hasContent(payload.passage) && hasContent(payload.passageType) ? 1 : 0);
     if (optionalFieldCount + payload.dynamicComponents.length > MAX_NOTES_SCHEMA_ADDONS) {
       throw new Error('Notecraft responses may include at most three optional schema-based study aids.');
@@ -672,7 +804,7 @@ export function getKojluxResponseSchema(mode: KojluxGenerationMode): Schema {
     : object(notesProperties, ['title', 'overview', 'keyPoints', 'glossary', 'metadata', 'dynamicComponents']);
 }
 
-export const KOJLUX_COMPONENT_INSTRUCTIONS = `For Notecraft, teach the material with a clear overview, key points, and glossary; keep them concise and add detail only for hard or thorough requests. Notecraft is a teaching experience, not a quiz: never include DIAGNOSTIC_QUESTION_LOOP or any standalone "Check your understanding" question. Include at most three optional schema-based study aids in total across dynamicComponents and other optional structured fields; the overview, keyPoints, and glossary do not count. Choose the most useful aids for the material, and do not default to DRAG_AND_DROP. Use DRAG_AND_DROP for vocabulary, classifications, or matching only when it is the best fit. Use MULTI_PART_QUESTION for math, science, or logic problems when a learner must solve a foundational step before the final answer; number parts sequentially and use unlocksPartNumber when an answer gates the next part. Every answerable question must be at most 25 words; for a multipart question, all part question texts combined must be at most 25 words. Shared context and instructions do not count. Keep chart/table captions to 10 words or fewer, headers to 5 words or fewer, and each text cell to 8 words or fewer. Complex concepts that genuinely benefit from changing variables may use an INTERACTIVE_SIMULATION. Do not invent unsafe real-world procedures, runnable executable sandboxes, or unnecessary components. Set metadata.orchestratorReasoning to a brief user-facing rationale for the component choices, not private step-by-step reasoning. Set metadata.generatedAt to this ISO timestamp:`;
+export const KOJLUX_COMPONENT_INSTRUCTIONS = `For Notecraft, teach the material with a clear overview, key points, and glossary; keep them concise and add detail only for hard or thorough requests. Notecraft is a teaching experience, not a quiz: never include DIAGNOSTIC_QUESTION_LOOP or any standalone "Check your understanding" question. Include no more than three optional study aids total: count each non-empty optional schema field as one aid, each item in dynamicComponents as one aid, and passage plus passageType together as one aid. The overview, keyPoints, and glossary do not count. Select the most useful subject-specific aids first; omit every other optional field or component entirely once the three-aid limit is reached. Choose the most useful aids for the material, and do not default to DRAG_AND_DROP. Use DRAG_AND_DROP for vocabulary, classifications, or matching only when it is the best fit. Use MULTI_PART_QUESTION for math, science, or logic problems when a learner must solve a foundational step before the final answer; number parts sequentially and use unlocksPartNumber when an answer gates the next part. Every answerable question must be at most 25 words; for a multipart question, all part question texts combined must be at most 25 words. Shared context and instructions do not count. Keep chart/table captions to 10 words or fewer, headers to 5 words or fewer, and each text cell to 8 words or fewer. Complex concepts that genuinely benefit from changing variables may use an INTERACTIVE_SIMULATION. Do not invent unsafe real-world procedures, runnable executable sandboxes, or unnecessary components. Set metadata.orchestratorReasoning to a brief user-facing rationale for the component choices, not private step-by-step reasoning. Set metadata.generatedAt to this ISO timestamp:`;
 
 export const KOJLUX_QUIZ_COMPONENT_INSTRUCTIONS = `Create exactly the requested number of questions, never more than 15. Every answerable question prompt must be at most 25 words; count only the answerable question text, not shared context, source content, visual content, instructions, answer options, answers, or explanations. When sequential reasoning benefits from it, occasionally use a multipart question with at least two parts; keep all part question texts combined to 25 words or fewer and do not make every question multipart. For an occasional multiple-choice part (not every question), include both hints (a clue that does not reveal the answer) and remediationIfWrong (a brief targeted explanation); the learner can check that part and request its hint. Do not add standalone dynamicComponents or bonus activities; dynamicComponents must be an empty array. For fewer than five questions, do not include visuals. For every complete group of five questions, include at least two relevant visuals attached directly to different questions; for example, 5 questions need 2 visuals, 10 need 4, and 15 need 6. Use supported visuals that genuinely help (such as a relevant formula, area model, graph, process, timeline, or comparison table); the question must clearly refer to it. Do not repeat the same visual, clutter it with unrelated explanation, or reveal the answer. Keep other questions straightforward. For charts or tables, keep captions to 10 words or fewer, headers to 5 words or fewer, and each text cell to 8 words or fewer.`;
 

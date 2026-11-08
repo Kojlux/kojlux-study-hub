@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Share2, Loader2 } from 'lucide-react';
+import { Share2 } from 'lucide-react';
 import { RecallCard } from '../types';
 import { publishSharedCard } from '../lib/sharedCards';
 import { buildCardShareUrl } from '../lib/deepLink';
 import { useToast } from './Toast';
+import Skeleton from './Skeleton';
 
 // Publishes the card's public snapshot (lib/sharedCards.ts), then hands the
 // resulting /card/:id URL to the Web Share API on devices that support it
@@ -44,7 +45,7 @@ export default function ShareCardButton({ card }: { card: RecallCard }) {
       title="Share this flashcard via a link"
       className="flex items-center gap-1 text-[11px] font-bold text-slate-400 hover:text-focus-primary transition disabled:opacity-50"
     >
-      {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Share2 className="w-3.5 h-3.5" />} Share
+      {busy ? <Skeleton className="h-3.5 w-3.5 rounded-full" /> : <Share2 className="w-3.5 h-3.5" />} Share
     </button>
   );
 }

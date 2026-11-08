@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Loader2, Share2 } from 'lucide-react';
+import { Share2 } from 'lucide-react';
 import { Collection, RecallCard } from '../types';
 import { publishSharedCollection } from '../lib/sharedCards';
 import { buildCollectionShareUrl } from '../lib/deepLink';
+import Skeleton from './Skeleton';
 import { useToast } from './Toast';
 
 export default function ShareCollectionButton({ collection, cards }: { collection: Collection; cards: RecallCard[] }) {
@@ -19,5 +20,5 @@ export default function ShareCollectionButton({ collection, cards }: { collectio
       if ((err as Error)?.name !== 'AbortError') { console.error('Failed to share collection', err); showToast("Couldn't create collection link"); }
     } finally { setBusy(false); }
   };
-  return <button type="button" onClick={share} disabled={busy} title="Share this flashcard collection via a link" aria-label={`Share ${collection.name}`} className="shrink-0 text-slate-300 hover:text-focus-primary disabled:opacity-50">{busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Share2 className="w-3.5 h-3.5" />}</button>;
+  return <button type="button" onClick={share} disabled={busy} title="Share this flashcard collection via a link" aria-label={`Share ${collection.name}`} className="shrink-0 text-slate-300 hover:text-focus-primary disabled:opacity-50">{busy ? <Skeleton className="h-3.5 w-3.5 rounded-full" /> : <Share2 className="w-3.5 h-3.5" />}</button>;
 }

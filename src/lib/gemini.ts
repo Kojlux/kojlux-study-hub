@@ -4,6 +4,7 @@ import { app } from '../firebase';
 import { StudyFileKind } from '../types';
 import {
   getKojluxResponseSchema,
+  normalizeKojluxPayload,
   type KojluxGenerationMode,
   validateKojluxPayload,
 } from '../../shared/kojluxSchema';
@@ -87,8 +88,9 @@ export function parseJsonResponse<T>(rawText: string | undefined): T {
 
 export function parseKojluxResponse<T>(rawText: string | undefined, mode: KojluxGenerationMode): T {
   const parsed = parseJsonResponse<unknown>(rawText);
-  validateKojluxPayload(parsed, mode);
-  return parsed as T;
+  const normalized = normalizeKojluxPayload(parsed, mode);
+  validateKojluxPayload(normalized, mode);
+  return normalized as T;
 }
 
 // ---------------------------------------------------------------------------

@@ -34,3 +34,12 @@ export function clearLocal(key: string): void {
     console.error(`Failed to clear ${key}`, err);
   }
 }
+
+export async function requestPersistentStorage(): Promise<void> {
+  if (!navigator.storage?.persist) return;
+
+  const persisted = await navigator.storage.persist();
+  if (!persisted) {
+    console.warn('Persistent browser storage was not granted; existing local storage remains available.');
+  }
+}

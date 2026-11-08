@@ -24,10 +24,14 @@ import EducationalComponents from './blocks/EducationalComponents';
 import { MathText } from './blocks/Latex';
 import { renderStructuredContentToPdf } from '../lib/pdfStructuredContent';
 import { sanitizeForPdf } from '../lib/pdfTextSanitizer';
+import Skeleton from './Skeleton';
 
 interface Props {
   gradeLevel: string;
   scopeId: string;
+  firstStudyGuideStep?: 'source' | 'generate' | null;
+  onGuideSourceReady?: (ready: boolean) => void;
+  onGuideComplete?: () => void;
   isFocusMode: boolean;
   onFocusModeChange: (focused: boolean) => void;
   onSaveHistory: (item: HistoryItem) => void;
@@ -39,6 +43,9 @@ interface Props {
 export default function NoteCraft({
   gradeLevel,
   scopeId,
+  firstStudyGuideStep,
+  onGuideSourceReady,
+  onGuideComplete,
   isFocusMode,
   onFocusModeChange,
   onSaveHistory,
@@ -58,6 +65,10 @@ export default function NoteCraft({
 
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (firstStudyGuideStep) onGuideSourceReady?.(Boolean(file) || Boolean(textInput.trim()));
+  }, [file, textInput, firstStudyGuideStep, onGuideSourceReady]);
 
   // ---- Session-draft persistence (same pattern as QuizBuilder) ----
   // A generated summary used to live only in memory — a refresh mid-session
@@ -215,6 +226,7 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
       });
       const parsed = parseKojluxResponse<SummaryData>(response.text, 'notes');
       setSummaryData(parsed);
+      if (firstStudyGuideStep === 'generate') onGuideComplete?.();
 
       onSaveHistory({
         id: `${Date.now()}`,
@@ -224,25 +236,15 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
         data: parsed,
       });
 
-      // Recall Coach: each key point becomes a short-answer style recall
-      // prompt. Key points are often phrased "Term: definition" (e.g. "Nouns:
-      // these are naming words") — if we test with the whole string, the
-      // prompt ends up quoting the definition back at the student instead of
-      // asking about the term. When a key point has that shape, test the
-      // term and keep the full sentence as the target answer; otherwise fall
-      // back to testing the whole key point as before.
-      const cards = parsed.keyPoints.map((kp) => {
-        const colonIdx = kp.indexOf(':');
-        const looksLikeTermDefinition = colonIdx > 0 && colonIdx < 40;
-        const term = looksLikeTermDefinition ? kp.slice(0, colonIdx).trim() : null;
-        return makeRecallCard({
+      const cards = parsed.glossary.map(({ term, definition }) =>
+        makeRecallCard({
           sourceType: 'summary',
           sourceTitle: parsed.title,
-          prompt: term ? `In your own words, explain: ${term}` : `In your own words, explain: ${kp}`,
-          answer: kp,
+          prompt: `Define the term: ${term}`,
+          answer: definition,
           image: file?.kind === 'image' ? file.dataUrl : undefined,
-        });
-      });
+        })
+      );
       onAddRecallCards(cards);
     } catch (err) {
       console.error(err);
@@ -255,13 +257,19 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
 
   if (loading) {
     return (
-      <div className="min-h-[100svh] flex flex-col items-center justify-center bg-focus-bg text-slate-900 dark:text-slate-100 px-6 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center mb-6">
-          <RefreshCw className="w-7 h-7 text-focus-primary animate-spin" />
+      <div className="min-h-[100svh] flex items-center justify-center bg-focus-bg px-5 py-10 dark:bg-slate-950" role="status" aria-label="Creating your summary">
+        <div className="w-full max-w-2xl space-y-5">
+          <Skeleton className="h-4 w-28 rounded-md" />
+          <Skeleton className="block h-10 w-3/4 rounded-xl" />
+          <div className="space-y-4 rounded-3xl border border-slate-200/70 bg-white/70 p-5 dark:border-slate-800 dark:bg-slate-900/70">
+            <Skeleton className="h-5 w-2/3 rounded-md" />
+            <Skeleton className="block h-3 w-full rounded-md" />
+            <Skeleton className="block h-3 w-5/6 rounded-md" />
+            <Skeleton className="block h-3 w-full rounded-md" />
+            <Skeleton className="block h-3 w-4/5 rounded-md" />
+            <Skeleton className="mt-3 block h-24 w-full rounded-xl" />
+          </div>
         </div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-focus-primary">Building your study session</p>
-        <h1 className="mt-3 text-2xl sm:text-3xl font-black tracking-tight">Crafting your notes</h1>
-        <p className="mt-3 max-w-sm text-sm leading-relaxed text-slate-600 dark:text-slate-400">Your focused workspace will be ready in a moment.</p>
       </div>
     );
   }
@@ -336,7 +344,10 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
       {!summaryData && (
         <div className="space-y-6">
           <div className={ui.frame}>
-            <section className={ui.section}>
+            <section
+              className={`${ui.section} ${firstStudyGuideStep === 'source' ? 'first-study-guide-target' : ''}`}
+              data-first-study-guide={firstStudyGuideStep === 'source' ? 'true' : undefined}
+            >
               <span className={ui.eyebrow}>Source</span>
               <div className={ui.dropzone}>
                 {file ? (
@@ -392,7 +403,10 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
               </div>
             </section>
 
-            <section className={ui.section}>
+            <section
+              className={`${ui.section} ${firstStudyGuideStep === 'source' ? 'first-study-guide-target' : ''}`}
+              data-first-study-guide={firstStudyGuideStep === 'source' ? 'true' : undefined}
+            >
               <TopicPicker
                 subject={subject}
                 onSubjectChange={setSubject}
@@ -415,8 +429,13 @@ ${extraField ? `${extraField.rule}\n` : ''}${rules}`;
             </section>
           </div>
 
-          <button onClick={handleSummarizeClick} disabled={loading} className={ui.ctaFull}>
-            {loading ? <RefreshCw className="w-4 h-4 animate-spin shrink-0" /> : <Sparkles className="w-4 h-4 shrink-0" />}
+          <button
+            onClick={handleSummarizeClick}
+            disabled={loading}
+            className={`${ui.ctaFull} ${firstStudyGuideStep === 'generate' ? 'first-study-guide-target' : ''}`}
+            data-first-study-guide={firstStudyGuideStep === 'generate' ? 'true' : undefined}
+          >
+            {loading ? <Skeleton className="h-4 w-4 shrink-0 rounded-full" /> : <Sparkles className="w-4 h-4 shrink-0" />}
             <span className="leading-none">{loading ? 'Summarizing…' : 'Summarize'}</span>
           </button>
         </div>

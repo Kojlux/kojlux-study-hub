@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Link2, X, PlusCircle, Loader2, AlertCircle } from 'lucide-react';
+import { Link2, X, PlusCircle, AlertCircle } from 'lucide-react';
 import { fetchSharedCard } from '../lib/sharedCards';
 import { makeRecallCard } from '../lib/spacedRepetition';
 import { RecallCard, SharedCardSnapshot } from '../types';
 import { useToast } from './Toast';
 import { MathText } from './blocks/Latex';
+import Skeleton from './Skeleton';
 
 interface Props {
   cardId: string;
@@ -78,8 +79,14 @@ export default function SharedCardViewer({ cardId, onAdd, onDismiss }: Props) {
         </div>
 
         {state === 'loading' && (
-          <div className="flex-1 flex items-center justify-center">
-            <Loader2 className="w-6 h-6 text-focus-primary animate-spin" />
+          <div className="flex-1 flex items-center" role="status" aria-label="Loading shared flashcard">
+            <div className="w-full space-y-4 rounded-3xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+              <Skeleton className="h-5 w-2/3 rounded-md" />
+              <Skeleton className="block h-24 w-full rounded-2xl" />
+              <Skeleton className="block h-4 w-1/2 rounded-md" />
+              <Skeleton className="block h-3 w-full rounded-md" />
+              <Skeleton className="mt-4 block h-11 w-full rounded-xl" />
+            </div>
           </div>
         )}
 

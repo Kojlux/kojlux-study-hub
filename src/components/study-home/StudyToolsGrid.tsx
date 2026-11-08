@@ -5,19 +5,21 @@ import type { NavigateHandler, StudyTab, StudyTool } from './types';
 interface StudyToolsGridProps {
   tools: readonly StudyTool[];
   onNavigate: NavigateHandler;
+  highlightedToolIds?: readonly StudyTool['id'][];
 }
 
 interface ToolCardProps {
   tool: StudyTool;
   onSelect: (id: StudyTab) => void;
+  highlighted?: boolean;
 }
 
-function ToolCard({ tool, onSelect }: ToolCardProps): ReactElement {
+function ToolCard({ tool, onSelect, highlighted = false }: ToolCardProps): ReactElement {
   const Icon = tool.icon;
   const handleClick = (_event: MouseEvent<HTMLButtonElement>): void => onSelect(tool.id);
 
   return (
-    <button type="button" className={`kh-tool kh-tone-${tool.tone}`} onClick={handleClick}>
+    <button type="button" className={`kh-tool kh-tone-${tool.tone}`} data-first-study-guide={highlighted || undefined} onClick={handleClick}>
       <span className="kh-tool-icon" aria-hidden="true">
         <Icon size={20} strokeWidth={2} />
       </span>
@@ -31,7 +33,7 @@ function ToolCard({ tool, onSelect }: ToolCardProps): ReactElement {
 }
 
 /** 4x1 on wide canvases, 2x2 when the centre column narrows (container query). */
-export default function StudyToolsGrid({ tools, onNavigate }: StudyToolsGridProps): ReactElement {
+export default function StudyToolsGrid({ tools, onNavigate, highlightedToolIds = [] }: StudyToolsGridProps): ReactElement {
   return (
     <section className="kh-tools-section" aria-labelledby="kh-tools-title">
       <h2 id="kh-tools-title" className="kh-section-title">
@@ -40,7 +42,7 @@ export default function StudyToolsGrid({ tools, onNavigate }: StudyToolsGridProp
       <ul className="kh-tools">
         {tools.map((tool) => (
           <li key={tool.id}>
-            <ToolCard tool={tool} onSelect={onNavigate} />
+            <ToolCard tool={tool} onSelect={onNavigate} highlighted={highlightedToolIds.includes(tool.id)} />
           </li>
         ))}
       </ul>

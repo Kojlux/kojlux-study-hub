@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import { Type, FileText } from 'lucide-react';
 import { Subject, SUBJECT_OPTIONS } from '../lib/subjects';
 
@@ -63,7 +63,7 @@ export const ui = {
 } as const;
 
 const SEG_BTN =
-  'h-9 px-4 rounded-lg text-[10px] font-bold uppercase tracking-[0.15em] flex items-center justify-center gap-1.5 ' +
+  'min-w-0 h-9 px-1 sm:px-3 rounded-lg text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.06em] flex items-center justify-center gap-1.5 ' +
   'transition-all duration-150';
 const SEG_ON = 'bg-focus-primary text-white shadow-sm';
 const SEG_OFF = 'text-slate-900 dark:text-slate-400 hover:bg-focus-primary/10';
@@ -99,7 +99,7 @@ export function SegmentedTrack<T extends string>({
           role="radio"
           aria-checked={value === opt}
           onClick={() => onChange(opt)}
-          className={`${SEG_BTN} ${value === opt ? SEG_ON : SEG_OFF}`}
+          className={`${SEG_BTN} whitespace-nowrap ${value === opt ? SEG_ON : SEG_OFF}`}
         >
           {renderOption ? renderOption(opt) : opt}
         </button>
@@ -121,25 +121,11 @@ export function SubjectChips({
   subject: Subject;
   onChange: (s: Subject) => void;
 }) {
-  const btnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const firstRun = useRef(true);
-
-  useEffect(() => {
-    // Keep the selected option in view, but never yank the page on first paint.
-    if (!firstRun.current) {
-      btnRefs.current[subject]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
-    }
-    firstRun.current = false;
-  }, [subject]);
-
   return (
     <div role="radiogroup" aria-label="Subject" className="flex gap-1 p-1 overflow-x-auto rounded-xl bg-focus-primary/5 scrollbar-none">
       {SUBJECT_OPTIONS.map((opt) => (
         <button
           key={opt.id}
-          ref={(el) => {
-            btnRefs.current[opt.id] = el;
-          }}
           type="button"
           role="radio"
           aria-checked={subject === opt.id}

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Brain, Maximize2, PartyPopper, RotateCw, SkipForward, Plus, Image as ImageIcon, X, FolderOpen,
+  ArrowLeft, Brain, Maximize2, PartyPopper, RotateCw, SkipForward, Plus, Image as ImageIcon, X, FolderOpen,
 } from 'lucide-react';
 import { RecallCard, HistoryItem, Collection } from '../types';
 import { scheduleNextReview, isDue, RecallRating, makeRecallCard } from '../lib/spacedRepetition';
@@ -28,6 +28,8 @@ interface Props {
   onRenameCollection: (id: string, name: string) => void;
   onDeleteCollection: (id: string) => void;
   onError: (msg: string) => void;
+  focusMode: boolean;
+  onFocusModeChange: (focused: boolean) => void;
   initialCollectionId?: string | null;
   onCollectionRequestHandled?: () => void;
 }
@@ -59,6 +61,8 @@ function ReviewQueueInner({
   onRenameCollection,
   onDeleteCollection,
   onError,
+  focusMode,
+  onFocusModeChange,
   initialCollectionId,
   onCollectionRequestHandled,
 }: Props) {
@@ -90,6 +94,12 @@ function ReviewQueueInner({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dueIds.join(','), collectionLabel]);
+
+  useEffect(() => {
+    if (!focusMode || collectionLabel || dueIds.length > 0 || cards.length === 0) return;
+    setSessionQueue(cards.map((card) => card.id));
+    setCollectionLabel('All Cards');
+  }, [focusMode, collectionLabel, dueIds.length, cards]);
 
   const [explanation, setExplanation] = useState('');
   const [revealed, setRevealed] = useState(false);
@@ -154,6 +164,15 @@ function ReviewQueueInner({
     setRevealed(false);
   };
 
+  // Leave full-screen review in one click. If a collection (or the "All
+  // Cards" fallback) was being played, end that session too — otherwise the
+  // normal Review page would still show the collection header with its own
+  // Exit button, forcing a second click.
+  const leaveFocus = () => {
+    if (collectionLabel) exitCollection();
+    onFocusModeChange(false);
+  };
+
   // Advance to the next card in a collection session — never touches
   // scheduling or calls onUpdateCards, since a played collection isn't
   // being rated. Finishing the last card returns to the due-cards view.
@@ -192,7 +211,10 @@ function ReviewQueueInner({
       onAddCollection={onAddCollection}
       onRenameCollection={onRenameCollection}
       onDeleteCollection={onDeleteCollection}
-      onPlayCollection={playCollection}
+      onPlayCollection={(collectionCards, label) => {
+        playCollection(collectionCards, label);
+        onFocusModeChange(true);
+      }}
     />
   );
 
@@ -209,21 +231,54 @@ function ReviewQueueInner({
     />
   );
 
+  const sessionControl = (
+    <div className="flex items-center justify-between gap-3">
+      <h2 className="text-sm font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+        {focusMode ? 'Flashcard review' : 'Review your flashcards'}
+      </h2>
+      {focusMode ? (
+        null
+      ) : (
+        <button
+          type="button"
+          onClick={() => onFocusModeChange(true)}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-focus-primary px-4 py-2.5 text-xs font-bold text-white transition active:scale-[0.98]"
+        >
+          <Brain className="h-3.5 w-3.5" /> Start Review
+        </button>
+      )}
+    </div>
+  );
+
   if (!collectionLabel && dueCards.length === 0) {
     return (
-      <div className="space-y-6">
-        <div className="flex flex-col items-center justify-center text-center py-10 space-y-3">
-          <div className="w-16 h-16 rounded-2xl bg-focus-sage/15 flex items-center justify-center">
-            <PartyPopper className="w-8 h-8 text-focus-sage-dark" />
+      <div className={focusMode ? 'flex min-h-[calc(100svh-2rem)] w-full items-center justify-center' : 'space-y-6'}>
+        {!focusMode && sessionControl}
+        {focusMode && (
+          <div className="w-full rounded-3xl border border-slate-200/80 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <h2 className="text-base font-black text-slate-900 dark:text-white">All caught up</h2>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">There are no flashcards to review right now.</p>
+            <button type="button" onClick={() => onFocusModeChange(false)} className="mt-5 rounded-xl bg-focus-primary px-4 py-2.5 text-sm font-bold text-white">
+              Exit review
+            </button>
           </div>
-          <h2 className="text-base font-black text-slate-900 dark:text-white">All caught up</h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-[240px]">
-            Nothing due right now. New cards appear here automatically from your quizzes and summaries — come back later for spaced review.
-          </p>
-        </div>
-        <ManualFlashcardSection onAdd={onAddRecallCards} collections={collections} onAddCollection={onAddCollection} />
-        {library}
-        {coach}
+        )}
+        {!focusMode && (
+          <>
+            <div className="flex flex-col items-center justify-center text-center py-10 space-y-3">
+              <div className="w-16 h-16 rounded-2xl bg-focus-sage/15 flex items-center justify-center">
+                <PartyPopper className="w-8 h-8 text-focus-sage-dark" />
+              </div>
+              <h2 className="text-base font-black text-slate-900 dark:text-white">All caught up</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-[240px]">
+                Nothing due right now. New cards appear here automatically from your quizzes and summaries — come back later for spaced review.
+              </p>
+            </div>
+            <ManualFlashcardSection onAdd={onAddRecallCards} collections={collections} onAddCollection={onAddCollection} />
+            {library}
+            {coach}
+          </>
+        )}
       </div>
     );
   }
@@ -237,8 +292,9 @@ function ReviewQueueInner({
   const cardImage = current.image;
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
+    <div className={focusMode ? 'flex min-h-[calc(100svh-2rem)] w-full flex-col justify-center' : 'space-y-5'}>
+      {!focusMode && sessionControl}
+      {!focusMode && <div className="flex items-center justify-between">
         {collectionLabel ? (
           <>
             <span
@@ -267,20 +323,41 @@ function ReviewQueueInner({
             <span className="text-[11px] text-slate-400">{current.sourceTitle}</span>
           </>
         )}
-      </div>
+      </div>}
 
       {/* Flip flashcard: front = prompt (+ source image, + your own explanation),
           back = the target answer, AI feedback, and rating buttons. Tapping
           "Flip Card" turns it over rather than just swapping content in place,
           so it reads as a flashcard rather than a quiz form. */}
-      <div style={{ perspective: '1500px' }} className="min-h-[320px]">
+      <div className="relative mx-auto w-full max-w-2xl px-2 pb-3 pt-1">
+        {focusMode && sessionQueue.slice(1, 4).reverse().map((id, index) => {
+          const stackedCard = cards.find((card) => card.id === id);
+          if (!stackedCard) return null;
+          return (
+            <div
+              key={id}
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-2 rounded-3xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"
+              style={{
+                top: `${10 + index * 9}px`,
+                bottom: `${4 + index * 4}px`,
+                zIndex: index,
+              }}
+            >
+              <div className="line-clamp-2 px-6 pt-5 text-xs font-semibold text-slate-400 dark:text-slate-500">
+                {stackedCard.prompt}
+              </div>
+            </div>
+          );
+        })}
+      <div style={{ perspective: '1500px' }} className={`relative z-10 min-h-[320px] ${focusMode ? 'min-h-[min(70svh,620px)]' : ''}`}>
         <div
           style={{
             transformStyle: 'preserve-3d',
             transition: 'transform 0.5s',
             transform: revealed ? 'rotateY(180deg)' : 'rotateY(0deg)',
           }}
-          className="relative w-full h-full min-h-[320px]"
+          className={`relative w-full h-full min-h-[320px] ${focusMode ? 'min-h-[min(70svh,620px)]' : ''}`}
         >
           {/* Front */}
           <div
@@ -317,7 +394,7 @@ function ReviewQueueInner({
             </div>
             {/* Pinned footer — Skip / Flip Card always stay visible, whatever
                 the content above scrolls to. */}
-            <div className="shrink-0 flex gap-2.5 p-6 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <div className="shrink-0 flex gap-2.5 p-4 sm:p-6 pt-3 border-t border-slate-100 dark:border-slate-800">
               <button
                 onClick={skip}
                 disabled={sessionQueue.length < 2}
@@ -333,6 +410,15 @@ function ReviewQueueInner({
               >
                 <RotateCw className="w-4 h-4" /> Flip Card
               </button>
+              {focusMode && (
+                <button
+                  type="button"
+                  onClick={leaveFocus}
+                  className="rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-500 transition active:scale-[0.98] dark:border-slate-700 dark:text-slate-300"
+                >
+                  Exit
+                </button>
+              )}
             </div>
           </div>
 
@@ -365,17 +451,19 @@ function ReviewQueueInner({
                 <p className="text-[10px] font-bold text-focus-sage-dark uppercase tracking-wide mb-1">Target answer</p>
                 <MathText text={current.answer} className="block text-xs text-slate-700 dark:text-slate-200" />
               </div>
-              {explanation.trim() && (
-                <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 mt-3">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">What you wrote</p>
+              <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 mt-3">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Your answer</p>
+                {explanation.trim() ? (
                   <MathText text={explanation} className="block text-xs text-slate-600 dark:text-slate-300" />
-                </div>
-              )}
+                ) : (
+                  <p className="text-xs italic text-slate-400 dark:text-slate-500">You didn't write an answer for this card.</p>
+                )}
+              </div>
             </div>
             {/* Pinned footer — always visible, never scrolls out of view.
                 Collection sessions skip rating entirely (no scheduling), so
                 they just get a single Next Card button instead. */}
-            <div className="shrink-0 p-6 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <div className="shrink-0 p-4 sm:p-6 pt-3 border-t border-slate-100 dark:border-slate-800">
               {collectionLabel ? (
                 <button
                   onClick={advanceCollection}
@@ -399,29 +487,39 @@ function ReviewQueueInner({
                     <RateButton label="Good" color="focus" onClick={() => rate('good')} title="Recalled it with some effort — normal pace" />
                     <RateButton label="Easy" color="sage" onClick={() => rate('easy')} title="Recalled it instantly — next review pushed further out" />
                   </div>
+                  {focusMode && (
+                    <button
+                      type="button"
+                      onClick={leaveFocus}
+                      className="mt-3 w-full rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-500 transition active:scale-[0.98] dark:border-slate-700 dark:text-slate-300"
+                    >
+                      Exit review
+                    </button>
+                  )}
                 </>
               )}
             </div>
           </div>
         </div>
       </div>
+      </div>
 
-      <div
+      {!focusMode && <div
         className="flex justify-center gap-1.5"
         title={`${sessionQueue.length} card${sessionQueue.length === 1 ? '' : 's'} left in ${collectionLabel ? 'this collection' : "today's session"}`}
       >
         {sessionQueue.map((id, i) => (
           <span key={id} className={`h-1.5 rounded-full transition-all ${i === 0 ? 'w-6 bg-focus-primary' : 'w-1.5 bg-slate-200 dark:bg-slate-700'}`} />
         ))}
-      </div>
+      </div>}
 
-      {!collectionLabel && (
+      {!focusMode && !collectionLabel && (
         <>
           <ManualFlashcardSection onAdd={onAddRecallCards} collections={collections} onAddCollection={onAddCollection} />
           {library}
         </>
       )}
-      {coach}
+      {!focusMode && coach}
 
       {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
     </div>

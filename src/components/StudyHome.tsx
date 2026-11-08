@@ -194,6 +194,7 @@ export interface StudyHomeProps {
   activityDays: string[];
   history: HistoryItem[];
   onNavigate: NavigateHandler;
+  onStartReview: () => void;
   dueCards?: readonly RecallCard[];
   collections?: readonly Collection[];
   recallCards?: readonly RecallCard[];
@@ -201,6 +202,10 @@ export interface StudyHomeProps {
   notificationCount?: number;
   onOpenNotifications?: () => void;
   onOpenCollection?: (collection: Collection) => void;
+  firstStudyGuideStep?: 'home' | 'source' | 'generate' | null;
+  firstStudyGuideKind?: 'quiz' | 'notes' | null;
+  onDismissFirstStudyGuide?: () => void;
+  onAdvanceFirstStudyGuide?: (kind: 'quiz' | 'notes') => void;
   sidebarCollapse: SidebarCollapse;
   children?: ReactNode;
 }
@@ -209,6 +214,7 @@ export default function StudyHome({
   history,
   activityDays,
   onNavigate,
+  onStartReview,
   dueCards = [],
   collections = [],
   recallCards = [],
@@ -216,6 +222,10 @@ export default function StudyHome({
   notificationCount = 0,
   onOpenNotifications,
   onOpenCollection,
+  firstStudyGuideStep = null,
+  firstStudyGuideKind = null,
+  onDismissFirstStudyGuide,
+  onAdvanceFirstStudyGuide,
   sidebarCollapse,
   children,
 }: StudyHomeProps): ReactElement {
@@ -238,11 +248,17 @@ export default function StudyHome({
   const recent: HistoryItem[] = history.slice(0, 4);
   const visibleNavItems = NAV_ITEMS.filter((item) => !blockedNavItems.includes(item.id));
   const visibleTools = STUDY_TOOLS.filter((tool) => !blockedNavItems.includes(tool.id));
+  const navigate = (tab: Parameters<NavigateHandler>[0]) => {
+    if (firstStudyGuideStep === 'home' && (tab === 'quiz' || tab === 'summarizer')) {
+      onAdvanceFirstStudyGuide?.(tab === 'summarizer' ? 'notes' : 'quiz');
+    }
+    onNavigate(tab);
+  };
 
   return (
     <div className="kh-shell" data-collapsed={collapsed}>
       <style>{HEADER_CSS}</style>
-      <Sidebar items={visibleNavItems} activeId="home" collapsed={collapsed} onToggle={toggle} onNavigate={onNavigate} />
+      <Sidebar items={visibleNavItems} activeId="home" collapsed={collapsed} onToggle={toggle} onNavigate={navigate} />
 
       <main className="kh-main">
         <div className="kh-main-inner">
@@ -267,8 +283,35 @@ export default function StudyHome({
             </div>
           </header>
 
-          <StudyToolsGrid tools={visibleTools} onNavigate={onNavigate} />
-          <RecentActivity items={recent} onSelect={setSelected} onCreate={() => onNavigate('quiz')} />
+          {firstStudyGuideStep && (
+            <section className="kh-first-study-guide" aria-live="polite">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide">Your first study set · Step {firstStudyGuideStep === 'home' ? '1' : firstStudyGuideStep === 'source' ? '2' : '3'} of 3</p>
+                <p className="mt-1 text-sm leading-relaxed">
+                  {firstStudyGuideStep === 'home'
+                    ? 'Choose Quiz Builder to make a practice quiz or Summarizer to make study notes. We’ll point out where to add your material and create it.'
+                    : firstStudyGuideStep === 'source'
+                    ? `Return to ${firstStudyGuideKind === 'notes' ? 'Summarizer' : 'Quiz Builder'} and add a topic or paste your notes in the highlighted Source area.`
+                    : `Return to ${firstStudyGuideKind === 'notes' ? 'Summarizer' : 'Quiz Builder'} and use the highlighted button to create your first study set.`}
+                </p>
+              </div>
+              <button type="button" onClick={onDismissFirstStudyGuide} className="kh-first-study-guide-dismiss">
+                Skip guide
+              </button>
+            </section>
+          )}
+
+          <StudyToolsGrid
+            tools={visibleTools}
+            onNavigate={navigate}
+            highlightedToolIds={firstStudyGuideStep === 'home' ? ['quiz', 'summarizer'] : firstStudyGuideStep ? [firstStudyGuideKind === 'notes' ? 'summarizer' : 'quiz'] : []}
+          />
+          <RecentActivity
+            items={recent}
+            onSelect={setSelected}
+            onCreate={() => navigate('quiz')}
+            guided={Boolean(firstStudyGuideStep)}
+          />
         </div>
       </main>
 
@@ -277,6 +320,7 @@ export default function StudyHome({
         collections={collections}
         recallCards={recallCards}
         onNavigate={onNavigate}
+        onStartReview={onStartReview}
         onOpenCollection={onOpenCollection}
       />
 

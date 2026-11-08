@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Link2, Search, ExternalLink, PlusCircle, Loader2 } from 'lucide-react';
+import { Link2, Search, ExternalLink, PlusCircle } from 'lucide-react';
 import { CommunityLink } from '../types';
 import { searchCommunityLinks, submitCommunityLink } from '../lib/communityLinks';
 import { ToastProvider, useToast } from './Toast';
 import Modal from './Modal';
+import Skeleton from './Skeleton';
 
 interface Props {
   submitterId: string; // signed-in uid, or 'guest'
@@ -90,9 +91,23 @@ function CommunityLinkHubInner({ submitterId, onError }: Props) {
           title="Search"
           className="px-4 bg-focus-primary text-white rounded-xl disabled:opacity-50 flex items-center justify-center"
         >
-          {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+          {searching ? <Skeleton className="h-4 w-4 rounded-full" /> : <Search className="w-4 h-4" />}
         </button>
       </div>
+
+      {searching && (
+        <div className="space-y-2" role="status" aria-label="Searching community links">
+          {[0, 1, 2].map((item) => (
+            <div key={item} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+              <span className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="block h-3.5 w-3/4 rounded-md" />
+                <Skeleton className="block h-2.5 w-1/2 rounded-md" />
+              </span>
+              <Skeleton className="h-4 w-4 shrink-0 rounded-full" />
+            </div>
+          ))}
+        </div>
+      )}
 
       {searched &&
         !searching &&

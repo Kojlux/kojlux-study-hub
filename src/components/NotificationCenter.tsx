@@ -21,7 +21,7 @@ const NEWS = [
   },
   {
     title: 'You can use Kojlux as a guest',
-    body: 'Skip sign-in to study on this device. Guest data is stored locally, so clearing browser data or changing devices can remove it.',
+    body: 'Skipping sign-in keeps your content on this device instead of syncing it to an account. Clearing browser data or changing devices can remove it.',
     icon: UserRound,
   },
   {

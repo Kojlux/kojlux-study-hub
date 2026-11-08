@@ -9,14 +9,15 @@ interface StudyDeskProps {
   collections: readonly Collection[];
   recallCards: readonly RecallCard[];
   onNavigate: NavigateHandler;
+  onStartReview: () => void;
   onOpenCollection?: (collection: Collection) => void;
 }
 
 /** Right column: the "Study Desk" with due cards and saved collections. */
-export default function StudyDesk({ dueCards, collections, recallCards, onNavigate, onOpenCollection }: StudyDeskProps): ReactElement {
+export default function StudyDesk({ dueCards, collections, recallCards, onNavigate, onStartReview, onOpenCollection }: StudyDeskProps): ReactElement {
   return (
     <aside className="kh-desk" aria-label="Study desk">
-      <FlashcardFolder cards={dueCards} fallbackCards={recallCards} onStartReview={() => onNavigate('review')} />
+      <FlashcardFolder cards={dueCards} fallbackCards={recallCards} onStartReview={onStartReview} />
       <SavedCollections
         collections={collections}
         cards={recallCards}

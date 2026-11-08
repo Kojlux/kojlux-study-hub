@@ -14,6 +14,7 @@
 
 :root {
   -ms-overflow-style: none;
+  font-size: 100%;
 }
 
 * {
@@ -30,6 +31,87 @@
 /* Hide scrollbar for IE, Edge, and Firefox */
 html, body {
   -ms-overflow-style: none;  /* IE and Edge */
+}
+
+:where(button, a, [role='button'], [role='link'], .cursor-pointer, input[type='button'], input[type='submit']) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:where(button, a, [role='button'], [role='link'], .cursor-pointer, input[type='button'], input[type='submit']):active:not(:disabled) {
+  opacity: 0.72;
+}
+
+:where(p, li, label, h1, h2, h3, h4, button, a, [role='button'], [role='link']) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.app-dialog {
+  max-height: min(85vh, var(--app-dialog-max-height, 85dvh));
+}
+
+.app-skeleton {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  background: rgb(148 163 184 / 0.18);
+  vertical-align: middle;
+}
+
+.app-skeleton::after {
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.48), transparent);
+  animation: app-skeleton-shimmer 1.4s ease-in-out infinite;
+  content: '';
+}
+
+.dark .app-skeleton {
+  background: rgb(148 163 184 / 0.14);
+}
+
+.dark .app-skeleton::after {
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.12), transparent);
+}
+
+.app-scroll-peek[data-app-scroll-has-more='true']::after {
+  position: sticky;
+  z-index: 2;
+  bottom: 0;
+  display: block;
+  height: clamp(22px, 5vh, 38px);
+  margin-top: clamp(-38px, -5vh, -22px);
+  background: linear-gradient(to bottom, transparent, var(--app-surface, #fff));
+  content: '';
+  pointer-events: none;
+}
+
+.dark .app-scroll-peek[data-app-scroll-has-more='true']::after {
+  background: linear-gradient(to bottom, transparent, var(--app-surface, #0f172a));
+}
+
+@keyframes app-skeleton-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+[data-first-study-guide='true'] {
+  position: relative;
+  z-index: 1;
+  outline: 3px solid #6366f1;
+  outline-offset: 4px;
+  animation: app-guide-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes app-guide-pulse {
+  50% { box-shadow: 0 0 0 7px rgb(99 102 241 / 0.18); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-skeleton::after,
+  [data-first-study-guide='true'] {
+    animation: none;
+  }
 }
 
 @keyframes badge-fire {

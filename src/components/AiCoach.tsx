@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Sparkles, CheckCircle2, X } from 'lucide-react';
+import Skeleton from './Skeleton';
 import { HistoryItem, RecallCard, QuizData, SummaryData } from '../types';
 import { generateContentWithFallback, GEMINI_KEYS, parseJsonResponse } from '../lib/gemini';
 import { makeRecallCard } from '../lib/spacedRepetition';
@@ -136,7 +137,7 @@ export default function AiCoach({ items, requestedCount, onComplete, onError, on
     <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[150] w-[calc(100%-2.5rem)] max-w-sm">
       <div className="bg-slate-900 dark:bg-slate-800 text-white rounded-2xl shadow-xl px-4 py-3 flex items-center gap-3">
         {status === 'working' ? (
-          <Sparkles className="w-4 h-4 text-focus-primary animate-pulse shrink-0" />
+          <Skeleton className="h-4 w-4 shrink-0 rounded-full" />
         ) : (
           <CheckCircle2 className="w-4 h-4 text-focus-sage shrink-0" />
         )}

@@ -1,5 +1,10 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import {
+  browserLocalPersistence,
+  browserPopupRedirectResolver,
+  indexedDBLocalPersistence,
+  initializeAuth,
+} from 'firebase/auth';
 import { initializeFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
@@ -33,7 +38,13 @@ if (!/^1:\d+:web:[A-Za-z0-9_-]+$/.test(firebaseConfig.appId) || !firebaseConfig.
 
 export const app = initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
+// Keep auth sessions in durable browser storage on web and Capacitor WebViews.
+// Firebase reuses its existing IndexedDB/localStorage keys and migrates an
+// available session between supported persistence providers.
+export const auth = initializeAuth(app, {
+  persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+  popupRedirectResolver: browserPopupRedirectResolver,
+});
 // ExamEvent, RecallCard, and HistoryItem all have optional fields (subject,
 // notes, linkedHistoryId, image, collectionId, sourcePrompt, etc.) that get
 // left as `undefined` in JS whenever the student doesn't fill them in.

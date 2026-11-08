@@ -64,12 +64,12 @@ export function makeRecallCard(params: {
   // unsaved; the student saves it explicitly from the Review screen.
   const saved = params.sourceType === 'manual';
   const createdAt = new Date();
-  // First review lands exactly 3 hours after creation rather than
+  // First review lands exactly 1 hour after creation rather than
   // immediately. This spaces a freshly-generated batch of cards out instead
   // of dumping the whole quiz back into Review the second it's made, and
   // lines the first repetition up with when a "reviews are ready"
   // notification would actually be useful.
-  const FIRST_REVIEW_DELAY_MS = 3 * 60 * 60 * 1000;
+  const FIRST_REVIEW_DELAY_MS = 60 * 60 * 1000;
   const dueAt = params.immediate ? createdAt : new Date(createdAt.getTime() + FIRST_REVIEW_DELAY_MS);
 
   return {

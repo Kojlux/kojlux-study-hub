@@ -8,6 +8,7 @@ interface RecentActivityProps {
   items: readonly HistoryItem[];
   onSelect: (item: HistoryItem) => void;
   onCreate: () => void;
+  guided?: boolean;
 }
 
 interface ActivityRowProps {
@@ -45,7 +46,7 @@ function ActivityRow({ item, onSelect }: ActivityRowProps): ReactElement {
   );
 }
 
-export default function RecentActivity({ items, onSelect, onCreate }: RecentActivityProps): ReactElement {
+export default function RecentActivity({ items, onSelect, onCreate, guided = false }: RecentActivityProps): ReactElement {
   const handleCreate = (_event: MouseEvent<HTMLButtonElement>): void => onCreate();
 
   return (
@@ -67,10 +68,16 @@ export default function RecentActivity({ items, onSelect, onCreate }: RecentActi
             <span className="kh-empty-icon" aria-hidden="true">
               <FileText size={18} />
             </span>
-            <p>Nothing here yet. Build your first quiz or summary to start your streak.</p>
-            <button type="button" className="kh-link" onClick={handleCreate}>
-              Create your first quiz
-            </button>
+            <p>
+              {guided
+                ? 'Your first quiz or summary will appear here. Follow the highlighted steps to make one.'
+                : 'Nothing here yet. Build your first quiz or summary to start your streak.'}
+            </p>
+            {!guided && (
+              <button type="button" className="kh-link" onClick={handleCreate}>
+                Create your first quiz
+              </button>
+            )}
           </div>
         )}
       </div>

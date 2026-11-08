@@ -51,7 +51,7 @@ export default function Modal({ onClose, title, children, widthClassName = 'max-
         aria-modal="true"
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
-        className={`bg-white dark:bg-slate-900 w-full ${widthClassName} rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800 p-6 space-y-4 max-h-[85vh] overflow-y-auto`}
+        className={`app-dialog bg-white dark:bg-slate-900 w-full ${widthClassName} rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800 p-6 space-y-4 max-h-[85vh] overflow-y-auto`}
       >
         {title && (
           <div className="flex items-center justify-between">

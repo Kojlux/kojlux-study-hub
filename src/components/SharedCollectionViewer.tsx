@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { AlertCircle, Check, Link2, Loader2, PlusCircle, X } from 'lucide-react';
+import { AlertCircle, Check, Link2, PlusCircle, X } from 'lucide-react';
 import { fetchSharedCollection } from '../lib/sharedCards';
 import { makeRecallCard } from '../lib/spacedRepetition';
 import { RecallCard, SharedCollectionSnapshot } from '../types';
 import { useToast } from './Toast';
 import { MathText } from './blocks/Latex';
+import Skeleton from './Skeleton';
 
 interface Props {
   collectionId: string;
@@ -50,8 +51,15 @@ export default function SharedCollectionViewer({ collectionId, onAdd, onDismiss 
         </div>
 
         {state === 'loading' && (
-          <div className="flex justify-center py-20">
-            <Loader2 className="w-6 h-6 text-focus-primary animate-spin" />
+          <div className="space-y-4 py-6" role="status" aria-label="Loading shared collection">
+            <Skeleton className="h-6 w-2/3 rounded-md" />
+            <Skeleton className="h-3 w-1/3 rounded-md" />
+            {[0, 1, 2].map((item) => (
+              <div key={item} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                <Skeleton className="block h-3 w-full rounded-md" />
+                <Skeleton className="block h-3 w-4/5 rounded-md" />
+              </div>
+            ))}
           </div>
         )}
         {(state === 'error' || state === 'not-found') && (

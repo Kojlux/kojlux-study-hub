@@ -2,10 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { onAuthStateChanged, signOut, updateProfile, type User } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection as fsCollection, increment } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { AlertCircle, X, ArrowLeft, Camera, Bell, UserRound, Mail, Palette } from 'lucide-react';
+import { AlertCircle, X, ArrowLeft, Camera, Bell, UserRound, Mail, Palette, ShieldCheck } from 'lucide-react';
 
 import { AgeBand, HistoryItem, RecallCard, ExamEvent, Collection, NotificationItem, SummaryData } from './types';
-import { loadLocal, saveLocal, scopedKey } from './lib/storage';
+import { loadLocal, requestPersistentStorage, saveLocal, scopedKey } from './lib/storage';
 import { isDue } from './lib/spacedRepetition';
 import { isReminderDue } from './lib/examReminders';
 import {
@@ -32,6 +32,7 @@ import { GRADE_LEVEL_OPTIONS } from './constants';
 import { PushRegistrationStatus, registerNotificationServiceWorker, registerPushForUser } from './lib/push';
 
 import AuthScreen from './components/AuthScreen';
+import Skeleton from './components/Skeleton';
 import StudyHome from './components/StudyHome';
 import QuizBuilder from './components/QuizBuilder';
 import NoteCraft from './components/NoteCraft';
@@ -49,6 +50,7 @@ import { getPendingImport, clearPendingImport } from './lib/pendingImport';
 import { makeCollection } from './lib/collections';
 import { clearNotificationLink, parseNotificationLink } from './lib/notificationLinks';
 import { useSidebarCollapse } from './components/study-home/hooks';
+import { useMobileInteractionEnhancements } from './hooks/useMobileInteractionEnhancements';
 
 const SCREEN_TITLES: Record<NavTab, string> = {
   home: 'Kojlux Study Hub',
@@ -58,10 +60,21 @@ const SCREEN_TITLES: Record<NavTab, string> = {
   profile: 'Dashboard',
 };
 
+type FirstStudyGuideStep = 'home' | 'source' | 'generate' | null;
+type FirstStudyGuideKind = 'quiz' | 'notes' | null;
+
 // ThemeProvider has to sit above AppContent (not inside it) since
 // AppContent itself calls useTheme() below — a component can't consume a
 // context it renders itself.
 export default function App() {
+  useMobileInteractionEnhancements();
+
+  useEffect(() => {
+    void requestPersistentStorage().catch((err) => {
+      console.error('Failed to request persistent browser storage', err);
+    });
+  }, []);
+
   return (
     <ThemeProvider>
       <AppContent />
@@ -91,20 +104,22 @@ function AppContent() {
   const [gradeLevel, setGradeLevel] = useState<string>(GRADE_LEVEL_OPTIONS[2]);
   const [ageBand, setAgeBand] = useState<AgeBand | null>(() => loadLocal<AgeBand | null>('kojlux_age_band', null));
   const [displayName, setDisplayName] = useState<string>(() => loadLocal('kojlux_display_name', ''));
-  const [onboardingStep, setOnboardingStep] = useState<'privacy' | 'age' | 'access' | 'news' | 'complete'>(() => {
+  const [onboardingStep, setOnboardingStep] = useState<'setup' | 'complete'>(() => {
     try {
       if (localStorage.getItem('kojlux_onboarding_complete') === 'true') return 'complete';
       const accepted = localStorage.getItem('kojlux_privacy_accepted') === 'true';
       const savedAgeBand = loadLocal<AgeBand | null>('kojlux_age_band', null);
       if (accepted && savedAgeBand) return 'complete';
-      if (accepted) return 'age';
-      return 'privacy';
+      return 'setup';
     } catch {
-      return 'privacy';
+      return 'setup';
     }
   });
   const deletionAuthRequested = new URLSearchParams(window.location.search).get('requireAuth') === 'account-deletion';
   const [showAuthScreen, setShowAuthScreen] = useState(deletionAuthRequested);
+  const [firstStudyGuideStep, setFirstStudyGuideStep] = useState<FirstStudyGuideStep>(null);
+  const [firstStudyGuideKind, setFirstStudyGuideKind] = useState<FirstStudyGuideKind>(null);
+  const [firstStudyGuidePending, setFirstStudyGuidePending] = useState(false);
   const [streak, setStreak] = useState<number>(0);
   const [activityDays, setActivityDays] = useState<string[]>([]);
 
@@ -137,6 +152,20 @@ function AppContent() {
             }
             if (typeof data.streak === 'number') setStreak(data.streak);
             if (Array.isArray(data.activityDays)) setActivityDays(data.activityDays.filter((day): day is string => typeof day === 'string'));
+          } else if (firebaseUser.providerData.some((provider) => provider.providerId === 'google.com')) {
+            saveLocal(scopedKey('kojlux_first_study_guide_pending', firebaseUser.uid), true);
+            setFirstStudyGuidePending(true);
+            const accountName = firebaseUser.displayName?.trim() || firebaseUser.email?.split('@')[0] || 'Student';
+            setDisplayName(accountName);
+            saveLocal('kojlux_display_name', accountName);
+            await setDoc(doc(db, 'users', firebaseUser.uid), {
+              email: firebaseUser.email,
+              username: accountName,
+              gradeLevel: loadLocal(scopedKey('kojlux_grade_level', firebaseUser.uid), GRADE_LEVEL_OPTIONS[2]),
+              ageBand: loadLocal<AgeBand | null>('kojlux_age_band', null),
+              createdAt: new Date().toISOString(),
+              streak: 0,
+            }, { merge: true });
           }
         } catch (err) {
           console.error('Failed to load profile from Firestore', err);
@@ -146,17 +175,24 @@ function AppContent() {
     return () => unsubscribe();
   }, [deletionAuthRequested, showAuthScreen]);
 
+  useEffect(() => {
+    if (!user) {
+      setFirstStudyGuidePending(false);
+      setFirstStudyGuideStep(null);
+      setFirstStudyGuideKind(null);
+      return;
+    }
+    setFirstStudyGuidePending(loadLocal(scopedKey('kojlux_first_study_guide_pending', user.uid), false));
+  }, [user]);
+
   // ---- Guest access ----
-  // Sign-in used to be forced at startup. Now the gate offers Skip or Sign
-  // In: `guestMode` lets someone in without an account (everything just
-  // stays local, same as it already does whenever `user` is null elsewhere
-  // in this file), and `showAuthScreen` is only for whether the *gate* is
-  // currently showing the sign-in form or its own Skip/Sign-In choice.
+  // `guestMode` lets someone enter without an account; guest data remains
+  // local, and `showAuthScreen` opens the sign-in gateway from the app.
   const [guestMode, setGuestMode] = useState<boolean>(() =>
     loadLocal('kojlux_guest_mode', false) ||
     Boolean(initialDeepLinkCardId || initialDeepLinkCollectionId || notificationLink)
   );
-  const [focusSession, setFocusSession] = useState<'quiz' | 'notecraft' | null>(
+  const [focusSession, setFocusSession] = useState<'quiz' | 'notecraft' | 'review' | null>(
     notificationLink?.resumeQuizId ? 'quiz' : null
   );
   const [resumeQuizId, setResumeQuizId] = useState<string | null>(notificationLink?.resumeQuizId ?? null);
@@ -166,11 +202,8 @@ function AppContent() {
     if (user) {
       setGuestMode(false);
       setShowAuthScreen(false);
-      if (onboardingStep === 'access') setOnboardingStep('news');
     }
-  }, [user, onboardingStep]);
-
-  const [guestBannerDismissed, setGuestBannerDismissed] = useState(false);
+  }, [user]);
 
   // ---- Account-scoped data ----
   // `scopeId` identifies whose data is currently active: a signed-in user's
@@ -283,7 +316,7 @@ function AppContent() {
   const recallCardsRef = useRef<RecallCard[]>([]);
   // Seeded from localStorage (scoped per account) rather than starting null
   // every time the app mounts. Without this, closing the tab and reopening
-  // it after a card's 3-hour delay had already passed meant the very next
+  // it after a card's scheduled review delay had already passed meant the very next
   // check silently "seeded" on that card instead of notifying — the
   // notification was effectively dropped for anything that became due while
   // the tab was closed. Persisting the set across reloads means a newly-due
@@ -405,6 +438,7 @@ function AppContent() {
   // known, so nothing from a previous scope is ever visible even briefly.
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [recallCards, setRecallCards] = useState<RecallCard[]>([]);
+  const [studyDataReady, setStudyDataReady] = useState(false);
   const [totalReviews, setTotalReviews] = useState<number>(0);
   const [examEvents, setExamEvents] = useState<ExamEvent[]>([]);
   const examEventsRef = useRef<ExamEvent[]>([]);
@@ -471,6 +505,11 @@ function AppContent() {
   // moment the user does something, so there's no array-diffing here.
   useEffect(() => {
     if (!user) return;
+    const readyCollections = new Set<string>();
+    const markReady = (name: string) => {
+      readyCollections.add(name);
+      if (readyCollections.size === 4) setStudyDataReady(true);
+    };
     const unsubHistory = onSnapshot(
       fsCollection(db, 'users', user.uid, 'historyItems'),
       (snap) => {
@@ -479,23 +518,45 @@ function AppContent() {
           .filter((item) => item.type === 'quiz' || item.type === 'summary');
         items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         setHistory(items.slice(0, 50));
+        markReady('history');
       },
-      (err) => console.error('History sync failed', err)
+      (err) => {
+        console.error('History sync failed', err);
+        markReady('history');
+      }
     );
     const unsubRecall = onSnapshot(
       fsCollection(db, 'users', user.uid, 'recallCards'),
-      (snap) => setRecallCards(snap.docs.map((d) => d.data() as RecallCard)),
-      (err) => console.error('Recall card sync failed', err)
+      (snap) => {
+        setRecallCards(snap.docs.map((d) => d.data() as RecallCard));
+        markReady('recallCards');
+      },
+      (err) => {
+        console.error('Recall card sync failed', err);
+        markReady('recallCards');
+      }
     );
     const unsubExams = onSnapshot(
       fsCollection(db, 'users', user.uid, 'examEvents'),
-      (snap) => setExamEvents(snap.docs.map((d) => d.data() as ExamEvent)),
-      (err) => console.error('Exam sync failed', err)
+      (snap) => {
+        setExamEvents(snap.docs.map((d) => d.data() as ExamEvent));
+        markReady('exams');
+      },
+      (err) => {
+        console.error('Exam sync failed', err);
+        markReady('exams');
+      }
     );
     const unsubCollections = onSnapshot(
       fsCollection(db, 'users', user.uid, 'collections'),
-      (snap) => setCollections(snap.docs.map((d) => d.data() as Collection)),
-      (err) => console.error('Collections sync failed', err)
+      (snap) => {
+        setCollections(snap.docs.map((d) => d.data() as Collection));
+        markReady('collections');
+      },
+      (err) => {
+        console.error('Collections sync failed', err);
+        markReady('collections');
+      }
     );
     return () => {
       unsubHistory();
@@ -549,6 +610,7 @@ function AppContent() {
   useEffect(() => {
     if (!scopeId || loadedScopeRef.current === scopeId) return;
     loadedScopeRef.current = scopeId;
+    setStudyDataReady(false);
     setHistory(loadLocal(scopedKey('kojlux_history', scopeId), []));
     setRecallCards(loadLocal(scopedKey('kojlux_recall_cards', scopeId), []));
     setTotalReviews(loadLocal(scopedKey('kojlux_total_reviews', scopeId), 0));
@@ -560,7 +622,47 @@ function AppContent() {
     setActivityDays(storedActivityDays);
     activityDaysRef.current = storedActivityDays;
     setNotifications(loadNotifications(scopeId));
-  }, [scopeId]);
+    if (!user) setStudyDataReady(true);
+  }, [scopeId, user]);
+
+  useEffect(() => {
+    if (!user || !scopeId || !studyDataReady || !firstStudyGuidePending || firstStudyGuideStep) return;
+    const shouldGuide = history.length === 0 && recallCards.length === 0 && collections.length === 0 && examEvents.length === 0;
+    if (shouldGuide) {
+      setFirstStudyGuideStep('home');
+      return;
+    }
+    saveLocal(scopedKey('kojlux_first_study_guide_pending', user.uid), false);
+    setFirstStudyGuidePending(false);
+  }, [
+    user,
+    scopeId,
+    studyDataReady,
+    firstStudyGuidePending,
+    firstStudyGuideStep,
+    history.length,
+    recallCards.length,
+    collections.length,
+    examEvents.length,
+  ]);
+
+  const dismissFirstStudyGuide = useCallback(() => {
+    if (user) saveLocal(scopedKey('kojlux_first_study_guide_pending', user.uid), false);
+    setFirstStudyGuidePending(false);
+    setFirstStudyGuideStep(null);
+    setFirstStudyGuideKind(null);
+  }, [user]);
+  const advanceFirstStudyGuide = useCallback((kind: Exclude<FirstStudyGuideKind, null>) => {
+    setFirstStudyGuideKind(kind);
+    setFirstStudyGuideStep('source');
+  }, []);
+  const handleFirstStudyGuideSourceReady = useCallback((ready: boolean) => {
+    setFirstStudyGuideStep((step) => {
+      if (step === 'source' && ready) return 'generate';
+      if (step === 'generate' && !ready) return 'source';
+      return step;
+    });
+  }, []);
 
   // Paused quizzes are stored separately so a new quiz can be generated
   // without replacing earlier work. Reminder checks run while the app is
@@ -937,79 +1039,43 @@ function AppContent() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-focus-bg dark:bg-slate-950">
-        <div className="w-10 h-10 border-3 border-focus-primary border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-focus-bg px-5 dark:bg-slate-950" role="status" aria-label="Loading your study space">
+        <div className="w-full max-w-md space-y-5">
+          <Skeleton className="h-7 w-40 rounded-lg" />
+          <Skeleton className="block h-32 w-full rounded-3xl" />
+          <div className="space-y-3 rounded-3xl border border-slate-200/70 bg-white/70 p-5 dark:border-slate-800 dark:bg-slate-900/70">
+            <Skeleton className="h-5 w-2/3 rounded-md" />
+            <Skeleton className="block h-3 w-full rounded-md" />
+            <Skeleton className="block h-3 w-4/5 rounded-md" />
+            <Skeleton className="mt-2 block h-11 w-full rounded-xl" />
+          </div>
+        </div>
       </div>
     );
   }
 
-  if (!user && showAuthScreen) {
+  if (!user && (showAuthScreen || (!guestMode && onboardingStep === 'complete'))) {
     return (
-      <div className="relative min-h-screen">
-        <button
-          onClick={() => setShowAuthScreen(false)}
-          className="absolute top-4 left-4 z-50 flex items-center gap-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 bg-white/90 dark:bg-slate-900/90 backdrop-blur px-3 py-2 rounded-full shadow-sm"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> Back
-        </button>
-        <AuthScreen />
-      </div>
+      <AuthScreen
+        onBack={showAuthScreen ? () => setShowAuthScreen(false) : undefined}
+        onContinueAsGuest={() => {
+          setShowAuthScreen(false);
+          setGuestMode(true);
+        }}
+      />
     );
   }
   if (onboardingStep !== 'complete' && !deletionAuthRequested) {
     return (
-      <WelcomeGate
-        step={onboardingStep}
+      <FirstRunSetup
         ageBand={ageBand}
-        onAcceptPrivacy={() => {
+        onAgeBandChange={setAgeBand}
+        onComplete={(selectedAgeBand) => {
+          completeAgeBand(selectedAgeBand);
           saveLocal('kojlux_privacy_accepted', true);
-          setOnboardingStep('age');
+          saveLocal('kojlux_onboarding_complete', true);
+          setOnboardingStep('complete');
         }}
-        onAgeBandChange={setAgeBand}
-        onBack={() => setOnboardingStep((step) => step === 'age' ? 'privacy' : step === 'access' ? 'age' : 'access')}
-        onNext={() => {
-          if (onboardingStep === 'age') {
-            if (!ageBand) return;
-            completeAgeBand(ageBand);
-            setOnboardingStep('access');
-          } else if (onboardingStep === 'access' && user) {
-            setOnboardingStep('news');
-          } else if (onboardingStep === 'news') {
-            saveLocal('kojlux_onboarding_complete', true);
-            setOnboardingStep('complete');
-          }
-        }}
-        onSkip={() => {
-          if (ageBand) completeAgeBand(ageBand);
-          setGuestMode(true);
-          setOnboardingStep('news');
-        }}
-        onSignIn={() => {
-          if (ageBand) completeAgeBand(ageBand);
-          setShowAuthScreen(true);
-        }}
-        isSignedIn={!!user}
-      />
-    );
-  }
-  if (!user && !guestMode) {
-    return (
-      <WelcomeGate
-        step="access"
-        ageBand={ageBand}
-        onAcceptPrivacy={() => undefined}
-        onAgeBandChange={setAgeBand}
-        onBack={() => undefined}
-        onNext={() => undefined}
-        onSkip={() => {
-          if (ageBand) completeAgeBand(ageBand);
-          setGuestMode(true);
-        }}
-        onSignIn={() => {
-          if (ageBand) completeAgeBand(ageBand);
-          setShowAuthScreen(true);
-        }}
-        isSignedIn={!!user}
       />
     );
   }
@@ -1020,20 +1086,6 @@ function AppContent() {
   const isUnder13 = ageBand === 'under13';
   const appNotices = (
     <>
-      {!user && !guestBannerDismissed && (
-        <div className="px-5 pb-3">
-          <div className="flex items-start gap-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900 rounded-2xl p-3">
-            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-            <p className="flex-1 text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
-              You're using Kojlux as a guest. Refreshing this page or clearing your browser's cache can delete recents
-              and reviews that haven't been synced to an account.
-            </p>
-            <button onClick={() => setGuestBannerDismissed(true)} className="shrink-0 text-amber-500 hover:text-amber-700">
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
       {isNotificationSupported() && notifPermission === 'default' && !notifBannerDismissed && (recallCards.length > 0 || user) && (
         <div className="px-5 pb-3">
           <div className="flex items-start gap-2.5 bg-focus-primary/10 dark:bg-focus-primary/15 border border-focus-primary/25 rounded-2xl p-3">
@@ -1081,6 +1133,7 @@ function AppContent() {
           overlayOpen={showNotifications}
           onChange={(tab) => {
             setShowNotifications(false);
+            if (firstStudyGuideStep === 'home' && tab === 'quiz') advanceFirstStudyGuide('quiz');
             setActiveTab(tab);
           }}
         />
@@ -1143,10 +1196,19 @@ function AppContent() {
           recallCards={recallCards}
           blockedNavItems={isUnder13 ? ['community'] : []}
           notificationCount={notifications.filter((notification) => !notification.read).length}
+          firstStudyGuideStep={firstStudyGuideStep}
+          firstStudyGuideKind={firstStudyGuideKind}
+          onDismissFirstStudyGuide={dismissFirstStudyGuide}
+          onAdvanceFirstStudyGuide={advanceFirstStudyGuide}
           onOpenNotifications={() => setShowNotifications(true)}
           onOpenCollection={(collection) => {
             setReviewCollectionRequest(collection.id);
             setActiveTab('review');
+          }}
+          onStartReview={() => {
+            setShowNotifications(false);
+            setActiveTab('review');
+            setFocusSession('review');
           }}
           onNavigate={(tab) => setActiveTab(tab === 'summarizer' ? 'quiz' : tab as NavTab)}
         >
@@ -1165,17 +1227,22 @@ function AppContent() {
               </header>
             )}
             {!focusSession && appNotices}
-            <main className={focusSession ? 'min-h-[100svh]' : `flex-1 px-5 pb-28 md:pb-10 ${activeTab === 'profile' ? 'pt-6' : ''}`}>
+            <main className={focusSession === 'review' ? 'min-h-[100svh] max-w-3xl mx-auto flex w-full items-center justify-center px-3 py-3' : focusSession ? 'min-h-[100svh]' : `flex-1 px-5 pb-28 md:pb-10 ${activeTab === 'profile' ? 'pt-6' : ''}`}>
 
           {activeTab === 'quiz' && (
             <QuizBuilderOrSummarizer
               gradeLevel={gradeLevel}
               scopeId={scopeId ?? 'guest'}
+              firstStudyGuideStep={firstStudyGuideStep === 'home' ? null : firstStudyGuideStep}
+              firstStudyGuideKind={firstStudyGuideKind}
+              onGuideSourceReady={handleFirstStudyGuideSourceReady}
+              onGuideComplete={firstStudyGuideStep ? dismissFirstStudyGuide : undefined}
+              onDismissFirstStudyGuide={dismissFirstStudyGuide}
               history={history}
               resumeQuizId={resumeQuizId}
-              focusMode={focusSession}
+              focusMode={focusSession === 'review' ? null : focusSession}
               onResumeConsumed={() => setResumeQuizId(null)}
-              onFocusModeChange={setFocusSession}
+              onFocusModeChange={(focused) => setFocusSession(focused ? 'quiz' : null)}
               onPauseQuiz={(id, title) => {
                 if (scopeId) {
                   setNotifications(addNotification(scopeId, {
@@ -1234,6 +1301,8 @@ function AppContent() {
               onRenameCollection={renameCollection}
               onDeleteCollection={deleteCollection}
               onError={setErrorMsg}
+              focusMode={focusSession === 'review'}
+              onFocusModeChange={(focused) => setFocusSession(focused ? 'review' : null)}
               initialCollectionId={reviewCollectionRequest}
               onCollectionRequestHandled={() => setReviewCollectionRequest(null)}
             />
@@ -1311,6 +1380,11 @@ function AppContent() {
 function QuizBuilderOrSummarizer(props: {
   gradeLevel: string;
   scopeId: string;
+  firstStudyGuideStep: Exclude<FirstStudyGuideStep, 'home'>;
+  firstStudyGuideKind: FirstStudyGuideKind;
+  onGuideSourceReady: (ready: boolean) => void;
+  onGuideComplete?: () => void;
+  onDismissFirstStudyGuide: () => void;
   history: HistoryItem[];
   sourceSummary: SummaryData | null;
   resumeQuizId: string | null;
@@ -1329,8 +1403,32 @@ function QuizBuilderOrSummarizer(props: {
   useEffect(() => {
     if (props.sourceSummary) setSubTab('quiz');
   }, [props.sourceSummary]);
+  useEffect(() => {
+    if (props.firstStudyGuideStep && props.firstStudyGuideKind) {
+      setSubTab(props.firstStudyGuideKind === 'notes' ? 'notecraft' : 'quiz');
+    }
+  }, [props.firstStudyGuideStep, props.firstStudyGuideKind]);
   return (
     <div className="space-y-5">
+      {props.firstStudyGuideStep && (
+        <section className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-indigo-950 dark:border-indigo-900/70 dark:bg-indigo-950/40 dark:text-indigo-100" aria-live="polite">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-wide">
+                Your first {props.firstStudyGuideKind === 'notes' ? 'notes' : 'quiz'} · Step {props.firstStudyGuideStep === 'source' ? '2' : '3'} of 3
+              </p>
+              <p className="mt-1 text-sm leading-relaxed">
+                {props.firstStudyGuideStep === 'source'
+                  ? 'Click the highlighted Source area, then type a topic or paste your notes. You can also upload a page.'
+                  : `Nice work. Click the highlighted ${props.firstStudyGuideKind === 'notes' ? 'Summarize' : 'Generate quiz'} button and we’ll create your first study set.`}
+              </p>
+            </div>
+            <button type="button" onClick={props.onDismissFirstStudyGuide} className="shrink-0 text-xs font-bold text-indigo-700 underline underline-offset-2 dark:text-indigo-300">
+              Skip
+            </button>
+          </div>
+        </section>
+      )}
       <div className="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
         {props.focusMode === null && (['quiz', 'notecraft'] as const).map((t) => (
           <button
@@ -1351,6 +1449,9 @@ function QuizBuilderOrSummarizer(props: {
           gradeLevel={props.gradeLevel}
           scopeId={props.scopeId}
           resumeDraftId={props.resumeQuizId}
+          firstStudyGuideStep={props.firstStudyGuideKind === 'quiz' ? props.firstStudyGuideStep : null}
+          onGuideSourceReady={props.onGuideSourceReady}
+          onGuideComplete={props.onGuideComplete}
           onResumeConsumed={props.onResumeConsumed}
           onFocusModeChange={(focused) => props.onFocusModeChange(focused ? 'quiz' : null)}
           onPauseQuiz={props.onPauseQuiz}
@@ -1371,6 +1472,9 @@ function QuizBuilderOrSummarizer(props: {
           onAddRecallCards={props.onAddRecallCards}
           onError={props.onError}
           onCreateQuizFromSummary={props.onCreateQuizFromSummary}
+          firstStudyGuideStep={props.firstStudyGuideKind === 'notes' ? props.firstStudyGuideStep : null}
+          onGuideSourceReady={props.onGuideSourceReady}
+          onGuideComplete={props.onGuideComplete}
         />
       )}
     </div>
@@ -1408,7 +1512,6 @@ function WelcomeGate({
     }
   });
   const [privacyDeclined, setPrivacyDeclined] = useState(false);
-  const stepIndex = ({ privacy: 1, age: 2, access: 3, news: 4, complete: 4 } as const)[step];
   const stepTitle = {
     privacy: 'Your privacy comes first',
     age: 'Choose your age group',
@@ -1439,18 +1542,6 @@ function WelcomeGate({
             Turn notes and textbook pages into quizzes, summaries, and spaced-repetition review. Sign in to sync
             across devices, or jump straight in as a guest.
           </p>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-focus-primary">Step {stepIndex} of 4</span>
-          {step !== 'privacy' && step !== 'news' && (
-            <button onClick={onBack} className="text-xs font-bold text-slate-400 hover:text-focus-primary">
-              Back
-            </button>
-          )}
-        </div>
-        <div className="h-1 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
-          <div className="h-full rounded-full bg-focus-primary transition-all" style={{ width: `${stepIndex * 25}%` }} />
         </div>
 
         <section className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
@@ -1570,6 +1661,104 @@ function NewsItem({ icon: Icon, title, text }: { icon: typeof Camera; title: str
         <p className="text-xs font-bold text-slate-800 dark:text-slate-100">{title}</p>
         <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">{text}</p>
       </div>
+    </div>
+  );
+}
+
+function FirstRunSetup({
+  ageBand,
+  onAgeBandChange,
+  onComplete,
+}: {
+  ageBand: AgeBand | null;
+  onAgeBandChange: (ageBand: AgeBand) => void;
+  onComplete: (ageBand: AgeBand) => void;
+}) {
+  const [privacyAccepted, setPrivacyAccepted] = useState(
+    () => loadLocal('kojlux_privacy_accepted', false)
+  );
+
+  return (
+    <div className="auth-gateway min-h-[100svh] flex items-center justify-center px-5 py-10">
+      <section className="auth-setup-card w-full max-w-lg rounded-[2rem] p-7 sm:p-10">
+        <div className="mb-8 flex items-center gap-3">
+          <img
+            src={`${import.meta.env.BASE_URL}icon.png`}
+            alt=""
+            className="h-11 w-11 rounded-2xl shadow-lg"
+          />
+          <div>
+            <p className="text-sm font-extrabold text-slate-900">Kojlux Study Hub</p>
+            <p className="text-xs text-slate-500">A thoughtful space to learn</p>
+          </div>
+        </div>
+        <div className="mb-7">
+          <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+            <ShieldCheck className="h-5 w-5" />
+          </div>
+          <h1 className="text-2xl font-black tracking-tight text-slate-950">Let’s set up your study space</h1>
+          <p className="mt-2 text-sm leading-relaxed text-slate-500">
+            A couple of quick details help us protect your privacy and tailor your experience.
+          </p>
+        </div>
+        <label className="mb-6 flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white/80 p-4 text-sm leading-relaxed text-slate-600">
+          <input
+            type="checkbox"
+            checked={privacyAccepted}
+            onChange={(event) => {
+              const accepted = event.target.checked;
+              setPrivacyAccepted(accepted);
+              saveLocal('kojlux_privacy_accepted', accepted);
+            }}
+            className="mt-1 h-4 w-4 accent-indigo-600"
+          />
+          <span>
+            I’ve read and accept the{' '}
+            <a
+              href={`${import.meta.env.BASE_URL}privacy.html`}
+              target="_blank"
+              rel="noreferrer"
+              className="font-bold text-indigo-600 underline decoration-indigo-200 underline-offset-4"
+            >
+              Privacy Policy
+            </a>
+            .
+          </span>
+        </label>
+        <label className="block text-sm font-bold text-slate-700" htmlFor="setup-age-band">
+          <span className="mb-2 flex items-center gap-2">
+            <UserRound className="h-4 w-4 text-indigo-500" />
+            Your age group
+          </span>
+          <select
+            id="setup-age-band"
+            value={ageBand ?? ''}
+            onChange={(event) => onAgeBandChange(event.target.value as AgeBand)}
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+          >
+            <option value="" disabled>Select your age group</option>
+            <option value="under13">Under 13</option>
+            <option value="13to17">13–17</option>
+            <option value="18plus">18 or older</option>
+          </select>
+        </label>
+        {ageBand === 'under13' && (
+          <p className="mt-3 text-xs leading-relaxed text-slate-500">
+            Materials and external links are disabled for extra protection.
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={() => ageBand && privacyAccepted && onComplete(ageBand)}
+          disabled={!ageBand || !privacyAccepted}
+          className="mt-7 w-full rounded-xl bg-indigo-600 px-5 py-3.5 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          Continue to sign in
+        </button>
+        <p className="mt-4 text-center text-xs text-slate-400">
+          Your age helps us apply the right safety settings.
+        </p>
+      </section>
     </div>
   );
 }

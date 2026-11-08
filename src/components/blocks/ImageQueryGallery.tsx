@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Image as ImageIcon } from 'lucide-react';
 import ImageLightbox from '../ImageLightbox';
+import Skeleton from '../Skeleton';
 
 interface ImgResult {
   url: string;
@@ -70,7 +71,13 @@ export default function ImageQueryGallery({ queries }: { queries?: string[] }) {
       <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide flex items-center gap-1.5">
         <ImageIcon className="w-3.5 h-3.5" /> Visuals
       </p>
-      {loading && <p className="text-xs text-slate-400">Loading images…</p>}
+      {loading && (
+        <div className="grid grid-cols-3 gap-2" role="status" aria-label="Loading educational images">
+          {[0, 1, 2].map((item) => (
+            <Skeleton key={item} className="block aspect-[4/3] w-full rounded-xl" />
+          ))}
+        </div>
+      )}
       <div className="space-y-3">
         {capped.map((q) => {
           const imgs = results[q];
