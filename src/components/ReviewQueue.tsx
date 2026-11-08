@@ -68,7 +68,15 @@ function ReviewQueueInner({
 }: Props) {
   const { showToast } = useToast();
   const dueCards = useMemo(() => cards.filter(isDue), [cards]);
-  const dueIds = useMemo(() => dueCards.map((c) => c.id), [dueCards]);
+  // Hybrid timing: a brand-new card (never rated) is studyable right away,
+  // even though the 1-hour rule says it isn't "due" yet. Rating it starts its
+  // real spaced schedule from that moment (scheduleNextReview uses "now").
+  const newCards = useMemo(
+    () => cards.filter((c) => !isDue(c) && !c.lastResult && c.reps === 0),
+    [cards],
+  );
+  const readyCards = useMemo(() => [...cards.filter(isDue), ...newCards], [cards, newCards]);
+  const dueIds = useMemo(() => readyCards.map((c) => c.id), [readyCards]);
 
   // Session order is tracked separately from `cards` so that "Skip" can push
   // a card to the back of today's queue without touching its schedule —
@@ -95,15 +103,12 @@ function ReviewQueueInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dueIds.join(','), collectionLabel]);
 
-  useEffect(() => {
-    if (!focusMode || collectionLabel || dueIds.length > 0 || cards.length === 0) return;
-    setSessionQueue(cards.map((card) => card.id));
-    setCollectionLabel('All Cards');
-  }, [focusMode, collectionLabel, dueIds.length, cards]);
-
   const [explanation, setExplanation] = useState('');
   const [revealed, setRevealed] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  // Outside full-screen review the card is locked; trying to touch it (type,
+  // flip, skip…) asks whether to start a review session instead.
+  const [confirmStartOpen, setConfirmStartOpen] = useState(false);
 
   // Recents bulk selection -> AI Coach. coachItems is non-null while a
   // background generation run is in flight or has just finished (see
@@ -195,6 +200,8 @@ function ReviewQueueInner({
       setCollectionLabel(collection.name);
       setExplanation('');
       setRevealed(false);
+      // Playing a collection always opens full-screen review.
+      onFocusModeChange(true);
     }
     onCollectionRequestHandled?.();
   }, [initialCollectionId, cards, collections, onCollectionRequestHandled]);
@@ -242,7 +249,8 @@ function ReviewQueueInner({
         <button
           type="button"
           onClick={() => onFocusModeChange(true)}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-focus-primary px-4 py-2.5 text-xs font-bold text-white transition active:scale-[0.98]"
+          disabled={readyCards.length === 0}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-focus-primary px-4 py-2.5 text-xs font-bold text-white transition active:scale-[0.98] disabled:opacity-40"
         >
           <Brain className="h-3.5 w-3.5" /> Start Review
         </button>
@@ -250,7 +258,7 @@ function ReviewQueueInner({
     </div>
   );
 
-  if (!collectionLabel && dueCards.length === 0) {
+  if (!collectionLabel && readyCards.length === 0) {
     return (
       <div className={focusMode ? 'flex min-h-[calc(100svh-2rem)] w-full items-center justify-center' : 'space-y-6'}>
         {!focusMode && sessionControl}
@@ -318,7 +326,8 @@ function ReviewQueueInner({
               className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide"
               title="Cards scheduled for review today, based on spaced repetition"
             >
-              <Brain className="w-3.5 h-3.5 text-focus-primary" /> {dueCards.length} due
+              <Brain className="w-3.5 h-3.5 text-focus-primary" />
+              {dueCards.length} due{newCards.length > 0 ? ` · ${newCards.length} new ready to study` : ''}
             </span>
             <span className="text-[11px] text-slate-400">{current.sourceTitle}</span>
           </>
@@ -359,6 +368,16 @@ function ReviewQueueInner({
           }}
           className={`relative w-full h-full min-h-[320px] ${focusMode ? 'min-h-[min(70svh,620px)]' : ''}`}
         >
+          {/* Lock: outside full-screen review the card can't be used; any
+              tap on it asks whether to start a review instead. */}
+          {!focusMode && (
+            <button
+              type="button"
+              aria-label="Start review to study this card"
+              onClick={() => setConfirmStartOpen(true)}
+              className="absolute inset-0 z-30 cursor-pointer rounded-3xl"
+            />
+          )}
           {/* Front */}
           <div
             style={{ backfaceVisibility: 'hidden' }}
@@ -386,6 +405,8 @@ function ReviewQueueInner({
               <textarea
                 value={explanation}
                 onChange={(e) => setExplanation(e.target.value)}
+                readOnly={!focusMode}
+                tabIndex={focusMode ? 0 : -1}
                 placeholder="Explain it in your own words first — this is what actually builds recall."
                 title="Writing your own explanation before flipping is what makes recall stick"
                 rows={4}
@@ -465,13 +486,29 @@ function ReviewQueueInner({
                 they just get a single Next Card button instead. */}
             <div className="shrink-0 p-4 sm:p-6 pt-3 border-t border-slate-100 dark:border-slate-800">
               {collectionLabel ? (
-                <button
-                  onClick={advanceCollection}
-                  title={sessionQueue.length <= 1 ? 'Finish this collection' : 'Go to the next card'}
-                  className="w-full py-3 bg-focus-primary text-white rounded-xl text-sm font-bold"
-                >
-                  {sessionQueue.length <= 1 ? 'Done' : 'Next Card'}
-                </button>
+                <>
+                  <div className="flex items-center justify-end gap-3 mb-2">
+                    <ShareCardButton card={current} />
+                    <SaveCardControl card={current} collections={collections} onUpdateCard={onUpdateCard} onAddCollection={onAddCollection} />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={advanceCollection}
+                    title={sessionQueue.length <= 1 ? 'Finish this collection' : 'Go to the next card'}
+                    className="w-full py-3 bg-focus-primary text-white rounded-xl text-sm font-bold"
+                  >
+                    {sessionQueue.length <= 1 ? 'Done' : 'Next Card'}
+                  </button>
+                  {focusMode && (
+                    <button
+                      type="button"
+                      onClick={leaveFocus}
+                      className="mt-3 w-full rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-500 transition active:scale-[0.98] dark:border-slate-700 dark:text-slate-300"
+                    >
+                      Exit review
+                    </button>
+                  )}
+                </>
               ) : (
                 <>
                   <div className="flex items-center justify-between mb-2">
@@ -520,6 +557,33 @@ function ReviewQueueInner({
         </>
       )}
       {!focusMode && coach}
+
+      {confirmStartOpen && !focusMode && (
+        <Modal onClose={() => setConfirmStartOpen(false)} title="Start Review?">
+          <p className="text-xs text-slate-600 dark:text-slate-300">
+            Review opens full screen so you can study your cards without distractions. Start now?
+          </p>
+          <div className="flex gap-2.5">
+            <button
+              type="button"
+              onClick={() => setConfirmStartOpen(false)}
+              className="flex-1 py-3 border border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 text-xs font-bold rounded-2xl"
+            >
+              No
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmStartOpen(false);
+                onFocusModeChange(true);
+              }}
+              className="flex-1 py-3 bg-focus-primary text-white text-xs font-bold rounded-2xl"
+            >
+              Yes
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
     </div>

@@ -1261,9 +1261,18 @@
 
 /* Collapsed sidebar: icons only (desktop/tablet). */
 @media (min-width: 768px) {
+  /* Take the label fully out of layout when collapsed. Fading it with
+     opacity alone left it in the flow, and in the narrow 80px column its
+     text wrapped one letter per line (overflow-wrap: anywhere), stretching
+     each nav item very tall and pushing the later icons off the screen. */
   .kh-shell[data-collapsed='true'] .kh-nav-label {
-    opacity: 0;
-    pointer-events: none;
+    display: none;
+  }
+
+  .kh-shell[data-collapsed='true'] .kh-nav-item {
+    justify-content: center;
+    gap: 0;
+    padding: 0;
   }
 
   .kh-global-sidebar[data-active='home'] {
