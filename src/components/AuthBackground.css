@@ -1,0 +1,278 @@
+/* Sign-in / sign-up background: "notebook paper".
+   A soft paper colour with a faint dot grid that drifts very slowly.
+   Colours come from the theme (--color-focus-bg / --color-focus-primary), so it follows the
+   theme picker. Imported after AuthScreen.css, so these rules win over the old purple. */
+
+.auth-gateway {
+  --paper: var(--color-focus-bg, #f4efe4);
+  --dot: color-mix(in srgb, var(--color-focus-primary, #534ab7) 20%, var(--paper));
+  --ink: #1b1a22;
+  --ink-soft: #5d5b66;
+  --accent: var(--color-focus-primary, #534ab7);
+  --card-line: rgba(60, 48, 20, 0.1);
+  --card-shadow: 0 1px 2px rgba(60, 48, 20, 0.06), 0 18px 40px -12px rgba(60, 48, 20, 0.2);
+}
+
+.dark .auth-gateway {
+  --paper: var(--color-focus-bg, #12141c);
+  --dot: color-mix(in srgb, var(--color-focus-primary, #8b84ee) 22%, var(--paper));
+  --ink: #f1f5f9;
+  --ink-soft: #a3aabb;
+  --card-line: rgba(255, 255, 255, 0.08);
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 18px 40px -12px rgba(0, 0, 0, 0.55);
+}
+
+.auth-gateway.auth-gateway {
+  background-color: var(--paper) !important;
+  background-image: radial-gradient(var(--dot) 1.3px, transparent 1.3px) !important;
+  background-size: 18px 18px !important;
+  animation: auth-paper-drift 36s linear infinite;
+}
+
+@keyframes auth-paper-drift {
+  to { background-position: 36px 36px; }
+}
+
+/* Let the paper show through the layout wrappers and the left panel. */
+.auth-gateway .auth-gateway__layout,
+.auth-gateway .auth-gateway__main,
+.auth-gateway .auth-gateway__showcase {
+  background: transparent !important;
+}
+.auth-gateway .auth-gateway__showcase {
+  border-right: 1px solid var(--card-line);
+}
+
+/* Text on the left panel and the Back button was written for a dark background. */
+.auth-gateway .auth-gateway__brand,
+.auth-gateway .auth-gateway__brand > span,
+.auth-gateway .auth-gateway__story h1 {
+  color: var(--ink) !important;
+}
+.auth-gateway .auth-gateway__story > p,
+.auth-gateway .auth-gateway__footnote {
+  color: var(--ink-soft) !important;
+}
+.auth-gateway .auth-gateway__eyebrow {
+  color: var(--accent) !important;
+}
+.auth-gateway .auth-gateway__back {
+  color: var(--ink) !important;
+  background: color-mix(in srgb, var(--paper) 70%, white) !important;
+  border: 1px solid var(--card-line) !important;
+}
+
+/* The card now sits on a light surface, so give it an edge and a soft shadow. */
+.auth-gateway .auth-card {
+  border: 1px solid var(--card-line);
+  box-shadow: var(--card-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-gateway.auth-gateway { animation: none; }
+}
+
+/* ---- Self-drawing doodles (margin sketches that draw, hold, then erase) ---- */
+.auth-gateway .auth-gateway__layout {
+  position: relative;
+  z-index: 1; /* keep the form and panel above the doodles */
+}
+.auth-doodles {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.auth-doodles__zone {
+  position: absolute;
+  inset: 0;
+}
+/* On wide screens the left half holds the showcase text, so the doodles stay on the right half. */
+@media (min-width: 900px) {
+  .auth-doodles__zone { left: 50%; }
+}
+.auth-doodle {
+  position: absolute;
+  width: 76px;
+  height: 76px;
+  overflow: visible;
+}
+.auth-doodle path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  opacity: 0.55;
+  animation: auth-doodle-draw 11s ease-in-out infinite;
+}
+@keyframes auth-doodle-draw {
+  0%   { stroke-dashoffset: 1; }
+  28%, 68% { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: -1; }
+}
+.auth-doodle--squiggle { top: 3%;  left: 4%; }
+.auth-doodle--star     { top: 9%;  right: 3%; transform: rotate(10deg); }
+.auth-doodle--arrow    { top: 46%; left: 1%; }
+.auth-doodle--check    { bottom: 5%; right: 8%; }
+.auth-doodle--bulb     { bottom: 6%; left: 8%; }
+.auth-doodle--sparkle  { bottom: 15%; left: 44%; width: 56px; height: 56px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-doodle path { animation: none; stroke-dashoffset: 0; }
+}
+
+/* ---- Draw-on-the-page (visitors' own ink, a different colour from the built-in doodles) ---- */
+.auth-gateway { --auth-draw: #e8795a; }
+.dark .auth-gateway { --auth-draw: #ffa98f; }
+
+.auth-sketch {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  touch-action: none; /* dragging on empty background draws instead of scrolling */
+  cursor: crosshair;
+}
+.auth-sketch-hint {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 14px;
+  z-index: 0;
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-soft);
+  pointer-events: none;
+  transition: opacity 0.6s ease;
+}
+.auth-sketch-hint[data-hidden='true'] { opacity: 0; }
+
+/* The wrappers let clicks fall through to the canvas behind them; only the card and the
+   Back button catch them, so the form keeps working and scrolling normally. */
+.auth-gateway .auth-gateway__layout,
+.auth-gateway .auth-gateway__main,
+.auth-gateway .auth-gateway__showcase {
+  pointer-events: none;
+}
+.auth-gateway .auth-card,
+.auth-gateway .auth-gateway__back {
+  pointer-events: auto;
+}
+
+/* ---- Card colour: clean surface that matches the app instead of the old cream ---- */
+.auth-gateway {
+  --card-bg: var(--kh-surface, #ffffff);
+  --card-edge: color-mix(in srgb, var(--accent) 14%, transparent);
+  --card-glow: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+.dark .auth-gateway {
+  /* Stays light on purpose: the text and fields inside the card were designed for a light card. */
+  --card-bg: #fbfaf7;
+  --card-edge: color-mix(in srgb, var(--accent) 26%, transparent);
+  --card-glow: rgba(0, 0, 0, 0.55);
+}
+.auth-gateway .auth-card {
+  background: var(--card-bg) !important;
+  background-image: none !important;
+  border: 1px solid var(--card-edge);
+  box-shadow: 0 1px 2px rgba(20, 20, 40, 0.05), 0 20px 44px -16px var(--card-glow);
+}
+/* A whisper of the accent in the inputs so they still read as fields on a white card. */
+.auth-gateway .auth-field__control {
+  background: color-mix(in srgb, var(--accent) 3%, var(--card-bg)) !important;
+}
+
+/* ---- Left panel: study cards that take turns at the front ---- */
+/* Uses the individual translate/scale/rotate properties so the cards' existing tilt is kept. */
+.auth-study-card--enter { animation: auth-card-in 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.auth-study-card--leave { animation: auth-card-out 0.55s ease-in forwards; pointer-events: none; z-index: 5; }
+@keyframes auth-card-in {
+  from { opacity: 0; translate: 0 22px; scale: 0.94; }
+  to   { opacity: 1; translate: 0 0; scale: 1; }
+}
+@keyframes auth-card-out {
+  from { opacity: 1; translate: 0 0; rotate: 0deg; }
+  to   { opacity: 0; translate: -46px -26px; rotate: -7deg; }
+}
+
+.auth-mini {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 18px;
+  margin: 8px 0 6px;
+}
+.auth-mini i { display: block; }
+
+/* Quiz: three answer dots, the middle one ticked. */
+.auth-mini--quiz i {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.auth-mini--quiz i[data-on='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 3px #fff;
+  animation: auth-mini-tick 2.4s ease-in-out infinite;
+}
+.auth-mini--quiz b {
+  width: 34px;
+  height: 5px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  margin-left: 4px;
+}
+@keyframes auth-mini-tick { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+
+/* NoteCraft: two lines that write themselves. */
+.auth-mini--lines { flex-direction: column; align-items: flex-start; gap: 5px; }
+.auth-mini--lines i {
+  height: 5px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  animation: auth-mini-write 3.2s ease-in-out infinite;
+}
+.auth-mini--lines i:first-child { width: 90%; }
+.auth-mini--lines i:last-child { width: 60%; animation-delay: 0.6s; }
+@keyframes auth-mini-write { 0% { transform: scaleX(0.15); } 45%, 100% { transform: scaleX(1); } }
+.auth-mini--lines i { transform-origin: left; }
+
+/* Review: a flashcard that keeps flipping. */
+.auth-mini--flip { perspective: 160px; }
+.auth-mini--flip i {
+  width: 30px;
+  height: 18px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.auth-mini--flip i:last-child {
+  margin-left: -16px;
+  background: var(--accent);
+  animation: auth-mini-flip 2.6s ease-in-out infinite;
+}
+@keyframes auth-mini-flip { 0%, 30% { transform: rotateY(0deg); } 60%, 100% { transform: rotateY(180deg); } }
+
+/* Study materials: three little files. */
+.auth-mini--chips i { width: 16px; height: 18px; border-radius: 4px; }
+.auth-mini--chips i:nth-child(1) { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.auth-mini--chips i:nth-child(2) { background: #f5c26b; opacity: 0.7; }
+.auth-mini--chips i:nth-child(3) { background: #7dd3b0; opacity: 0.7; }
+.auth-mini--chips i { animation: auth-mini-bob 3s ease-in-out infinite; }
+.auth-mini--chips i:nth-child(2) { animation-delay: 0.3s; }
+.auth-mini--chips i:nth-child(3) { animation-delay: 0.6s; }
+@keyframes auth-mini-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-study-card--enter,
+  .auth-study-card--leave,
+  .auth-mini i { animation: none; }
+  .auth-study-card--leave { display: none; }
+}

@@ -1586,6 +1586,217 @@
 }
 
 /* --------------------------------------------------------------------------
+   5b. First-run pop-ups (Quiz / NoteCraft)
+   Frosted cards that point at the two create icons until a student makes their
+   first quiz or notes. Colours come from the theme variables, so every theme
+   (light, dark and the extra palettes) picks them up automatically.
+   -------------------------------------------------------------------------- */
+.kh-coach-card {
+  --coach-surface: color-mix(in srgb, var(--app-surface, #fff) 94%, var(--app-accent, #4f46e5) 6%);
+  --coach-edge: color-mix(in srgb, var(--app-accent, #4f46e5) 34%, var(--app-border, #e9ecef));
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border: 1px solid var(--coach-edge);
+  border-radius: 16px;
+  background: var(--coach-surface);
+  color: var(--app-text, #14161f);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 14px 34px -10px color-mix(in srgb, var(--app-accent, #4f46e5) 42%, transparent),
+    0 4px 12px rgba(15, 23, 42, 0.12);
+  pointer-events: auto;
+  animation: kh-coach-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.dark .kh-coach-card {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 14px 34px -10px color-mix(in srgb, var(--app-accent, #818cf8) 40%, transparent),
+    0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+/* Thin accent highlight along the top edge. */
+.kh-coach-card::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 16px;
+  right: 16px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--app-accent, #4f46e5), transparent);
+  opacity: 0.7;
+}
+
+.kh-coach-card-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 30px 10px 14px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kh-coach-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0;
+  color: var(--app-accent, #4f46e5);
+}
+
+.kh-coach-body {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--app-text-muted, #6b7280);
+}
+
+.kh-coach-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--app-text-muted, #6b7280);
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.kh-coach-close:hover {
+  background: var(--app-accent-soft, rgba(79, 70, 229, 0.1));
+  color: var(--app-accent, #4f46e5);
+}
+
+/* Little diamond that points at the icon. */
+.kh-coach-pointer {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--coach-surface, color-mix(in srgb, var(--app-surface, #fff) 94%, var(--app-accent, #4f46e5) 6%));
+  border: 0 solid color-mix(in srgb, var(--app-accent, #4f46e5) 34%, var(--app-border, #e9ecef));
+  animation: kh-coach-fade 0.6s ease both;
+}
+
+/* Phone: cards sit above the bottom bar and the pointers hang off the shared layer. */
+.kh-coach-layer {
+  position: absolute;
+  bottom: calc(100% - 12px);
+  left: 50%;
+  z-index: 2;
+  width: min(calc(100% - 16px), 520px);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.kh-coach-layer .kh-coach-card {
+  --coach-surface: color-mix(in srgb, var(--app-surface, #fff) 94%, var(--app-accent, #4f46e5) 6%);
+}
+
+.kh-coach-row {
+  display: grid;
+  gap: 6px;
+}
+
+.kh-coach-layer > .kh-coach-pointer {
+  bottom: -6px;
+  transform: translateX(-50%) rotate(45deg);
+  border-right-width: 1px;
+  border-bottom-width: 1px;
+}
+
+/* Tablet / desktop: cards sit beside the sidebar and point left. */
+.kh-coach-side {
+  position: fixed;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 262px;
+}
+
+.kh-coach-card--side {
+  animation-name: kh-coach-in-side;
+}
+
+.kh-coach-card--side .kh-coach-title,
+.kh-coach-card--side .kh-coach-body {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kh-coach-pointer--left {
+  left: -7px;
+  transform: translateY(-50%) rotate(45deg);
+  border-left-width: 1px;
+  border-bottom-width: 1px;
+}
+
+/* Soft pulse on the icons being pointed at. */
+.kh-coach-target {
+  position: relative;
+}
+
+.kh-coach-target::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border: 1.5px solid var(--app-accent, #4f46e5);
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+  animation: kh-coach-pulse 2.4s ease-out 0.8s infinite;
+}
+
+@keyframes kh-coach-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes kh-coach-in-side {
+  from { opacity: 0; transform: translateX(-12px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes kh-coach-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes kh-coach-pulse {
+  0% { opacity: 0.75; transform: scale(0.96); }
+  70%, 100% { opacity: 0; transform: scale(1.14); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kh-coach-card,
+  .kh-coach-pointer,
+  .kh-coach-target::after {
+    animation: none;
+  }
+  .kh-coach-target::after {
+    opacity: 0.5;
+    transform: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
    6. Reduced motion
    -------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {

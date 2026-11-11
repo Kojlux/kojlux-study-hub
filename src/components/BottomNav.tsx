@@ -2,15 +2,52 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, MouseEvent, PointerEvent, ReactElement } from 'react';
 import { PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 
-export type NavTab = 'home' | 'quiz' | 'community' | 'review' | 'profile';
+// 'profile' is kept as a legacy route id only (old notification links may still point
+// at it). It no longer has a nav icon: Calendar and Settings live in the Notifications
+// screen's floating nav now.
+export type NavTab = 'home' | 'quiz' | 'notecraft' | 'community' | 'review' | 'profile';
 
 const TABS: { key: NavTab; label: string }[] = [
   { key: 'home', label: 'Home' },
-  { key: 'quiz', label: 'Create' },
+  { key: 'quiz', label: 'Quiz' },
+  { key: 'notecraft', label: 'NoteCraft' },
   { key: 'review', label: 'Review' },
   { key: 'community', label: 'Study Materials' },
-  { key: 'profile', label: 'Dashboard' },
 ];
+
+/** First-run pop-up copy, shown over the Quiz and NoteCraft icons until the student makes their first one. */
+export const COACH_COPY = {
+  quiz: { title: 'Make your first quiz', body: 'Turn your notes into practice questions.' },
+  notecraft: { title: 'Make your first notes', body: 'Turn any topic into clean study notes.' },
+} as const;
+
+/**
+ * Stand-out styling for the single first-run Quiz pop-up. It reads the theme's own accent
+ * variable (--kh-accent, falling back to --color-focus-primary) so it follows whichever
+ * theme the student picked instead of a fixed colour.
+ */
+export const COACH_CSS = `
+.kh-coach-card.kh-coach-card--solo {
+  border: 2px solid var(--kh-accent, var(--color-focus-primary));
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--kh-accent, var(--color-focus-primary)) 40%, transparent);
+}
+.kh-coach-card--solo .kh-coach-title {
+  color: var(--kh-accent, var(--color-focus-primary));
+  font-weight: 800;
+}
+.kh-nav-item.kh-coach-target,
+.kh-mobile-icon.kh-coach-target {
+  animation: kh-coach-ring 1.8s ease-out infinite;
+}
+@keyframes kh-coach-ring {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--kh-accent, var(--color-focus-primary)) 55%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 12px transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kh-nav-item.kh-coach-target,
+  .kh-mobile-icon.kh-coach-target { animation: none; }
+}
+`;
 
 interface BottomNavProps {
   active: NavTab;
@@ -23,6 +60,9 @@ interface BottomNavProps {
   /** True while a page like Notifications is open: the sidebar stays visible on every screen
    *  size (even over Home) and no tab is highlighted. */
   overlayOpen?: boolean;
+  /** Phone only: show the two first-run pop-ups pointing at Quiz and NoteCraft. */
+  coachMarks?: boolean;
+  onCoachDismiss?: () => void;
 }
 
 // Phone bar shape (no colors changed). Only the inner bar and its buttons get inline
@@ -89,6 +129,13 @@ function NavIcon({ tab, active, size = 20, color }: NavIconProps): ReactElement 
           <path d="M16 17H8" />
         </svg>
       );
+    case 'notecraft':
+      return (
+        <svg {...common}>
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
+        </svg>
+      );
     case 'review':
       return (
         <svg {...common}>
@@ -131,6 +178,8 @@ export default function BottomNav({
   collapsed: collapsedProp,
   onToggleCollapse,
   overlayOpen = false,
+  coachMarks = false,
+  onCoachDismiss,
 }: BottomNavProps): ReactElement {
   const current: NavTab | null = overlayOpen ? null : active;
   const dataActive: string = overlayOpen ? 'overlay' : active;
@@ -145,7 +194,20 @@ export default function BottomNav({
   const labelStyle: CSSProperties | undefined = collapsed ? { display: 'none' } : undefined;
   const pointerStartY = useRef<number | null>(null);
   const draggedHandle = useRef<boolean>(false);
-  const tabs = TABS.filter(({ key }) => !blockedTabs.includes(key));
+  // Quiz always sits in the middle slot so it stands out (slot 3 of 5, or slot 3 of 4 if a tab is blocked).
+  const tabs = (() => {
+    const list = TABS.filter(({ key }) => !blockedTabs.includes(key));
+    const quizAt = list.findIndex(({ key }) => key === 'quiz');
+    if (quizAt < 0) return list;
+    const [quizTab] = list.splice(quizAt, 1);
+    list.splice(Math.floor((list.length + 1) / 2), 0, quizTab);
+    return list;
+  })();
+  // Where the Quiz icon's centre sits across the bar, as a percentage. The icons share the
+  // bar in equal slots, so slot index maps straight to a percentage.
+  const quizIndex = tabs.findIndex(({ key }) => key === 'quiz');
+  const showCoach = coachMarks && !expanded && quizIndex >= 0;
+  const quizCenter = ((quizIndex + 0.5) / tabs.length) * 100;
   useEffect(() => {
     if (!expanded) return undefined;
     const closeOnEscape = (event: KeyboardEvent): void => {
@@ -227,6 +289,31 @@ export default function BottomNav({
       </nav>
 
       <div className="kh-global-mobile" data-active={dataActive}>
+        {showCoach && (
+          <div className="kh-coach-layer" role="note" aria-label="Getting started">
+            <style>{COACH_CSS}</style>
+            {/* One pop-up only, centred over the middle of the bar. Its pointer still aims at the Quiz icon. */}
+            <div className="kh-coach-row" style={{ display: 'flex', justifyContent: 'center' }}>
+              <div
+                className="kh-coach-card kh-coach-card--solo"
+                style={{ width: 'min(280px, 88%)', animationDelay: '0.15s' }}
+              >
+                <button
+                  type="button"
+                  className="kh-coach-card-main"
+                  onClick={() => handleNavigate('quiz')}
+                >
+                  <span className="kh-coach-title">{COACH_COPY.quiz.title}</span>
+                  <span className="kh-coach-body">{COACH_COPY.quiz.body}</span>
+                </button>
+                <button type="button" className="kh-coach-close" onClick={onCoachDismiss} aria-label="Dismiss tip">
+                  <X size={12} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+            <span className="kh-coach-pointer" style={{ left: `${quizCenter}%`, animationDelay: '0.15s' }} aria-hidden="true" />
+          </div>
+        )}
         <button
           type="button"
           className="kh-mobile-handle"
@@ -245,7 +332,7 @@ export default function BottomNav({
             <button
               key={key}
               type="button"
-              className="kh-mobile-icon"
+              className={`kh-mobile-icon${showCoach && key === 'quiz' ? ' kh-coach-target' : ''}`}
               style={barButtonStyle(current === key)}
               aria-label={label}
               aria-current={current === key ? 'page' : undefined}

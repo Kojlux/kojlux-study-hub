@@ -1,11 +1,39 @@
 import React, { useState } from 'react';
+import type { ReactNode } from 'react';
 import {
-  ArrowLeft, Bell, BellOff, CheckCheck, Brain, CalendarClock, Camera, FileText,
-  Mail, Palette, ShieldCheck, Trash2, UserRound,
+  ArrowLeft, Bell, BellOff, CheckCheck, Brain, CalendarClock, CalendarDays, Camera, FileText,
+  Mail, Palette, Settings, ShieldCheck, Trash2, UserRound,
 } from 'lucide-react';
 import { NotificationItem } from '../types';
 
+export type NotificationPanel = 'notifications' | 'calendar' | 'settings';
+
+const PANELS: { key: NotificationPanel; label: string; icon: typeof Bell }[] = [
+  { key: 'notifications', label: 'Notifications', icon: Bell },
+  { key: 'calendar', label: 'Calendar', icon: CalendarDays },
+  { key: 'settings', label: 'Settings', icon: Settings },
+];
+
+// Floating nav geometry (px). The sliding highlight is positioned from these.
+const NAV_ITEM = 44;
+const NAV_GAP = 6;
+
+const NAV_CSS = `
+@keyframes nc-panel-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes nc-nav-in { from { opacity: 0; transform: translate(14px, -50%) scale(0.94); } to { opacity: 1; transform: translate(0, -50%); } }
+.nc-panel { animation: nc-panel-in 0.38s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.nc-nav { animation: nc-nav-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.nc-nav-glow { box-shadow: 0 8px 20px -6px color-mix(in srgb, var(--app-accent, #4f46e5) 65%, transparent), inset 0 1px 0 rgba(255,255,255,0.28); }
+@media (prefers-reduced-motion: reduce) { .nc-panel, .nc-nav { animation: none; } }
+`;
+
 interface Props {
+  panel: NotificationPanel;
+  onPanelChange: (panel: NotificationPanel) => void;
+  /** Rendered under the Calendar icon (exam scheduling). */
+  calendarPanel: ReactNode;
+  /** Rendered under the Settings icon. */
+  settingsPanel: ReactNode;
   notifications: NotificationItem[];
   onSelect: (item: NotificationItem) => void;
   onDeletePausedQuiz: (item: NotificationItem) => void;
@@ -38,6 +66,10 @@ const NEWS = [
 ];
 
 export default function NotificationCenter({
+  panel,
+  onPanelChange,
+  calendarPanel,
+  settingsPanel,
   notifications,
   onSelect,
   onDeletePausedQuiz,
@@ -59,9 +91,9 @@ export default function NotificationCenter({
             <ArrowLeft className="w-4 h-4 text-slate-500 dark:text-slate-400" />
           </button>
           <h1 className="flex-1 text-sm font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
-            Notifications
+            {PANELS.find((item) => item.key === panel)?.label}
           </h1>
-          {tab === 'activity' && unreadCount > 0 && (
+          {panel === 'notifications' && tab === 'activity' && unreadCount > 0 && (
             <button
               onClick={onMarkAllRead}
               className="shrink-0 flex items-center gap-1.5 text-[11px] font-bold text-focus-primary"
@@ -71,7 +103,8 @@ export default function NotificationCenter({
           )}
         </header>
 
-        <div className="px-5 pb-4">
+        {panel === 'notifications' && (
+        <div className="px-5 pb-4 pr-[4.5rem] md:pr-24 nc-panel">
           <div className="flex rounded-xl bg-slate-100 dark:bg-slate-900 p-1">
             {(['activity', 'news'] as const).map((nextTab) => (
               <button
@@ -88,9 +121,17 @@ export default function NotificationCenter({
             ))}
           </div>
         </div>
+        )}
 
-        <main className="flex-1 px-5 pb-28 md:pb-10 space-y-2.5">
-          {tab === 'news' ? (
+        <main
+          key={panel}
+          className={`nc-panel flex-1 pl-5 pr-[4.5rem] md:pr-24 pb-28 md:pb-10 ${panel === 'notifications' ? 'space-y-2.5' : ''}`}
+        >
+          {panel === 'calendar' ? (
+            calendarPanel
+          ) : panel === 'settings' ? (
+            settingsPanel
+          ) : tab === 'news' ? (
             NEWS.map(({ title, body, icon: Icon, href }) => (
               <article
                 key={title}
@@ -156,7 +197,65 @@ export default function NotificationCenter({
           )}
         </main>
       </div>
+
+      <style>{NAV_CSS}</style>
+      <FloatingNav panel={panel} unread={unreadCount} onChange={onPanelChange} />
     </div>
+  );
+}
+
+// Small floating pill, vertically centred on the right edge. It doesn't span the screen:
+// just the three icons on a frosted surface, with a highlight that glides to the active one.
+function FloatingNav({
+  panel,
+  unread,
+  onChange,
+}: {
+  panel: NotificationPanel;
+  unread: number;
+  onChange: (panel: NotificationPanel) => void;
+}) {
+  const activeIndex = PANELS.findIndex((item) => item.key === panel);
+  return (
+    <nav
+      aria-label="Notification center sections"
+      className="nc-nav fixed right-3 md:right-6 top-1/2 z-30 flex flex-col rounded-full p-1.5 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-white/70 dark:border-slate-700/60 shadow-[0_18px_40px_-12px_rgba(15,23,42,0.28),0_2px_6px_rgba(15,23,42,0.06)] dark:shadow-[0_18px_40px_-12px_rgba(0,0,0,0.65)] ring-1 ring-slate-900/[0.04] dark:ring-white/[0.04]"
+      style={{ gap: NAV_GAP }}
+    >
+      <span
+        aria-hidden
+        className="nc-nav-glow pointer-events-none absolute left-1.5 top-1.5 rounded-full bg-focus-primary transition-transform duration-500 ease-[cubic-bezier(0.34,1.4,0.64,1)]"
+        style={{ width: NAV_ITEM, height: NAV_ITEM, transform: `translateY(${activeIndex * (NAV_ITEM + NAV_GAP)}px)` }}
+      />
+      {PANELS.map(({ key, label, icon: Icon }) => {
+        const active = key === panel;
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={() => onChange(key)}
+            aria-label={label}
+            aria-current={active ? 'page' : undefined}
+            title={label}
+            className={`group relative z-10 flex items-center justify-center rounded-full transition-colors duration-300 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-primary/50 ${
+              active ? 'text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+            style={{ width: NAV_ITEM, height: NAV_ITEM }}
+          >
+            <Icon className="w-[19px] h-[19px]" strokeWidth={active ? 2.1 : 1.8} aria-hidden />
+            {key === 'notifications' && unread > 0 && (
+              <span
+                aria-hidden
+                className="absolute top-2 right-2 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900"
+              />
+            )}
+            <span className="pointer-events-none absolute right-full mr-3 hidden md:block whitespace-nowrap rounded-lg bg-slate-900 dark:bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-white dark:text-slate-900 opacity-0 translate-x-1 transition duration-200 group-hover:opacity-100 group-hover:translate-x-0">
+              {label}
+            </span>
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 

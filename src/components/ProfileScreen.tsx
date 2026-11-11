@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { LogOut, LogIn, Flame, CheckSquare, CalendarDays, Settings, Plus, ChevronLeft, ChevronRight, ChevronDown, Check, Bell, BellOff, BellRing, Shield, ExternalLink, Trash2 } from 'lucide-react';
+import { LogOut, LogIn, Flame, CalendarDays, Plus, ChevronLeft, ChevronRight, ChevronDown, Check, Bell, BellOff, BellRing, Shield, ExternalLink, Trash2 } from 'lucide-react';
 import { GRADE_LEVEL_OPTIONS } from '../constants';
 import { AgeBand, ExamEvent, HistoryItem } from '../types';
 import { NotificationSupportState } from '../lib/notifications';
@@ -11,6 +11,9 @@ import StreakPill from './study-home/StreakPill';
 import { BadgePackReveal, BadgeProgressModal } from './study-home/BadgeSystem';
 
 interface Props {
+  // Which half of the old Dashboard to render. Both now live inside the Notifications
+  // screen's floating nav: the Calendar tab and the Settings tab.
+  mode: 'calendar' | 'settings';
   email: string;
   username: string;
   ageBand: AgeBand | null;
@@ -61,7 +64,7 @@ const AGE_BAND_OPTIONS = [
 ] as const;
 
 export default function ProfileScreen({
-  email, username, gradeLevel, onGradeLevelChange, streak, activityDays, totalReviews,
+  mode, email, username, gradeLevel, onGradeLevelChange, streak, activityDays,
   ageBand, onDisplayNameChange, onAgeBandChange,
   isGuest, onSignOut, onSignIn, exams, history, onAddExam, onUpdateExam, onDeleteExam,
   onDeleteAccount,
@@ -74,7 +77,6 @@ export default function ProfileScreen({
   // settings sheet opened from the header — freeing up the space right
   // under the stats row for the Study Calendar to live inline instead of
   // just a short "upcoming exams" preview that linked out to it.
-  const [menuOpen, setMenuOpen] = useState(false);
   const [showProgress, setShowProgress] = useState(false);
   const [celebration, setCelebration] = useState<number | null>(null);
   const [editedName, setEditedName] = useState(username);
@@ -112,7 +114,6 @@ export default function ProfileScreen({
     [view],
   );
 
-  const openSettings = useCallback<OpenSettingsHandler>(() => setMenuOpen(true), []);
   const handleShiftMonth = useCallback<ShiftMonthHandler>((delta) => {
     setView((v) => {
       const d = new Date(v.year, v.month + delta, 1);
@@ -149,7 +150,6 @@ export default function ProfileScreen({
       setSavingName(false);
     }
   }, [onDisplayNameChange, editedName]);
-  const closeSettings = useCallback(() => setMenuOpen(false), []);
   const openProgress = useCallback(() => setShowProgress(true), []);
   const saveAgeBand = useCallback(() => {
     if (editedAgeBand) onAgeBandChange(editedAgeBand);
@@ -167,101 +167,75 @@ export default function ProfileScreen({
         @media (prefers-reduced-motion: reduce) { .animate-dash-pop { animation: none; } }
       `}</style>
 
-      <DashboardHeader
-        username={username}
-        streak={streak}
-        totalReviews={totalReviews}
-        onOpenSettings={openSettings}
-      />
+      {mode === 'calendar' ? (
+        <>
+          <CalendarWidget
+            monthLabel={monthLabel}
+            days={calendarDays}
+            onShiftMonth={handleShiftMonth}
+            onSelectDate={handleSelectDate}
+          />
 
-      <div className="mt-8">
-        <CalendarWidget
-          monthLabel={monthLabel}
-          days={calendarDays}
-          onShiftMonth={handleShiftMonth}
-          onSelectDate={handleSelectDate}
-        />
-      </div>
+          <DailyAgenda
+            selectedKey={selectedKey}
+            exams={selectedExams}
+            history={history}
+            onAddExam={handleAddExam}
+            onEditExam={handleEditExam}
+          />
 
-      <DailyAgenda
-        selectedKey={selectedKey}
-        exams={selectedExams}
-        history={history}
-        onAddExam={handleAddExam}
-        onEditExam={handleEditExam}
-      />
-
-      {sheetExam && (
-        <ExamSheet
-          exam={sheetExam === 'new' ? null : sheetExam}
-          defaultDate={selectedKey}
-          history={history}
-          onClose={() => setSheetExam(null)}
-          onSave={(exam) => {
-            if (sheetExam === 'new') onAddExam(exam);
-            else onUpdateExam(exam);
-            setSheetExam(null);
-          }}
-          onDelete={
-            sheetExam !== 'new'
-              ? () => {
-                  onDeleteExam(sheetExam.id);
-                  setSheetExam(null);
-                }
-              : undefined
-          }
-        />
+          {sheetExam && (
+            <ExamSheet
+              exam={sheetExam === 'new' ? null : sheetExam}
+              defaultDate={selectedKey}
+              history={history}
+              onClose={() => setSheetExam(null)}
+              onSave={(exam) => {
+                if (sheetExam === 'new') onAddExam(exam);
+                else onUpdateExam(exam);
+                setSheetExam(null);
+              }}
+              onDelete={
+                sheetExam !== 'new'
+                  ? () => {
+                      onDeleteExam(sheetExam.id);
+                      setSheetExam(null);
+                    }
+                  : undefined
+              }
+            />
+          )}
+        </>
+      ) : (
+        <div className="space-y-7">
+          <p className="px-1 text-sm text-slate-500 dark:text-slate-400 truncate">{email || 'Signed in as guest'}</p>
+          <ProfileSection
+            gradeLevel={gradeLevel}
+            onGradeLevelChange={onGradeLevelChange}
+            nameForm={displayNameForm}
+            onNameChange={setEditedName}
+            onNameSave={handleSaveName}
+            savedAgeBand={ageBand}
+            selectedAgeBand={editedAgeBand}
+            onAgeBandSelect={setEditedAgeBand}
+            onAgeBandSave={saveAgeBand}
+          />
+          <StreakMilestoneCard streak={streak} daysActive={activityDays.length} onOpen={openProgress} />
+          <PreferencesPanel
+            permission={notifPermission}
+            onEnable={onEnableNotifications}
+            pushStatus={pushRegistrationStatus}
+          />
+          <LegalSection />
+          <DestructiveAccountActions
+            isGuest={isGuest}
+            onSignIn={onSignIn}
+            onSignOut={onSignOut}
+            onDeleteAccount={onDeleteAccount}
+          />
+        </div>
       )}
 
-      {/* Settings — a full-page sheet rather than a side drawer. Kept mounted
-          so the slide-up transition has something to animate between;
-          pointer-events-none plus opacity-0 takes it fully out of the way
-          when closed. */}
-      <div
-        className={`fixed inset-0 z-[250] transition-opacity duration-300 ${
-          menuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-        role="dialog"
-        aria-modal="true"
-        aria-hidden={!menuOpen}
-      >
-        <div
-          className={`absolute inset-0 bg-focus-bg dark:bg-slate-950 flex flex-col transition-transform duration-300 ease-out ${
-            menuOpen ? 'translate-y-0' : 'translate-y-full'
-          }`}
-        >
-          <SettingsHeader email={email} onClose={closeSettings} />
-
-          <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-12">
-            <div className="mx-auto w-full max-w-2xl space-y-7 pt-2">
-              <ProfileSection
-                gradeLevel={gradeLevel}
-                onGradeLevelChange={onGradeLevelChange}
-                nameForm={displayNameForm}
-                onNameChange={setEditedName}
-                onNameSave={handleSaveName}
-                savedAgeBand={ageBand}
-                selectedAgeBand={editedAgeBand}
-                onAgeBandSelect={setEditedAgeBand}
-                onAgeBandSave={saveAgeBand}
-              />
-              <StreakMilestoneCard streak={streak} daysActive={activityDays.length} onOpen={openProgress} />
-              <PreferencesPanel
-                permission={notifPermission}
-                onEnable={onEnableNotifications}
-                pushStatus={pushRegistrationStatus}
-              />
-              <LegalSection />
-              <DestructiveAccountActions
-                isGuest={isGuest}
-                onSignIn={onSignIn}
-                onSignOut={onSignOut}
-                onDeleteAccount={onDeleteAccount}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
       {showProgress && (
         <BadgeProgressModal
           activityDays={activityDays}
@@ -287,10 +261,6 @@ export interface DisplayNameFormState {
   isSaving: boolean;
 }
 
-interface SettingsHeaderProps {
-  email: string;
-  onClose: () => void;
-}
 interface ProfileSectionProps {
   gradeLevel: string;
   onGradeLevelChange: (g: string) => void;
@@ -332,27 +302,6 @@ function SettingsGroup({ label, children }: { label: string; children: React.Rea
     </section>
   );
 }
-
-const SettingsHeader = memo(function SettingsHeader({ email, onClose }: SettingsHeaderProps) {
-  return (
-    <header className="shrink-0 px-4 sm:px-6 pt-5 pb-3">
-      <div className="mx-auto w-full max-w-2xl flex items-center gap-3.5">
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close settings menu"
-          className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center bg-white/70 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-slate-500 dark:text-slate-300 shadow-sm transition hover:bg-white dark:hover:bg-slate-800 active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-primary/15"
-        >
-          <ChevronLeft className="w-5 h-5" aria-hidden />
-        </button>
-        <div className="min-w-0">
-          <h2 className="text-xl font-semibold tracking-tight leading-tight text-slate-900 dark:text-white">Settings</h2>
-          <p className="text-sm font-normal text-slate-500 dark:text-slate-400 truncate">{email || 'Signed in as guest'}</p>
-        </div>
-      </div>
-    </header>
-  );
-});
 
 const AgeGroupControl = memo(function AgeGroupControl({
   savedAgeBand,
@@ -734,22 +683,11 @@ export interface CalendarDay {
   hasExams: readonly ExamEvent[];
 }
 
-type OpenSettingsHandler = () => void;
 type SelectDateHandler = (dateKey: string) => void;
 type AddExamHandler = () => void;
 type EditExamHandler = (exam: ExamEvent) => void;
 type ShiftMonthHandler = (delta: -1 | 1) => void;
 
-interface DashboardHeaderProps {
-  username: string;
-  streak: number;
-  totalReviews: number;
-  onOpenSettings: OpenSettingsHandler;
-}
-interface StreakMetricsProps {
-  streak: number;
-  totalReviews: number;
-}
 interface CalendarWidgetProps {
   monthLabel: string;
   days: readonly CalendarDay[];
@@ -790,47 +728,6 @@ function buildMonthGrid(
     };
   });
 }
-
-const StreakMetrics = memo(function StreakMetrics({ streak, totalReviews }: StreakMetricsProps) {
-  const badge =
-    'inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-focus-primary/10 text-focus-primary text-xs font-medium tabular-nums';
-  return (
-    <div className="flex items-center gap-2 mt-1.5" role="list" aria-label="Study metrics">
-      <span className={badge} role="listitem">
-        <Flame className="w-4 h-4" aria-hidden /> {streak} day streak
-      </span>
-      <span className={badge} role="listitem">
-        <CheckSquare className="w-4 h-4" aria-hidden /> {totalReviews} reviewed
-      </span>
-    </div>
-  );
-});
-
-const DashboardHeader = memo(function DashboardHeader({
-  username,
-  streak,
-  totalReviews,
-  onOpenSettings,
-}: DashboardHeaderProps) {
-  return (
-    <header className="flex items-start justify-between gap-4">
-      <div className="min-w-0">
-        <p className="text-[10px] font-bold tracking-[0.15em] text-slate-400 uppercase mb-1">Dashboard</p>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white truncate">{username}</h1>
-        <StreakMetrics streak={streak} totalReviews={totalReviews} />
-      </div>
-      <button
-        type="button"
-        onClick={onOpenSettings}
-        aria-label="Open settings menu"
-        className="shrink-0 -mr-2 mt-0.5 inline-flex items-center gap-1.5 h-9 px-2.5 rounded-full text-[13px] font-medium text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.06] hover:text-slate-900 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-primary/40"
-      >
-        <Settings className="w-4 h-4" aria-hidden />
-        <span className="hidden sm:inline">Settings</span>
-      </button>
-    </header>
-  );
-});
 
 const DayCell = memo(function DayCell({ day, onSelect }: { day: CalendarDay; onSelect: SelectDateHandler }) {
   const { isSelected, isToday, isCurrentMonth, hasExams } = day;

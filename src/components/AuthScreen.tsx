@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
   getRedirectResult,
@@ -12,11 +12,12 @@ import {
   updateProfile,
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
-import { ArrowLeft, ArrowRight, AlertCircle, BookOpen, Lock, Mail, UserRound } from 'lucide-react';
+import { ArrowLeft, ArrowRight, AlertCircle, BookOpen, Layers, Library, ListChecks, Lock, Mail, PenLine, UserRound } from 'lucide-react';
 import { auth, db } from '../firebase';
 import { GRADE_LEVEL_OPTIONS } from '../constants';
 import { saveLocal, scopedKey } from '../lib/storage';
 import './AuthScreen.css';
+import './AuthBackground.css';
 
 interface AuthScreenProps {
   onBack?: () => void;
@@ -157,6 +158,8 @@ export default function AuthScreen({ onBack, onContinueAsGuest }: AuthScreenProp
 
   return (
     <div className="auth-gateway">
+      <AuthDoodles />
+      <AuthSketchpad />
       <div className="auth-gateway__layout">
         <aside className="auth-gateway__showcase" aria-label="Kojlux Study Hub">
           <div className="auth-gateway__brand">
@@ -170,16 +173,7 @@ export default function AuthScreen({ onBack, onContinueAsGuest }: AuthScreenProp
             <div className="auth-gateway__art" aria-hidden="true">
               <div className="auth-gateway__orbit auth-gateway__orbit--one" />
               <div className="auth-gateway__orbit auth-gateway__orbit--two" />
-              <div className="auth-study-card auth-study-card--back">
-                <span>QUICK REVIEW</span>
-                <div className="auth-study-card__lines"><i /><i /><i /></div>
-              </div>
-              <div className="auth-study-card auth-study-card--front">
-                <span className="auth-study-card__tag"><BookOpen size={13} /> TODAY’S NOTE</span>
-                <strong>Small steps<br />add up.</strong>
-                <span className="auth-study-card__progress"><i /></span>
-                <small>YOUR STUDY MOMENT</small>
-              </div>
+              <AuthShowcaseCards />
               <div className="auth-gateway__spark auth-gateway__spark--one">✦</div>
               <div className="auth-gateway__spark auth-gateway__spark--two">✦</div>
             </div>
@@ -317,6 +311,232 @@ export default function AuthScreen({ onBack, onContinueAsGuest }: AuthScreenProp
         </main>
       </div>
     </div>
+  );
+}
+
+
+/** Decorative margin doodles that draw themselves, then fade and redraw. Purely visual. */
+function AuthDoodles() {
+  const doodle = (cls: string, delay: string, paths: string[]) => (
+    <svg
+      key={cls}
+      className={`auth-doodle ${cls}`}
+      viewBox="0 0 80 80"
+      focusable="false"
+    >
+      {paths.map((d, i) => (
+        <path key={i} d={d} pathLength={1} style={{ animationDelay: `calc(${delay} + ${i * 0.5}s)` }} />
+      ))}
+    </svg>
+  );
+  return (
+    <div className="auth-doodles" aria-hidden="true">
+      <div className="auth-doodles__zone">
+        {doodle('auth-doodle--squiggle', '0s', ['M6 40 q9 -16 18 0 t18 0 t18 0'])}
+        {doodle('auth-doodle--star', '1.8s', ['M40 12 L46.8 30.7 L66.6 31.4 L50.9 43.6 L56.5 62.7 L40 51.5 L23.5 62.7 L29.1 43.6 L13.4 31.4 L33.2 30.7 Z'])}
+        {doodle('auth-doodle--arrow', '3.6s', ['M10 56 C 24 22, 50 18, 68 34', 'M57 29 L68 34 L63 45'])}
+        {doodle('auth-doodle--check', '5.4s', ['M14 42 L32 60 L66 18'])}
+        {doodle('auth-doodle--bulb', '7.2s', ['M40 10 a20 20 0 0 1 12 36 v8 h-24 v-8 a20 20 0 0 1 12 -36 z', 'M32 62 h16'])}
+        {doodle('auth-doodle--sparkle', '9s', ['M40 8 Q43 37 72 40 Q43 43 40 72 Q37 43 8 40 Q37 37 40 8 Z'])}
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * Lets visitors doodle on the empty parts of the page. Their ink is a different colour from the
+ * built-in doodles, stays for a few seconds, then fades away. The form is never blocked: the
+ * canvas sits behind the layout and only receives touches/clicks that land on empty background.
+ */
+function AuthSketchpad() {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [hint, setHint] = useState(true);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return undefined;
+
+    type Point = { x: number; y: number };
+    type Stroke = { pts: Point[]; color: string; endedAt: number | null };
+    const HOLD_MS = 4000; // ink stays fully visible this long after the finger/mouse lifts
+    const FADE_MS = 2500; // then fades out over this long
+    const strokes: Stroke[] = [];
+    let current: Stroke | null = null;
+    let raf = 0;
+
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(window.innerWidth * dpr);
+      canvas.height = Math.round(window.innerHeight * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    const render = (now: number) => {
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 3.2;
+      for (let i = strokes.length - 1; i >= 0; i -= 1) {
+        const stroke = strokes[i];
+        let alpha = 1;
+        if (stroke.endedAt !== null) {
+          const age = now - stroke.endedAt;
+          if (age > HOLD_MS + FADE_MS) {
+            strokes.splice(i, 1);
+            continue;
+          }
+          if (age > HOLD_MS) alpha = 1 - (age - HOLD_MS) / FADE_MS;
+        }
+        const pts = stroke.pts;
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = stroke.color;
+        ctx.fillStyle = stroke.color;
+        if (pts.length === 1) {
+          ctx.beginPath();
+          ctx.arc(pts[0].x, pts[0].y, 1.8, 0, Math.PI * 2);
+          ctx.fill();
+          continue;
+        }
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let j = 1; j < pts.length - 1; j += 1) {
+          ctx.quadraticCurveTo(pts[j].x, pts[j].y, (pts[j].x + pts[j + 1].x) / 2, (pts[j].y + pts[j + 1].y) / 2);
+        }
+        ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      raf = strokes.length > 0 ? window.requestAnimationFrame(render) : 0;
+    };
+    const kick = () => {
+      if (!raf) raf = window.requestAnimationFrame(render);
+    };
+
+    const onDown = (event: PointerEvent) => {
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      canvas.setPointerCapture(event.pointerId);
+      const color = getComputedStyle(canvas).getPropertyValue('--auth-draw').trim() || '#e8795a';
+      current = { pts: [{ x: event.clientX, y: event.clientY }], color, endedAt: null };
+      strokes.push(current);
+      setHint(false);
+      kick();
+    };
+    const onMove = (event: PointerEvent) => {
+      if (!current) return;
+      const events = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : [event];
+      for (const e of events.length ? events : [event]) current.pts.push({ x: e.clientX, y: e.clientY });
+      kick();
+    };
+    const onUp = () => {
+      if (!current) return;
+      current.endedAt = performance.now();
+      current = null;
+      kick();
+    };
+
+    resize();
+    window.addEventListener('resize', resize);
+    canvas.addEventListener('pointerdown', onDown);
+    canvas.addEventListener('pointermove', onMove);
+    canvas.addEventListener('pointerup', onUp);
+    canvas.addEventListener('pointercancel', onUp);
+    const hintTimer = window.setTimeout(() => setHint(false), 14000);
+    return () => {
+      window.clearTimeout(hintTimer);
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+      canvas.removeEventListener('pointerdown', onDown);
+      canvas.removeEventListener('pointermove', onMove);
+      canvas.removeEventListener('pointerup', onUp);
+      canvas.removeEventListener('pointercancel', onUp);
+    };
+  }, []);
+
+  return (
+    <>
+      <canvas ref={canvasRef} className="auth-sketch" aria-hidden="true" />
+      <p className="auth-sketch-hint" data-hidden={!hint} aria-hidden="true">
+        Feel like doodling? Draw anywhere on the page.
+      </p>
+    </>
+  );
+}
+
+
+type ShowcaseVisual = 'progress' | 'quiz' | 'lines' | 'flip' | 'chips';
+interface ShowcaseCard {
+  tag: string;
+  Icon: React.ComponentType<{ size?: number }>;
+  title: [string, string];
+  caption: string;
+  visual: ShowcaseVisual;
+}
+
+// The cards on the left panel take turns at the front. Edit the wording here.
+const SHOWCASE_CARDS: ShowcaseCard[] = [
+  { tag: 'TODAY’S NOTE', Icon: BookOpen, title: ['Small steps', 'add up.'], caption: 'YOUR STUDY MOMENT', visual: 'progress' },
+  { tag: 'QUIZ', Icon: ListChecks, title: ['Practice until', 'it clicks.'], caption: 'BUILT FROM YOUR NOTES', visual: 'quiz' },
+  { tag: 'NOTECRAFT', Icon: PenLine, title: ['Any topic,', 'clean notes.'], caption: 'READY IN SECONDS', visual: 'lines' },
+  { tag: 'REVIEW', Icon: Layers, title: ['Flip, recall,', 'repeat.'], caption: 'FLASHCARDS THAT STICK', visual: 'flip' },
+  { tag: 'STUDY MATERIALS', Icon: Library, title: ['Study smarter,', 'together.'], caption: 'BROWSE SHARED MATERIALS', visual: 'chips' },
+];
+
+function ShowcaseVisualBlock({ kind }: { kind: ShowcaseVisual }) {
+  switch (kind) {
+    case 'progress':
+      return <span className="auth-study-card__progress"><i /></span>;
+    case 'quiz':
+      return <span className="auth-mini auth-mini--quiz"><i /><i data-on="true" /><i /><b /></span>;
+    case 'lines':
+      return <span className="auth-mini auth-mini--lines"><i /><i /></span>;
+    case 'flip':
+      return <span className="auth-mini auth-mini--flip"><i /><i /></span>;
+    case 'chips':
+      return <span className="auth-mini auth-mini--chips"><i /><i /><i /></span>;
+  }
+}
+
+/** Study cards that take turns at the front of the left panel. Decorative only. */
+function AuthShowcaseCards() {
+  const [index, setIndex] = useState(0);
+  const [leaving, setLeaving] = useState<number | null>(null);
+  const indexRef = useRef(0);
+
+  useEffect(() => {
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      setLeaving(indexRef.current);
+      indexRef.current = (indexRef.current + 1) % SHOWCASE_CARDS.length;
+      setIndex(indexRef.current);
+    }, calm ? 7000 : 4800);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const front = SHOWCASE_CARDS[index];
+  const next = SHOWCASE_CARDS[(index + 1) % SHOWCASE_CARDS.length];
+  const gone = leaving === null ? null : SHOWCASE_CARDS[leaving];
+
+  const renderFront = (card: ShowcaseCard, extra: string, key: string) => (
+    <div key={key} className={`auth-study-card auth-study-card--front ${extra}`}>
+      <span className="auth-study-card__tag"><card.Icon size={13} /> {card.tag}</span>
+      <strong>{card.title[0]}<br />{card.title[1]}</strong>
+      <ShowcaseVisualBlock kind={card.visual} />
+      <small>{card.caption}</small>
+    </div>
+  );
+
+  return (
+    <>
+      <div key={`back-${index}`} className="auth-study-card auth-study-card--back auth-study-card--enter">
+        <span>{next.tag}</span>
+        <div className="auth-study-card__lines"><i /><i /><i /></div>
+      </div>
+      {renderFront(front, 'auth-study-card--enter', `front-${index}`)}
+      {gone && renderFront(gone, 'auth-study-card--leave', `leave-${index}`)}
+    </>
   );
 }
 

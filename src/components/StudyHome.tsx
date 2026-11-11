@@ -202,6 +202,9 @@ export interface StudyHomeProps {
   notificationCount?: number;
   onOpenNotifications?: () => void;
   onOpenCollection?: (collection: Collection) => void;
+  /** Show the two first-run pop-ups on the Quiz / NoteCraft sidebar icons (tablet / desktop). */
+  showNavCoach?: boolean;
+  onDismissNavCoach?: () => void;
   firstStudyGuideStep?: 'home' | 'source' | 'generate' | null;
   firstStudyGuideKind?: 'quiz' | 'notes' | null;
   onDismissFirstStudyGuide?: () => void;
@@ -222,6 +225,8 @@ export default function StudyHome({
   notificationCount = 0,
   onOpenNotifications,
   onOpenCollection,
+  showNavCoach = false,
+  onDismissNavCoach,
   firstStudyGuideStep = null,
   firstStudyGuideKind = null,
   onDismissFirstStudyGuide,
@@ -249,8 +254,9 @@ export default function StudyHome({
   const visibleNavItems = NAV_ITEMS.filter((item) => !blockedNavItems.includes(item.id));
   const visibleTools = STUDY_TOOLS.filter((tool) => !blockedNavItems.includes(tool.id));
   const navigate = (tab: Parameters<NavigateHandler>[0]) => {
-    if (firstStudyGuideStep === 'home' && (tab === 'quiz' || tab === 'summarizer')) {
-      onAdvanceFirstStudyGuide?.(tab === 'summarizer' ? 'notes' : 'quiz');
+    const isNotes = tab === 'summarizer' || tab === 'notecraft';
+    if (firstStudyGuideStep === 'home' && (tab === 'quiz' || isNotes)) {
+      onAdvanceFirstStudyGuide?.(isNotes ? 'notes' : 'quiz');
     }
     onNavigate(tab);
   };
@@ -258,7 +264,15 @@ export default function StudyHome({
   return (
     <div className="kh-shell" data-collapsed={collapsed}>
       <style>{HEADER_CSS}</style>
-      <Sidebar items={visibleNavItems} activeId="home" collapsed={collapsed} onToggle={toggle} onNavigate={navigate} />
+      <Sidebar
+        items={visibleNavItems}
+        activeId="home"
+        collapsed={collapsed}
+        onToggle={toggle}
+        onNavigate={navigate}
+        coachMarks={showNavCoach}
+        onCoachDismiss={onDismissNavCoach}
+      />
 
       <main className="kh-main">
         <div className="kh-main-inner">
@@ -283,7 +297,7 @@ export default function StudyHome({
             </div>
           </header>
 
-          {firstStudyGuideStep && (
+          {firstStudyGuideStep && firstStudyGuideStep !== 'home' && (
             <section className="kh-first-study-guide" aria-live="polite">
               <div>
                 <p className="text-xs font-black uppercase tracking-wide">Your first study set · Step {firstStudyGuideStep === 'home' ? '1' : firstStudyGuideStep === 'source' ? '2' : '3'} of 3</p>
@@ -291,8 +305,8 @@ export default function StudyHome({
                   {firstStudyGuideStep === 'home'
                     ? 'Choose Quiz Builder to make a practice quiz or Summarizer to make study notes. We’ll point out where to add your material and create it.'
                     : firstStudyGuideStep === 'source'
-                    ? `Return to ${firstStudyGuideKind === 'notes' ? 'Summarizer' : 'Quiz Builder'} and add a topic or paste your notes in the highlighted Source area.`
-                    : `Return to ${firstStudyGuideKind === 'notes' ? 'Summarizer' : 'Quiz Builder'} and use the highlighted button to create your first study set.`}
+                    ? `Return to ${firstStudyGuideKind === 'notes' ? 'NoteCraft' : 'Quiz'} and add a topic or paste your notes in the highlighted Source area.`
+                    : `Return to ${firstStudyGuideKind === 'notes' ? 'NoteCraft' : 'Quiz'} and use the highlighted button to create your first study set.`}
                 </p>
               </div>
               <button type="button" onClick={onDismissFirstStudyGuide} className="kh-first-study-guide-dismiss">

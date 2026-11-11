@@ -39,7 +39,7 @@ import NoteCraft from './components/NoteCraft';
 import ReviewQueue from './components/ReviewQueue';
 import ProfileScreen from './components/ProfileScreen';
 import MaterialsHub from './components/MaterialsHub';
-import NotificationCenter from './components/NotificationCenter';
+import NotificationCenter, { type NotificationPanel } from './components/NotificationCenter';
 import BottomNav, { NavTab } from './components/BottomNav';
 import { clearDeepLinkUrl, parseDeepLinkCardId, parseDeepLinkCollectionId } from './lib/deepLink';
 import { ThemeProvider } from './context/ThemeContext';
@@ -54,7 +54,8 @@ import { useMobileInteractionEnhancements } from './hooks/useMobileInteractionEn
 
 const SCREEN_TITLES: Record<NavTab, string> = {
   home: 'Kojlux Study Hub',
-  quiz: 'Create',
+  quiz: 'Quiz',
+  notecraft: 'NoteCraft',
   community: 'Materials',
   review: 'Review',
   profile: 'Dashboard',
@@ -231,7 +232,16 @@ function AppContent() {
   // paused quizzes have in-app reminders and background pushes for signed-in
   // users. All remain recorded here for visibility inside the app.
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [showNotifications, setShowNotifications] = useState(false);
+  // Calendar and Settings live inside the notification screen's floating nav, so old
+  // links to the Dashboard (profile) tab open that screen on the Calendar panel instead.
+  const [showNotifications, setShowNotifications] = useState(notificationLink?.tab === 'profile');
+  const [notificationPanel, setNotificationPanel] = useState<NotificationPanel>(
+    notificationLink?.tab === 'profile' ? 'calendar' : 'notifications'
+  );
+  const openNotifications = useCallback((panel: NotificationPanel = 'notifications') => {
+    setNotificationPanel(panel);
+    setShowNotifications(true);
+  }, []);
 
   // ---- Review-ready notifications ----
   // Foreground polling provides local notifications for guests and remains
@@ -427,7 +437,7 @@ function AppContent() {
   }, []);
 
   // ---- Navigation ----
-  const [activeTab, setActiveTab] = useState<NavTab>(() => notificationLink?.tab ?? 'home');
+  const [activeTab, setActiveTab] = useState<NavTab>(() => (notificationLink?.tab && notificationLink.tab !== 'profile' ? notificationLink.tab : 'home'));
   const sidebarCollapse = useSidebarCollapse();
   const handleNotificationTargetHandled = useCallback(() => setNotificationExamId(null), []);
   const [reviewCollectionRequest, setReviewCollectionRequest] = useState<string | null>(null);
@@ -440,6 +450,20 @@ function AppContent() {
   const [recallCards, setRecallCards] = useState<RecallCard[]>([]);
   const [studyDataReady, setStudyDataReady] = useState(false);
   const [totalReviews, setTotalReviews] = useState<number>(0);
+
+  // ---- First-run nav pop-ups (Quiz / NoteCraft) ----
+  // Shown on Home until the person has created something or dismissed them. Starts
+  // dismissed so nothing flashes before the stored choice is read.
+  const [coachDismissed, setCoachDismissed] = useState(true);
+  useEffect(() => {
+    if (!scopeId) return;
+    setCoachDismissed(loadLocal<boolean>(scopedKey('kojlux_nav_coach_dismissed', scopeId), false));
+  }, [scopeId]);
+  const dismissCoach = useCallback(() => {
+    setCoachDismissed(true);
+    if (scopeId) saveLocal(scopedKey('kojlux_nav_coach_dismissed', scopeId), true);
+  }, [scopeId]);
+  const showCoach = studyDataReady && history.length === 0 && !coachDismissed && activeTab === 'home' && !showNotifications && !focusSession;
   const [examEvents, setExamEvents] = useState<ExamEvent[]>([]);
   const examEventsRef = useRef<ExamEvent[]>([]);
   // Student-named folders of saved cards (e.g. "Bio Midterm") — see
@@ -971,7 +995,7 @@ function AppContent() {
     setNotifications([]);
     setGuestMode(false);
     setShowAuthScreen(false);
-    setGuestBannerDismissed(false);
+    setNotifBannerDismissed(false);
     loadedScopeRef.current = null;
     lastCloudTotalReviewsRef.current = null;
     lastCloudStreakRef.current = null;
@@ -1084,6 +1108,35 @@ function AppContent() {
   }
 
   const isUnder13 = ageBand === 'under13';
+  const profilePanel = (mode: 'calendar' | 'settings') => (
+    <ProfileScreen
+      mode={mode}
+      email={user?.email || ''}
+      username={username}
+      ageBand={ageBand}
+      onDisplayNameChange={handleDisplayNameChange}
+      onAgeBandChange={completeAgeBand}
+      gradeLevel={gradeLevel}
+      onGradeLevelChange={handleGradeLevelChange}
+      streak={streak}
+      activityDays={activityDays}
+      totalReviews={totalReviews}
+      isGuest={!user}
+      onSignOut={handleSignOut}
+      onSignIn={() => setShowAuthScreen(true)}
+      onDeleteAccount={openAccountDeletionPage}
+      exams={examEvents}
+      history={history}
+      onAddExam={addExam}
+      onUpdateExam={updateExam}
+      onDeleteExam={deleteExam}
+      notifPermission={notifPermission}
+      onEnableNotifications={enableNotifications}
+      pushRegistrationStatus={pushRegistrationStatus}
+      initialExamId={notificationExamId}
+      onNotificationTargetHandled={handleNotificationTargetHandled}
+    />
+  );
   const appNotices = (
     <>
       {isNotificationSupported() && notifPermission === 'default' && !notifBannerDismissed && (recallCards.length > 0 || user) && (
@@ -1131,9 +1184,13 @@ function AppContent() {
           onToggleCollapse={sidebarCollapse.toggle}
           blockedTabs={isUnder13 ? ['community'] : []}
           overlayOpen={showNotifications}
+          coachMarks={showCoach}
+          onCoachDismiss={dismissCoach}
           onChange={(tab) => {
             setShowNotifications(false);
             if (firstStudyGuideStep === 'home' && tab === 'quiz') advanceFirstStudyGuide('quiz');
+            if (firstStudyGuideStep === 'home' && tab === 'notecraft') advanceFirstStudyGuide('notes');
+            if (tab === 'quiz' || tab === 'notecraft') dismissCoach();
             setActiveTab(tab);
           }}
         />
@@ -1157,7 +1214,14 @@ function AppContent() {
             }
             setNotifications(nextNotifications);
           }}
-          onClose={() => setShowNotifications(false)}
+          panel={notificationPanel}
+          onPanelChange={setNotificationPanel}
+          calendarPanel={profilePanel('calendar')}
+          settingsPanel={profilePanel('settings')}
+          onClose={() => {
+            setShowNotifications(false);
+            setNotificationPanel('notifications');
+          }}
           onMarkAllRead={() => {
             if (scopeId) {
               notifications.forEach((item) => void dismissBrowserNotification(item));
@@ -1167,18 +1231,23 @@ function AppContent() {
           onSelect={(item) => {
             void dismissBrowserNotification(item);
             if (scopeId) setNotifications(markNotificationRead(scopeId, item.id));
+            if (item.type === 'exam_reminder' && item.targetId) {
+              setNotificationExamId(item.targetId);
+              setNotificationPanel('calendar');
+              return;
+            }
             setShowNotifications(false);
+            setNotificationPanel('notifications');
             if (item.type === 'quiz_resume' && item.targetId) {
               setResumeQuizId(item.targetId);
               setFocusSession('quiz');
               setActiveTab('quiz');
               return;
             }
-            if (item.type === 'exam_reminder' && item.targetId) {
-              setNotificationExamId(item.targetId);
-            }
             if (item.targetTab === 'community' && isUnder13) {
               setActiveTab('home');
+            } else if (item.targetTab === 'profile') {
+              openNotifications('calendar');
             } else if (item.targetTab) {
               setActiveTab(item.targetTab as NavTab);
             }
@@ -1200,7 +1269,9 @@ function AppContent() {
           firstStudyGuideKind={firstStudyGuideKind}
           onDismissFirstStudyGuide={dismissFirstStudyGuide}
           onAdvanceFirstStudyGuide={advanceFirstStudyGuide}
-          onOpenNotifications={() => setShowNotifications(true)}
+          onOpenNotifications={() => openNotifications()}
+          showNavCoach={showCoach}
+          onDismissNavCoach={dismissCoach}
           onOpenCollection={(collection) => {
             setReviewCollectionRequest(collection.id);
             setActiveTab('review');
@@ -1210,27 +1281,44 @@ function AppContent() {
             setActiveTab('review');
             setFocusSession('review');
           }}
-          onNavigate={(tab) => setActiveTab(tab === 'summarizer' ? 'quiz' : tab as NavTab)}
+          onNavigate={(tab) => {
+            const next = (tab === 'summarizer' ? 'notecraft' : tab) as NavTab;
+            if (next === 'quiz' || next === 'notecraft') dismissCoach();
+            setActiveTab(next === 'profile' ? 'home' : next);
+          }}
         >
           {appNotices}
         </StudyHome>
       ) : (
         <div className={`${focusSession ? 'fixed inset-0 z-[100] min-h-[100svh] overflow-y-auto bg-focus-bg text-slate-900 dark:text-slate-100' : `min-h-screen bg-focus-bg dark:bg-[#0B0F19] md:pl-20 ${sidebarCollapse.collapsed ? 'lg:pl-20' : 'lg:pl-60'}`}`}>
           <div className={`${focusSession ? 'w-full min-h-[100svh]' : 'w-full max-w-md md:max-w-3xl lg:max-w-5xl xl:max-w-6xl mx-auto min-h-screen flex flex-col'}`}>
-            {/* The Dashboard (profile) screen draws its own title, so the shared
-                top bar is skipped there to avoid showing "Dashboard" twice. */}
-            {!focusSession && activeTab !== 'profile' && (
+            {!focusSession && (
               <header className="sticky top-0 z-30 bg-focus-bg/90 dark:bg-slate-950/90 backdrop-blur-md px-5 pt-6 pb-3 flex items-center justify-between gap-3">
                 <h1 className="text-sm font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
                   {SCREEN_TITLES[activeTab]}
                 </h1>
+                {/* No bell on the Quiz and NoteCraft pages, so nothing pulls focus from creating. */}
+                {activeTab !== 'quiz' && activeTab !== 'notecraft' && (
+                  <button
+                    type="button"
+                    onClick={() => openNotifications()}
+                    aria-label="Notifications, calendar and settings"
+                    className="relative shrink-0 w-9 h-9 rounded-full bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center justify-center"
+                  >
+                    <Bell className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                    {notifications.some((n) => !n.read) && (
+                      <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-focus-primary" />
+                    )}
+                  </button>
+                )}
               </header>
             )}
             {!focusSession && appNotices}
-            <main className={focusSession === 'review' ? 'min-h-[100svh] max-w-3xl mx-auto flex w-full items-center justify-center px-3 py-3' : focusSession ? 'min-h-[100svh]' : `flex-1 px-5 pb-28 md:pb-10 ${activeTab === 'profile' ? 'pt-6' : ''}`}>
+            <main className={focusSession === 'review' ? 'min-h-[100svh] max-w-3xl mx-auto flex w-full items-center justify-center px-3 py-3' : focusSession ? 'min-h-[100svh]' : `flex-1 px-5 pb-28 md:pb-10`}>
 
-          {activeTab === 'quiz' && (
+          {(activeTab === 'quiz' || activeTab === 'notecraft') && (
             <QuizBuilderOrSummarizer
+              mode={activeTab}
               gradeLevel={gradeLevel}
               scopeId={scopeId ?? 'guest'}
               firstStudyGuideStep={firstStudyGuideStep === 'home' ? null : firstStudyGuideStep}
@@ -1307,35 +1395,6 @@ function AppContent() {
               onCollectionRequestHandled={() => setReviewCollectionRequest(null)}
             />
           )}
-
-          {activeTab === 'profile' && (
-            <ProfileScreen
-              email={user?.email || ''}
-              username={username}
-              ageBand={ageBand}
-              onDisplayNameChange={handleDisplayNameChange}
-              onAgeBandChange={completeAgeBand}
-              gradeLevel={gradeLevel}
-              onGradeLevelChange={handleGradeLevelChange}
-              streak={streak}
-              activityDays={activityDays}
-              totalReviews={totalReviews}
-              isGuest={!user}
-              onSignOut={handleSignOut}
-              onSignIn={() => setShowAuthScreen(true)}
-              onDeleteAccount={openAccountDeletionPage}
-              exams={examEvents}
-              history={history}
-              onAddExam={addExam}
-              onUpdateExam={updateExam}
-              onDeleteExam={deleteExam}
-              notifPermission={notifPermission}
-              onEnableNotifications={enableNotifications}
-              pushRegistrationStatus={pushRegistrationStatus}
-              initialExamId={notificationExamId}
-              onNotificationTargetHandled={handleNotificationTargetHandled}
-            />
-          )}
             </main>
           </div>
         </div>
@@ -1378,6 +1437,7 @@ function AppContent() {
 // bundled with a sub-toggle than as separate top-level destinations that
 // compete with Review for thumb reach.
 function QuizBuilderOrSummarizer(props: {
+  mode: 'quiz' | 'notecraft';
   gradeLevel: string;
   scopeId: string;
   firstStudyGuideStep: Exclude<FirstStudyGuideStep, 'home'>;
@@ -1399,15 +1459,7 @@ function QuizBuilderOrSummarizer(props: {
   onAddRecallCards: (cards: RecallCard[]) => void;
   onError: (msg: string) => void;
 }) {
-  const [subTab, setSubTab] = useState<'quiz' | 'notecraft'>('quiz');
-  useEffect(() => {
-    if (props.sourceSummary) setSubTab('quiz');
-  }, [props.sourceSummary]);
-  useEffect(() => {
-    if (props.firstStudyGuideStep && props.firstStudyGuideKind) {
-      setSubTab(props.firstStudyGuideKind === 'notes' ? 'notecraft' : 'quiz');
-    }
-  }, [props.firstStudyGuideStep, props.firstStudyGuideKind]);
+  const subTab = props.mode;
   return (
     <div className="space-y-5">
       {props.firstStudyGuideStep && (
@@ -1429,21 +1481,6 @@ function QuizBuilderOrSummarizer(props: {
           </div>
         </section>
       )}
-      <div className="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
-        {props.focusMode === null && (['quiz', 'notecraft'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setSubTab(t)}
-            className={`flex-1 py-2 rounded-lg text-xs font-medium uppercase tracking-wide transition ${
-              subTab === t
-                ? 'bg-focus-primary text-white'
-                : 'bg-transparent text-gray-500 dark:bg-[#161D30] dark:text-slate-400 dark:border dark:border-slate-800/40'
-            }`}
-          >
-            {t === 'quiz' ? 'Quiz Builder' : 'NoteCraft'}
-          </button>
-        ))}
-      </div>
       {subTab === 'quiz' ? (
         <QuizBuilder
           gradeLevel={props.gradeLevel}
